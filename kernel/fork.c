@@ -93,6 +93,14 @@
 #include <linux/thread_info.h>
 #include <linux/cpufreq_times.h>
 
+#ifdef CONFIG_HOUSTON
+#include <oneplus/houston/houston_helper.h>
+#endif
+
+#ifdef CONFIG_CONTROL_CENTER
+#include <oneplus/control_center/control_center_helper.h>
+#endif
+
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <linux/uaccess.h>
@@ -892,6 +900,22 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk->splice_pipe = NULL;
 	tsk->task_frag.page = NULL;
 	tsk->wake_q.next = NULL;
+#ifdef CONFIG_OPCHAIN
+	tsk->utask_tag = 0;
+	tsk->utask_tag_base = 0;
+	tsk->etask_claim = 0;
+	tsk->claim_cpu = -1;
+	tsk->utask_slave = 0;
+#endif
+
+	// add for chainboost CONFIG_ONEPLUS_CHAIN_BOOST
+	tsk->main_boost_switch = 0;
+	tsk->main_wake_boost = 0;
+
+#ifdef CONFIG_CONTROL_CENTER
+	tsk->nice_effect_ts = 0;
+	tsk->cached_prio = tsk->static_prio;
+#endif
 
 	account_kernel_stack(tsk, 1);
 
@@ -971,6 +995,8 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	mm->mmap = NULL;
 	mm->mm_rb = RB_ROOT;
 	mm->vmacache_seqnum = 0;
+	mm->va_feature = 0;
+	mm->zygoteheap_in_MB = 0;
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
 	rwlock_init(&mm->mm_rb_lock);
 #endif
@@ -1560,6 +1586,10 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 	sig->oom_score_adj = current->signal->oom_score_adj;
 	sig->oom_score_adj_min = current->signal->oom_score_adj_min;
 
+	/* CONFIG_MEMPLUS add start by bin.zhong@ASTI */
+	memplus_init_task_reclaim_stat(sig);
+	/* add end */
+
 	mutex_init(&sig->cred_guard_mutex);
 
 	return 0;
@@ -2123,6 +2153,18 @@ static __latent_entropy struct task_struct *copy_process(
 	trace_task_newtask(p, clone_flags);
 	uprobe_copy_process(p, clone_flags);
 
+#ifdef CONFIG_HOUSTON
+	if (likely(!IS_ERR(p))) {
+		ht_perf_event_init(p);
+		ht_rtg_init(p);
+
+#ifdef CONFIG_CONTROL_CENTER
+		cc_tsk_init((void *) p);
+#endif
+
+	}
+#endif
+
 	return p;
 
 bad_fork_cancel_cgroup:
@@ -2258,6 +2300,8 @@ long _do_fork(unsigned long clone_flags,
 	 * might get invalid after that point, if the thread exits quickly.
 	 */
 	trace_sched_process_fork(current, p);
+	/* bin.zhong@ASTI, 2019/10/11, add for CONFIG_SMART_BOOST */
+	SMB_HOT_COUNT_INIT((clone_flags & CLONE_VM), p);
 
 	pid = get_task_pid(p, PIDTYPE_PID);
 	nr = pid_vnr(pid);

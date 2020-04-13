@@ -25,6 +25,10 @@
 struct f2fs_gc_kthread {
 	struct task_struct *f2fs_gc_task;
 	wait_queue_head_t gc_wait_queue_head;
+#ifdef CONFIG_F2FS_OF2FS
+	/* [ASTI-147]: do FG GC in GC thread */
+	wait_queue_head_t fggc_wait_queue_head;
+#endif
 
 	/* for gc sleep time */
 	unsigned int urgent_sleep_time;
@@ -40,6 +44,13 @@ struct gc_inode_list {
 	struct list_head ilist;
 	struct radix_tree_root iroot;
 };
+
+#ifdef CONFIG_F2FS_OF2FS
+/* [ASTI-147]: declare */
+extern block_t of2fs_seg_freefrag(struct f2fs_sb_info *sbi, unsigned int segno, block_t *blocks, unsigned int n);
+
+extern int f2fs_odiscard_enable;
+#endif
 
 /*
  * inline functions

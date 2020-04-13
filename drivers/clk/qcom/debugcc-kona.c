@@ -974,6 +974,18 @@ static struct clk_dummy measure_only_mccc_clk = {
 	},
 };
 
+#ifdef CONFIG_HOUSTON
+int get_only_mccc_hw(struct clk_hw **hwptr)
+{
+	if (unlikely(!&(measure_only_mccc_clk.hw))) {
+		*hwptr = NULL;
+		return -EINVAL;
+	}
+	*hwptr = &(measure_only_mccc_clk.hw);
+	return 0;
+}
+#endif
+
 static struct clk_dummy measure_only_memnoc_clk = {
 	.rrate = 1000,
 	.hw.init = &(struct clk_init_data){

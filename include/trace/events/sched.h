@@ -1204,18 +1204,18 @@ TRACE_EVENT(sched_compute_energy,
 		__entry->prev_energy, __entry->eval_cpu, __entry->eval_energy,
 		__entry->best_energy_cpu, __entry->best_energy)
 )
-
+// curtis@ASTI, 2019/4/29, add for uxrealm CONFIG_OPCHAIN
 TRACE_EVENT(sched_task_util,
 
 	TP_PROTO(struct task_struct *p, unsigned long candidates,
 		int best_energy_cpu, bool sync, bool need_idle, int fastpath,
 		bool placement_boost, u64 start_t,
 		bool stune_boosted, bool is_rtg, bool rtg_skip_min,
-		int start_cpu),
+		bool is_uxtop),
 
 	TP_ARGS(p, candidates, best_energy_cpu, sync, need_idle, fastpath,
 		placement_boost, start_t, stune_boosted, is_rtg, rtg_skip_min,
-		start_cpu),
+		is_uxtop),
 
 	TP_STRUCT__entry(
 		__field(int,		pid)
@@ -1233,8 +1233,8 @@ TRACE_EVENT(sched_task_util,
 		__field(bool,		stune_boosted)
 		__field(bool,		is_rtg)
 		__field(bool,		rtg_skip_min)
-		__field(int,		start_cpu)
 		__field(u32,		unfilter)
+		__field(bool,		is_uxtop)
 	),
 
 	TP_fast_assign(
@@ -1252,21 +1252,21 @@ TRACE_EVENT(sched_task_util,
 		__entry->stune_boosted          = stune_boosted;
 		__entry->is_rtg                 = is_rtg;
 		__entry->rtg_skip_min		= rtg_skip_min;
-		__entry->start_cpu		= start_cpu;
 #ifdef CONFIG_SCHED_WALT
 		__entry->unfilter		= p->unfilter;
 #else
 		__entry->unfilter		= 0;
 #endif
+		__entry->is_uxtop		= is_uxtop;
 	),
 
-	TP_printk("pid=%d comm=%s util=%lu prev_cpu=%d candidates=%#lx best_energy_cpu=%d sync=%d need_idle=%d fastpath=%d placement_boost=%d latency=%llu stune_boosted=%d is_rtg=%d rtg_skip_min=%d start_cpu=%d unfilter=%u",
+	TP_printk("pid=%d comm=%s util=%lu prev_cpu=%d candidates=%#lx best_energy_cpu=%d sync=%d need_idle=%d fastpath=%d placement_boost=%d latency=%llu stune_boosted=%d is_rtg=%d rtg_skip_min=%d unfilter=%u is_uxtop=%d",
 		__entry->pid, __entry->comm, __entry->util, __entry->prev_cpu,
 		__entry->candidates, __entry->best_energy_cpu, __entry->sync,
 		__entry->need_idle, __entry->fastpath, __entry->placement_boost,
 		__entry->latency, __entry->stune_boosted,
-		__entry->is_rtg, __entry->rtg_skip_min, __entry->start_cpu,
-		__entry->unfilter)
+		__entry->is_rtg, __entry->rtg_skip_min,
+		__entry->unfilter, __entry->is_uxtop)
 )
 
 /*

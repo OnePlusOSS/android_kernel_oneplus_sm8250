@@ -617,7 +617,12 @@ static inline int utilization(struct f2fs_sb_info *sbi)
  * F2FS_IPUT_DISABLE - disable IPU. (=default option)
  */
 #define DEF_MIN_IPU_UTIL	70
+#ifdef CONFIG_F2FS_OF2FS
+/* [ASTI-147]: enlarge min_fsync_blocks to optimize performance */
+#define DEF_MIN_FSYNC_BLOCKS	20
+#else
 #define DEF_MIN_FSYNC_BLOCKS	8
+#endif
 #define DEF_MIN_HOT_BLOCKS	16
 
 #define SMALL_VOLUME_SEGMENTS	(16 * 512)	/* 16GB */

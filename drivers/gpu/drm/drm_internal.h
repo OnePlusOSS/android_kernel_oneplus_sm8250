@@ -115,8 +115,90 @@ int drm_gem_open_ioctl(struct drm_device *dev, void *data,
 		       struct drm_file *file_priv);
 void drm_gem_open(struct drm_device *dev, struct drm_file *file_private);
 void drm_gem_release(struct drm_device *dev, struct drm_file *file_private);
-void drm_gem_print_info(struct drm_printer *p, unsigned int indent,
-			const struct drm_gem_object *obj);
+void drm_gem_print_info(struct drm_printer *p, unsigned int indent, const struct drm_gem_object *obj);
+
+extern char gamma_para[2][413];
+extern char dsi_panel_name;
+extern int reg_read_len;
+extern int oneplus_get_panel_brightness_to_alpha(void);
+extern ssize_t notify_fppress_store(struct device *dev,
+			struct device_attribute *attr, const char *buf, size_t count);
+extern ssize_t notify_dim_store(struct device *dev,
+			struct device_attribute *attr, const char *buf, size_t count);
+extern ssize_t notify_aod_store(struct device *dev,
+			struct device_attribute *attr, const char *buf, size_t count);
+extern int iris_loop_back_test(struct drm_connector *connector);
+
+int dsi_display_set_hbm_mode(struct drm_connector *connector, int level);
+int dsi_display_get_hbm_mode(struct drm_connector *connector);
+int dsi_display_get_serial_number(struct drm_connector *connector);
+int dsi_display_get_serial_number_year(struct drm_connector *connector);
+int dsi_display_get_serial_number_mon(struct drm_connector *connector);
+int dsi_display_get_serial_number_day(struct drm_connector *connector);
+int dsi_display_get_serial_number_hour(struct drm_connector *connector);
+int dsi_display_get_serial_number_min(struct drm_connector *connector);
+int dsi_display_set_acl_mode(struct drm_connector *connector, int level);
+int dsi_display_get_acl_mode(struct drm_connector *connector);
+int dsi_display_set_hbm_mode(struct drm_connector *connector, int level);
+int dsi_display_get_hbm_mode(struct drm_connector *connector);
+int dsi_display_set_hbm_brightness(struct drm_connector *connector, int level);
+int dsi_display_get_hbm_brightness(struct drm_connector *connector);
+int dsi_display_set_aod_mode(struct drm_connector *connector, int level);
+int dsi_display_get_aod_mode(struct drm_connector *connector);
+int dsi_display_set_dci_p3_mode(struct drm_connector *connector, int level);
+int dsi_display_get_dci_p3_mode(struct drm_connector *connector);
+int dsi_display_set_night_mode(struct drm_connector *connector, int level);
+int dsi_display_get_night_mode(struct drm_connector *connector);
+int dsi_display_update_gamma_para(struct drm_connector *connector);
+int dsi_display_get_serial_number(struct drm_connector *connector);
+int dsi_display_get_serial_number_year(struct drm_connector *connector);
+int dsi_display_get_serial_number_mon(struct drm_connector *connector);
+int dsi_display_get_serial_number_day(struct drm_connector *connector);
+int dsi_display_get_serial_number_hour(struct drm_connector *connector);
+int dsi_display_get_serial_number_min(struct drm_connector *connector);
+int dsi_display_get_serial_number_sec(struct drm_connector *connector);
+int dsi_display_get_serial_number_msec_int(struct drm_connector *connector);
+int dsi_display_get_serial_number_msec_rem(struct drm_connector *connector);
+uint64_t dsi_display_get_serial_number_id(uint64_t serial_number);
+int dsi_display_get_code_info(struct drm_connector *connector);
+int dsi_display_get_stage_info(struct drm_connector *connector);
+int dsi_display_get_production_info(struct drm_connector *connector);
+int dsi_display_panel_mismatch_check(struct drm_connector *connector);
+int dsi_display_panel_mismatch(struct drm_connector *connector);
+int dsi_display_set_aod_disable(struct drm_connector *connector, int disable);
+int dsi_display_get_aod_disable(struct drm_connector *connector);
+int dsi_display_set_fp_hbm_mode(struct drm_connector *connector, int level);
+int dsi_display_get_fp_hbm_mode(struct drm_connector *connector);
+int dsi_display_update_dsi_on_command(struct drm_connector *connector, const char *buf, size_t count);
+int dsi_display_get_dsi_on_command(struct drm_connector *connector, char *buf);
+int dsi_display_update_dsi_panel_command(struct drm_connector *connector, const char *buf, size_t count);
+int dsi_display_get_dsi_panel_command(struct drm_connector *connector, char *buf);
+int dsi_display_update_dsi_seed_command(struct drm_connector *connector, const char *buf, size_t count);
+int dsi_display_get_dsi_seed_command(struct drm_connector *connector, char *buf);
+int dsi_display_get_reg_read_command_and_value(struct drm_connector *connector, char *buf);
+int dsi_display_reg_read(struct drm_connector *connector, const char *buf, size_t count);
+int dsi_display_set_native_display_p3_mode(struct drm_connector *connector, int level);
+int dsi_display_get_native_display_p3_mode(struct drm_connector *connector);
+int dsi_display_set_native_display_wide_color_mode(struct drm_connector *connector, int level);
+int dsi_display_get_native_display_wide_color_mode(struct drm_connector *connector);
+int dsi_display_set_native_display_srgb_color_mode(struct drm_connector *connector, int level);
+int dsi_display_get_native_display_srgb_color_mode(struct drm_connector *connector);
+int dsi_display_set_mca_setting_mode(struct drm_connector *connector, int mca_setting_mode);
+int dsi_display_get_mca_setting_mode(struct drm_connector *connector);
+int dsi_display_set_native_loading_effect_mode(struct drm_connector *connector, int level);
+int dsi_display_get_native_display_loading_effect_mode(struct drm_connector *connector);
+int dsi_display_set_customer_srgb_mode(struct drm_connector *connector, int level);
+int dsi_display_set_customer_p3_mode(struct drm_connector *connector, int level);
+int dsi_display_get_customer_srgb_mode(struct drm_connector *connector);
+int dsi_display_get_customer_p3_mode(struct drm_connector *connector);
+int dsi_display_get_panel_ic_v_info(struct drm_connector *connector);
+int dsi_display_set_seed_lp_mode(struct drm_connector *connector, int seed_lp_level);
+int dsi_display_get_seed_lp_mode(struct drm_connector *connector);
+int dsi_display_get_ddic_check_info(struct drm_connector *connector);
+int dsi_display_get_ToolsType_ANA6706(struct drm_connector *connector);
+int dsi_display_get_ddic_coords_X(struct drm_connector *connector);
+int dsi_display_get_ddic_coords_Y(struct drm_connector *connector);
+char *dsi_display_get_ic_reg_buf(struct drm_connector *connector);
 
 /* drm_debugfs.c drm_debugfs_crc.c */
 #if defined(CONFIG_DEBUG_FS)

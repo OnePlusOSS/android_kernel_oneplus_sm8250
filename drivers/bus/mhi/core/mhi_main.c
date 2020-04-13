@@ -119,6 +119,8 @@ static void mhi_reg_write_enqueue(struct mhi_controller *mhi_cntrl,
 	mhi_cntrl->reg_write_q[q_index].reg_addr = reg_addr;
 	mhi_cntrl->reg_write_q[q_index].val = val;
 	mhi_cntrl->reg_write_q[q_index].valid = true;
+	/* smp update */
+	smp_wmb();
 }
 
 void mhi_write_reg_offload(struct mhi_controller *mhi_cntrl,
@@ -202,6 +204,8 @@ void mhi_ring_cmd_db(struct mhi_controller *mhi_cntrl, struct mhi_cmd *mhi_cmd)
 	db = ring->iommu_base + (ring->wp - ring->base);
 	*ring->ctxt_wp = db;
 	mhi_write_db(mhi_cntrl, ring->db_addr, db);
+	/* smp update */
+	smp_wmb();
 }
 
 void mhi_ring_chan_db(struct mhi_controller *mhi_cntrl,
@@ -899,6 +903,7 @@ void mhi_create_devices(struct mhi_controller *mhi_cntrl)
 	 */
 	mhi_create_time_sync_dev(mhi_cntrl);
 
+	MHI_ERR(":%s\n", __func__);
 	mhi_chan = mhi_cntrl->mhi_chan;
 	for (i = 0; i < mhi_cntrl->max_chan; i++, mhi_chan++) {
 		if (!mhi_chan->configured || mhi_chan->mhi_dev ||
@@ -1328,6 +1333,10 @@ int mhi_process_ctrl_ev_ring(struct mhi_controller *mhi_cntrl,
 				TO_MHI_EXEC_STR(event));
 			switch (event) {
 			case MHI_EE_SBL:
+				write_lock_irq(&mhi_cntrl->pm_lock);
+				mhi_cntrl->ee = MHI_EE_SBL;
+				write_unlock_irq(&mhi_cntrl->pm_lock);
+				wake_up_all(&mhi_cntrl->state_event);
 				st = MHI_ST_TRANSITION_SBL;
 				break;
 			case MHI_EE_WFW:
@@ -1335,13 +1344,6 @@ int mhi_process_ctrl_ev_ring(struct mhi_controller *mhi_cntrl,
 				st = MHI_ST_TRANSITION_MISSION_MODE;
 				break;
 			case MHI_EE_RDDM:
-				mhi_cntrl->status_cb(mhi_cntrl,
-						     mhi_cntrl->priv_data,
-						     MHI_CB_EE_RDDM);
-				write_lock_irq(&mhi_cntrl->pm_lock);
-				mhi_cntrl->ee = event;
-				write_unlock_irq(&mhi_cntrl->pm_lock);
-				wake_up_all(&mhi_cntrl->state_event);
 				break;
 			default:
 				MHI_ERR("Unhandled EE event:%s\n",
@@ -1522,9 +1524,6 @@ int mhi_process_bw_scale_ev_ring(struct mhi_controller *mhi_cntrl,
 		goto exit_no_lock;
 	}
 
-	if (mhi_cntrl->need_force_m3 && !mhi_cntrl->force_m3_done)
-		goto exit_no_lock;
-
 	ret = __mhi_device_get_sync(mhi_cntrl);
 	if (ret)
 		goto exit_no_lock;
@@ -1699,14 +1698,21 @@ irqreturn_t mhi_intvec_threaded_handlr(int irq_number, void *dev)
 	MHI_VERB("Enter\n");
 
 	write_lock_irq(&mhi_cntrl->pm_lock);
-	if (MHI_REG_ACCESS_VALID(mhi_cntrl->pm_state)) {
-		state = mhi_get_mhi_state(mhi_cntrl);
-		ee = mhi_cntrl->ee;
-		mhi_cntrl->ee = mhi_get_exec_env(mhi_cntrl);
-		MHI_LOG("local ee: %s device ee:%s dev_state:%s\n",
-			TO_MHI_EXEC_STR(ee),
-			TO_MHI_EXEC_STR(mhi_cntrl->ee),
-			TO_MHI_STATE_STR(state));
+	if (!MHI_REG_ACCESS_VALID(mhi_cntrl->pm_state)) {
+		write_unlock_irq(&mhi_cntrl->pm_lock);
+		goto exit_intvec;
+	}
+
+	state = mhi_get_mhi_state(mhi_cntrl);
+	ee = mhi_get_exec_env(mhi_cntrl);
+	MHI_LOG("local ee:%s device ee:%s dev_state:%s\n",
+		TO_MHI_EXEC_STR(mhi_cntrl->ee),
+		TO_MHI_EXEC_STR(ee),
+		TO_MHI_STATE_STR(state));
+
+	if (mhi_cntrl->power_down) {
+		write_unlock_irq(&mhi_cntrl->pm_lock);
+		goto exit_intvec;
 	}
 
 	if (state == MHI_STATE_SYS_ERR) {
@@ -1716,20 +1722,28 @@ irqreturn_t mhi_intvec_threaded_handlr(int irq_number, void *dev)
 	}
 	write_unlock_irq(&mhi_cntrl->pm_lock);
 
-	/* if device in rddm don't bother processing sys error */
-	if (mhi_cntrl->ee == MHI_EE_RDDM && ee != MHI_EE_DISABLE_TRANSITION) {
-		if (mhi_cntrl->ee != ee) {
-			mhi_cntrl->status_cb(mhi_cntrl, mhi_cntrl->priv_data,
-					     MHI_CB_EE_RDDM);
-			wake_up_all(&mhi_cntrl->state_event);
-
-			/* notify critical clients with early notifications */
-			mhi_control_error(mhi_cntrl);
+	if (ee == MHI_EE_RDDM) {
+		write_lock_irq(&mhi_cntrl->pm_lock);
+		if (mhi_cntrl->ee == MHI_EE_RDDM) {
+			write_unlock_irq(&mhi_cntrl->pm_lock);
+			goto exit_intvec;
 		}
+		mhi_cntrl->ee = MHI_EE_RDDM;
+		write_unlock_irq(&mhi_cntrl->pm_lock);
+
+		MHI_ERR("RDDM event occurred!\n");
+		mhi_cntrl->status_cb(mhi_cntrl, mhi_cntrl->priv_data,
+				     MHI_CB_EE_RDDM);
+		wake_up_all(&mhi_cntrl->state_event);
+
+		/* notify critical clients with early notifications */
+		mhi_control_error(mhi_cntrl);
+
 		goto exit_intvec;
 	}
 
-	if (pm_state == MHI_PM_SYS_ERR_DETECT) {
+	/* if device is in RDDM, don't bother processing SYS_ERR */
+	if (ee != MHI_EE_RDDM && pm_state == MHI_PM_SYS_ERR_DETECT) {
 		wake_up_all(&mhi_cntrl->state_event);
 
 		/* for fatal errors, we let controller decide next step */
@@ -1757,7 +1771,7 @@ irqreturn_t mhi_intvec_handlr(int irq_number, void *dev)
 	MHI_VERB("Exit\n");
 
 	if (MHI_IN_MISSION_MODE(mhi_cntrl->ee))
-		schedule_work(&mhi_cntrl->low_priority_worker);
+		queue_work(mhi_cntrl->special_wq, &mhi_cntrl->special_work);
 
 	return IRQ_WAKE_THREAD;
 }
@@ -1863,6 +1877,8 @@ int mhi_prepare_channel(struct mhi_controller *mhi_cntrl,
 			struct mhi_chan *mhi_chan)
 {
 	int ret = 0;
+	int timeout_before = 0;
+	unsigned int prepare_timeout = mhi_cntrl->timeout_ms + 500;
 
 	MHI_LOG("Entered: preparing channel:%d\n", mhi_chan->chan);
 
@@ -1913,11 +1929,21 @@ int mhi_prepare_channel(struct mhi_controller *mhi_cntrl,
 		goto error_dec_pendpkt;
 	}
 
+err_timeout:
+	if (timeout_before && mhi_cntrl->offload_wq)
+		queue_work(mhi_cntrl->offload_wq, &mhi_cntrl->reg_write_work);
+
 	ret = wait_for_completion_timeout(&mhi_chan->completion,
-				msecs_to_jiffies(mhi_cntrl->timeout_ms));
+				msecs_to_jiffies(prepare_timeout));
 	if (!ret || mhi_chan->ccs != MHI_EV_CC_SUCCESS) {
 		MHI_ERR("Failed to receive cmd completion for chan:%d\n",
 			mhi_chan->chan);
+		if (!ret && !timeout_before) {
+			timeout_before = 1;
+			goto err_timeout;
+		}
+		/* First timeout error will not arrive here,second timeout we will panic */
+		//panic("debug ch start cmd err\n");
 		ret = -EIO;
 		goto error_dec_pendpkt;
 	}

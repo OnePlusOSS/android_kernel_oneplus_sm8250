@@ -200,6 +200,17 @@ config BRIDGE_NETFILTER
 
 	  If unsure, say N.
 
+config SLA
+	bool "to monitor netlink traffic"
+	default n
+	help
+	  Realtime netlink traffic monitor.
+	  The purpose of this is to monitor the ipv4 packet status and
+	  switch between each interface.
+
+	  If unsure, say n.
+
+
 source "net/netfilter/Kconfig"
 source "net/ipv4/netfilter/Kconfig"
 source "net/ipv6/netfilter/Kconfig"

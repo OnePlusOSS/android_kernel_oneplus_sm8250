@@ -74,6 +74,12 @@
 #define I2C_TIMEOUT_SAFETY_COEFFICIENT	10
 
 #define I2C_TIMEOUT_MIN_USEC	500000
+#define MAX_SE 20
+
+struct dbg_buf_ctxt {
+	void *virt_buf;
+	void *map_buf;
+};
 
 #define MAX_SE	20
 
@@ -81,11 +87,6 @@ enum i2c_se_mode {
 	UNINITIALIZED,
 	FIFO_SE_DMA,
 	GSI_ONLY,
-};
-
-struct dbg_buf_ctxt {
-	void *virt_buf;
-	void *map_buf;
 };
 
 struct geni_i2c_dev {
@@ -578,6 +579,11 @@ static int geni_i2c_gsi_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
 				i2c_put_dma_safe_msg_buf(dma_buf, &msgs[i],
 								false);
 				goto geni_i2c_gsi_xfer_out;
+			} else if (gi2c->dbg_buf_ptr) {
+				gi2c->dbg_buf_ptr[i].virt_buf =
+							(void *)dma_buf;
+				gi2c->dbg_buf_ptr[i].map_buf =
+							(void *)&gi2c->rx_ph;
 
 			} else if (gi2c->dbg_buf_ptr) {
 				gi2c->dbg_buf_ptr[i].virt_buf =
@@ -626,7 +632,6 @@ static int geni_i2c_gsi_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
 				i2c_put_dma_safe_msg_buf(dma_buf, &msgs[i],
 								false);
 				goto geni_i2c_gsi_xfer_out;
-
 			} else if (gi2c->dbg_buf_ptr) {
 				gi2c->dbg_buf_ptr[i].virt_buf =
 							(void *)dma_buf;
@@ -843,7 +848,9 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
 		if (!timeout) {
 			GENI_SE_ERR(gi2c->ipcl, true, gi2c->dev,
 				"I2C xfer timeout: %d\n", gi2c->xfer_timeout);
-			geni_i2c_err(gi2c, GENI_TIMEOUT);
+
+		geni_i2c_err(gi2c, GENI_TIMEOUT);
+
 		}
 
 		if (gi2c->err) {

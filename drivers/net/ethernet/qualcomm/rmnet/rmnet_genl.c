@@ -48,7 +48,6 @@ struct genl_family rmnet_core_genl_family = {
 #define RMNET_PID_STATS_HT_SIZE (8)
 #define RMNET_PID_STATS_HT rmnet_pid_ht
 DEFINE_HASHTABLE(rmnet_pid_ht, RMNET_PID_STATS_HT_SIZE);
-
 /* Spinlock definition for pid hash table */
 static DEFINE_SPINLOCK(rmnet_pid_ht_splock);
 

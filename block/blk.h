@@ -42,6 +42,8 @@ extern struct kmem_cache *request_cachep;
 extern struct kobj_type blk_queue_ktype;
 extern struct ida blk_queue_ida;
 
+extern unsigned long sysctl_blkdev_issue_flush_count;
+
 /*
  * @q->queue_lock is set while a queue is being initialized. Since we know
  * that no other threads access the queue object before @q->queue_lock has

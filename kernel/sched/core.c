@@ -25,6 +25,12 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 
+#ifdef CONFIG_HOUSTON
+#include <oneplus/houston/houston_helper.h>
+#endif
+
+#include <linux/oem/im.h>
+
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
 #if defined(CONFIG_SCHED_DEBUG) && defined(CONFIG_JUMP_LABEL)
@@ -779,6 +785,11 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 		clear_ed_task(p, rq);
 
 	dequeue_task(rq, p, flags);
+
+#ifdef CONFIG_CONTROL_CENTER
+	if (unlikely(im_ux(p)))
+		restore_user_nice_safe(p);
+#endif
 }
 
 /*
@@ -864,6 +875,11 @@ void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 {
 	const struct sched_class *class;
 
+	// add for chainboost CONFIG_ONEPLUS_CHAIN_BOOST
+	if (main_preempt_disable && rq->curr->main_boost_switch == 1 &&
+		rq->curr->group_leader == rq->curr &&
+		memcmp(p->comm, "kworker", 7) && !task_has_rt_policy(p))
+		return;
 	if (p->sched_class == rq->curr->sched_class) {
 		rq->curr->sched_class->check_preempt_curr(rq, p, flags);
 	} else {
@@ -1510,8 +1526,10 @@ static int select_fallback_rq(int cpu, struct task_struct *p, bool allow_iso)
 				continue;
 			if (cpu_isolated(dest_cpu))
 				continue;
-			if (cpumask_test_cpu(dest_cpu, &p->cpus_allowed))
+			if (cpumask_test_cpu(dest_cpu, &p->cpus_allowed)) {
+				cpu_dist_inc(p, dest_cpu);
 				return dest_cpu;
+			}
 		}
 	}
 
@@ -1571,6 +1589,7 @@ out:
 		}
 	}
 
+	cpu_dist_inc(p, dest_cpu);
 	return dest_cpu;
 }
 
@@ -2086,6 +2105,11 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags,
 	if (p->on_rq && ttwu_remote(p, wake_flags))
 		goto stat;
 
+	// add for chainboost CONFIG_ONEPLUS_CHAIN_BOOST
+	//if (main_preempt_disable && current->main_boost_switch == 1 &&
+	//	current->group_leader == current)
+	//	p->main_wake_boost = 1;
+
 #ifdef CONFIG_SMP
 	/*
 	 * Ensure we load p->on_cpu _after_ p->on_rq, otherwise it would be
@@ -2426,6 +2450,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	 */
 	p->prio = current->normal_prio;
 
+	p->compensate_need = 0;
+
 	/*
 	 * Revert to default priority/policy on fork if requested.
 	 */
@@ -2433,9 +2459,16 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 		if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
 			p->policy = SCHED_NORMAL;
 			p->static_prio = NICE_TO_PRIO(0);
+#ifdef CONFIG_CONTROL_CENTER
+			p->cached_prio = p->static_prio;
+#endif
 			p->rt_priority = 0;
 		} else if (PRIO_TO_NICE(p->static_prio) < 0)
+#ifdef CONFIG_CONTROL_CENTER
+			p->cached_prio = p->static_prio = NICE_TO_PRIO(0);
+#else
 			p->static_prio = NICE_TO_PRIO(0);
+#endif
 
 		p->prio = p->normal_prio = __normal_prio(p);
 		set_load_weight(p, false);
@@ -2520,6 +2553,11 @@ void wake_up_new_task(struct task_struct *p)
 	raw_spin_lock_irqsave(&p->pi_lock, rf.flags);
 
 	p->state = TASK_RUNNING;
+	// add for chainboost CONFIG_ONEPLUS_CHAIN_BOOST
+	//if (main_preempt_disable && current->main_boost_switch == 1 &&
+	//	current->group_leader == current)
+	//	p->main_wake_boost = 1;
+
 #ifdef CONFIG_SMP
 	/*
 	 * Fork balancing, do it here and not earlier because:
@@ -3723,6 +3761,10 @@ static void __sched notrace __schedule(bool preempt)
 
 		trace_sched_switch(preempt, prev, next);
 
+#ifdef CONFIG_HOUSTON
+		ht_sched_switch_update(prev, next);
+#endif
+
 		/* Also unlocks the rq: */
 		rq = context_switch(rq, prev, next, &rf);
 	} else {
@@ -4118,7 +4160,35 @@ static inline int rt_effective_prio(struct task_struct *p, int prio)
 }
 #endif
 
-void set_user_nice(struct task_struct *p, long nice)
+#ifdef CONFIG_CONTROL_CENTER
+void restore_user_nice_safe(struct task_struct *p)
+{
+	long nice = PRIO_TO_NICE(p->cached_prio);
+
+	if (rt_prio(p->prio))
+		return;
+
+	if (task_nice(p) == nice || nice < MIN_NICE || nice > MAX_NICE)
+		return;
+
+	if (task_on_rq_queued(p))
+		return;
+
+	if (task_current(task_rq(p), p))
+		return;
+
+	if (!time_after64(get_jiffies_64(), p->nice_effect_ts))
+		return;
+
+	p->static_prio = NICE_TO_PRIO(nice);
+	set_load_weight(p, true);
+	p->prio = effective_prio(p);
+
+	/* update nice_effect_ts to ULLONG_MAX */
+	p->nice_effect_ts = ULLONG_MAX;
+}
+
+void set_user_nice_no_cache(struct task_struct *p, long nice)
 {
 	bool queued, running;
 	int old_prio, delta;
@@ -4127,6 +4197,7 @@ void set_user_nice(struct task_struct *p, long nice)
 
 	if (task_nice(p) == nice || nice < MIN_NICE || nice > MAX_NICE)
 		return;
+
 	/*
 	 * We have to be careful, if called from sys_setpriority(),
 	 * the task might be in the middle of scheduling on another CPU.
@@ -4152,6 +4223,76 @@ void set_user_nice(struct task_struct *p, long nice)
 		put_prev_task(rq, p);
 
 	p->static_prio = NICE_TO_PRIO(nice);
+	set_load_weight(p, true);
+	old_prio = p->prio;
+	p->prio = effective_prio(p);
+	delta = p->prio - old_prio;
+
+	if (queued) {
+		enqueue_task(rq, p, ENQUEUE_RESTORE | ENQUEUE_NOCLOCK);
+		/*
+		 * If the task increased its priority or is running and
+		 * lowered its priority, then reschedule its CPU:
+		 */
+		if (delta < 0 || (delta > 0 && task_running(rq, p)))
+			resched_curr(rq);
+	}
+	if (running)
+		set_curr_task(rq, p);
+out_unlock:
+	task_rq_unlock(rq, p, &rf);
+}
+EXPORT_SYMBOL(set_user_nice_no_cache);
+#endif
+
+void set_user_nice(struct task_struct *p, long nice)
+{
+	bool queued, running;
+	int old_prio, delta;
+	struct rq_flags rf;
+	struct rq *rq;
+
+#ifdef CONFIG_CONTROL_CENTER
+	if (task_nice(p) == nice || nice < MIN_NICE || nice > MAX_NICE) {
+		p->cached_prio = p->static_prio;
+		return;
+	}
+#else
+	if (task_nice(p) == nice || nice < MIN_NICE || nice > MAX_NICE)
+		return;
+#endif
+
+	/*
+	 * We have to be careful, if called from sys_setpriority(),
+	 * the task might be in the middle of scheduling on another CPU.
+	 */
+	rq = task_rq_lock(p, &rf);
+	update_rq_clock(rq);
+
+	/*
+	 * The RT priorities are set via sched_setscheduler(), but we still
+	 * allow the 'normal' nice value to be set - but as expected
+	 * it wont have any effect on scheduling until the task is
+	 * SCHED_DEADLINE, SCHED_FIFO or SCHED_RR:
+	 */
+	if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
+		p->static_prio = NICE_TO_PRIO(nice);
+#ifdef CONFIG_CONTROL_CENTER
+		p->cached_prio = p->static_prio;
+#endif
+		goto out_unlock;
+	}
+	queued = task_on_rq_queued(p);
+	running = task_current(rq, p);
+	if (queued)
+		dequeue_task(rq, p, DEQUEUE_SAVE | DEQUEUE_NOCLOCK);
+	if (running)
+		put_prev_task(rq, p);
+
+	p->static_prio = NICE_TO_PRIO(nice);
+#ifdef CONFIG_CONTROL_CENTER
+	p->cached_prio = p->static_prio;
+#endif
 	set_load_weight(p, true);
 	old_prio = p->prio;
 	p->prio = effective_prio(p);
@@ -4317,7 +4458,12 @@ static void __setscheduler_params(struct task_struct *p,
 	if (dl_policy(policy))
 		__setparam_dl(p, attr);
 	else if (fair_policy(policy))
+#ifdef CONFIG_CONTROL_CENTER
+		p->cached_prio =
+			p->static_prio = NICE_TO_PRIO(attr->sched_nice);
+#else
 		p->static_prio = NICE_TO_PRIO(attr->sched_nice);
+#endif
 
 	/*
 	 * __sched_setscheduler() ensures attr->sched_priority == 0 when

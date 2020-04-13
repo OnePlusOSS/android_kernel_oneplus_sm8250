@@ -386,6 +386,11 @@ int msm_msi_init(struct device *dev)
 
 	for (i = 0; i < msi->nr_irqs; i++) {
 		unsigned int irq = irq_of_parse_and_map(msi->of_node, i);
+		struct irq_desc *desc;
+		const char *devname;
+		static const char rc0_name[] = "1c00000.qcom,pcie";
+		/* static const char rc1_name[] = "1c08000.qcom,pcie"; */
+		static const char rc2_name[] = "1c10000.qcom,pcie";
 
 		if (!irq) {
 			dev_err(msi->dev,
@@ -397,6 +402,14 @@ int msm_msi_init(struct device *dev)
 		msi->irqs[i].hwirq = irq;
 		irq_set_chained_handler_and_data(msi->irqs[i].hwirq,
 						msm_msi_handler, msi);
+		desc = irq_to_desc(irq);
+		devname = kobject_name(&dev->kobj);
+		if (strncmp(devname, rc0_name, 17) == 0) /* pcie0: qcom,pcie@1c00000 */
+			desc->action->name = "qcommsi-rc0";
+		else if (strncmp(devname, rc2_name, 17) == 0) /* pcie2: qcom,pcie@1c10000 */
+			desc->action->name = "qcommsi-rc2";
+		else
+			desc->action->name = "qcommsi-rc1"; /* pcie1：qcom,pcie@1c08000 */
 	}
 
 	return 0;

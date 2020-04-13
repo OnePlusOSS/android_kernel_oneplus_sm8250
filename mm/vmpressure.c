@@ -182,6 +182,8 @@ struct vmpressure_event {
 	struct eventfd_ctx *efd;
 	enum vmpressure_levels level;
 	enum vmpressure_modes mode;
+	unsigned long min;
+	unsigned long max;
 	struct list_head node;
 };
 
@@ -191,7 +193,8 @@ static bool vmpressure_event(struct vmpressure *vmpr,
 {
 	struct vmpressure_event *ev;
 	bool ret = false;
-
+	unsigned long cache = global_node_page_state(NR_INACTIVE_FILE) +
+					global_node_page_state(NR_ACTIVE_FILE);
 	mutex_lock(&vmpr->events_lock);
 	list_for_each_entry(ev, &vmpr->events, node) {
 		if (ancestor && ev->mode == VMPRESSURE_LOCAL)
@@ -199,6 +202,8 @@ static bool vmpressure_event(struct vmpressure *vmpr,
 		if (signalled && ev->mode == VMPRESSURE_NO_PASSTHROUGH)
 			continue;
 		if (level < ev->level)
+			continue;
+		if (cache <= ev->min || cache > ev->max)
 			continue;
 		eventfd_signal(ev->efd, 1);
 		ret = true;
@@ -447,7 +452,8 @@ void vmpressure_prio(gfp_t gfp, struct mem_cgroup *memcg, int prio)
 	vmpressure(gfp, memcg, true, vmpressure_win, 0);
 }
 
-#define MAX_VMPRESSURE_ARGS_LEN	(strlen("critical") + strlen("hierarchy") + 2)
+#define MAX_VMPRESSURE_ARGS_LEN	(strlen("critical") + strlen("hierarchy") + 2\
+				+ (6*2+2))
 
 /**
  * vmpressure_register_event() - Bind vmpressure notifications to an eventfd
@@ -477,6 +483,9 @@ int vmpressure_register_event(struct mem_cgroup *memcg,
 	char *spec, *spec_orig;
 	char *token;
 	int ret = 0;
+	char caches[7] = {0};
+	unsigned long min_cache = 0;
+	unsigned long max_cache = ~0;
 
 	spec_orig = spec = kstrndup(args, MAX_VMPRESSURE_ARGS_LEN, GFP_KERNEL);
 	if (!spec) {
@@ -498,8 +507,33 @@ int vmpressure_register_event(struct mem_cgroup *memcg,
 		if (ret < 0)
 			goto out;
 		mode = ret;
+	} else
+		goto parse_end;
+
+	/* Find min cache */
+	token = strsep(&spec, ",");
+	if (token) {
+		snprintf(caches, ((strlen(token) + 1) > sizeof(caches)) ?
+			sizeof(caches):(strlen(token) + 1), "%s\n", token);
+		if (kstrtoul(caches, 10, &min_cache) < 0) {
+			min_cache = 0;
+			goto parse_end;
+		}
+	} else
+		goto parse_end;
+
+	/* Find max cache */
+	token = strsep(&spec, ",");
+	if (token) {
+		snprintf(caches, ((strlen(token) + 1) > sizeof(caches)) ?
+			sizeof(caches):(strlen(token) + 1), "%s\n", token);
+		if (kstrtoul(caches, 10, &max_cache) < 0) {
+			max_cache = ~0;
+			goto parse_end;
+		}
 	}
 
+parse_end:
 	ev = kzalloc(sizeof(*ev), GFP_KERNEL);
 	if (!ev) {
 		ret = -ENOMEM;
@@ -509,6 +543,8 @@ int vmpressure_register_event(struct mem_cgroup *memcg,
 	ev->efd = eventfd;
 	ev->level = level;
 	ev->mode = mode;
+	ev->min = min_cache;
+	ev->max = max_cache;
 
 	mutex_lock(&vmpr->events_lock);
 	list_add(&ev->node, &vmpr->events);

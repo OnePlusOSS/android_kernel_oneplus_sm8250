@@ -93,7 +93,10 @@ enum nfcc_chip_variant {
 	NFCC_NQ_210			= 0x48,	/**< NFCC NQ210 */
 	NFCC_NQ_220			= 0x58,	/**< NFCC NQ220 */
 	NFCC_NQ_310			= 0x40,	/**< NFCC NQ310 */
+	NFCC_NQ_310_V2			= 0x41,	/**< NFCC NQ310 */
 	NFCC_NQ_330			= 0x51,	/**< NFCC NQ330 */
+	NFCC_SN100			= 0xa0,	/**< NFCC SN100U */
+	NFCC_SN100_V2			= 0xa2,	/**< NFCC SN100U */
 	NFCC_SN100_A			= 0xa3,	/**< NFCC SN100_A */
 	NFCC_SN100_B			= 0xa4,	/**< NFCC SN100_B */
 	NFCC_PN66T			= 0x18,	/**< NFCC PN66T */

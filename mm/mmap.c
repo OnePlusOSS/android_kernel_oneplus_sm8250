@@ -51,8 +51,11 @@
 #include <asm/cacheflush.h>
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
+#include <linux/random.h>
 
 #include "internal.h"
+
+#define GPU_HIGH_LIMIT_3776M  3959422976
 
 #ifndef arch_mmap_check
 #define arch_mmap_check(addr, len, flags)	(0)
@@ -285,6 +288,18 @@ out:
 static long vma_compute_subtree_gap(struct vm_area_struct *vma)
 {
 	unsigned long max, prev_end, subtree_gap;
+#ifdef CONFIG_VM_FRAGMENT_MONITOR
+	unsigned long gl_tmp, gl_gap;
+	unsigned long gpu_vm_end;
+	unsigned long mmap_limit;
+	bool va32bit = false;
+
+	if (test_thread_flag(TIF_32BIT)) {
+		va32bit = true;
+		gpu_vm_end = GPU_HIGH_LIMIT_3776M;
+		mmap_limit = min_t(unsigned long, gpu_vm_end, vma->vm_mm->mmap_base);
+	}
+#endif
 
 	/*
 	 * Note: in the rare case of a VM_GROWSDOWN above a VM_GROWSUP, we
@@ -293,8 +308,23 @@ static long vma_compute_subtree_gap(struct vm_area_struct *vma)
 	 * That's a little inconsistent, but keeps the code here simpler.
 	 */
 	max = vm_start_gap(vma);
+
+#ifdef CONFIG_VM_FRAGMENT_MONITOR
+	if (va32bit)
+		gl_gap = min_t(unsigned long, max, mmap_limit);
+#endif
+
 	if (vma->vm_prev) {
 		prev_end = vm_end_gap(vma->vm_prev);
+
+#ifdef CONFIG_VM_FRAGMENT_MONITOR
+		if (va32bit) {
+			if (prev_end < mmap_limit && max > prev_end)
+				gl_gap -= prev_end;
+			else
+				gl_gap = 0;
+		}
+#endif
 		if (max > prev_end)
 			max -= prev_end;
 		else
@@ -305,13 +335,35 @@ static long vma_compute_subtree_gap(struct vm_area_struct *vma)
 				struct vm_area_struct, vm_rb)->rb_subtree_gap;
 		if (subtree_gap > max)
 			max = subtree_gap;
+
+#ifdef CONFIG_VM_FRAGMENT_MONITOR
+		if (va32bit) {
+			gl_tmp = rb_entry(vma->vm_rb.rb_left, struct vm_area_struct, vm_rb)->rb_glfragment_gap;
+			if (gl_tmp > gl_gap)
+				gl_gap = gl_tmp;
+		}
+#endif
 	}
 	if (vma->vm_rb.rb_right) {
 		subtree_gap = rb_entry(vma->vm_rb.rb_right,
 				struct vm_area_struct, vm_rb)->rb_subtree_gap;
 		if (subtree_gap > max)
 			max = subtree_gap;
+
+#ifdef CONFIG_VM_FRAGMENT_MONITOR
+		if (va32bit) {
+			gl_tmp = rb_entry(vma->vm_rb.rb_right, struct vm_area_struct, vm_rb)->rb_glfragment_gap;
+			if (gl_tmp > gl_gap)
+				gl_gap = gl_tmp;
+		}
+#endif
 	}
+
+#ifdef CONFIG_VM_FRAGMENT_MONITOR
+	if (va32bit)
+		vma->rb_glfragment_gap = gl_gap;
+#endif
+
 	return max;
 }
 
@@ -429,8 +481,51 @@ static void validate_mm(struct mm_struct *mm)
 #define mm_rb_write_unlock(mm)	do { } while (0)
 #endif /* CONFIG_SPECULATIVE_PAGE_FAULT */
 
+#ifdef CONFIG_VM_FRAGMENT_MONITOR
+static inline void vma_gap_callbacks_propagate(struct rb_node *rb, struct rb_node *stop)
+{
+	unsigned long gl_tmp;
+	unsigned long augmented;
+
+	while (rb != stop) {
+		struct vm_area_struct *node = rb_entry(rb, struct vm_area_struct, vm_rb);
+
+		gl_tmp = node->rb_glfragment_gap;
+		augmented = vma_compute_subtree_gap(node);
+
+		if (node->rb_subtree_gap == augmented && node->rb_glfragment_gap == gl_tmp)
+			break;
+
+		node->rb_subtree_gap = augmented;
+		rb = rb_parent(&node->vm_rb);
+	}
+}
+static inline void
+vma_gap_callbacks_copy(struct rb_node *rb_old, struct rb_node *rb_new)
+{
+	struct vm_area_struct *old = rb_entry(rb_old, struct vm_area_struct, vm_rb);
+	struct vm_area_struct *new = rb_entry(rb_new, struct vm_area_struct, vm_rb);
+
+	new->rb_subtree_gap = old->rb_subtree_gap;
+}
+static void
+vma_gap_callbacks_rotate(struct rb_node *rb_old, struct rb_node *rb_new)
+{
+	struct vm_area_struct *old = rb_entry(rb_old, struct vm_area_struct, vm_rb);
+	struct vm_area_struct *new = rb_entry(rb_new, struct vm_area_struct, vm_rb);
+
+	new->rb_subtree_gap = old->rb_subtree_gap;
+	old->rb_subtree_gap = vma_compute_subtree_gap(old);
+}
+static const struct rb_augment_callbacks vma_gap_callbacks = {
+	.propagate = vma_gap_callbacks_propagate,
+	.copy = vma_gap_callbacks_copy,
+	.rotate = vma_gap_callbacks_rotate
+};
+#else
 RB_DECLARE_CALLBACKS(static, vma_gap_callbacks, struct vm_area_struct, vm_rb,
 		     unsigned long, rb_subtree_gap, vma_compute_subtree_gap)
+#endif
 
 /*
  * Update augmented rbtree rb_subtree_gap values after vma->vm_start or
@@ -1456,6 +1551,8 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	if (!len)
 		return -EINVAL;
 
+	while (file && (file->f_mode & FMODE_NONMAPPABLE))
+		file = file->f_op->get_lower_file(file);
 	/*
 	 * Does the application expect PROT_READ to imply PROT_EXEC?
 	 *
@@ -2043,6 +2140,24 @@ unsigned long unmapped_area_topdown(struct vm_unmapped_area_info *info)
 	if (length < info->length)
 		return -ENOMEM;
 
+	if ((mm->va_feature & 0x2) && info->high_limit == mm->mmap_base) {
+		struct vm_unmapped_area_info info_b;
+		unsigned long addr;
+
+		switch (info->length) {
+		case 4096: case 8192: case 16384: case 32768:
+		case 65536: case 131072: case 262144:
+			info_b = *info;
+			info_b.high_limit =
+				current->mm->va_feature_rnd - (dbg_pm[2] * (ilog2(info->length) - dbg_pm[1]));
+			info_b.low_limit = current->mm->va_feature_rnd - (dbg_pm[2] * dbg_pm[3]);
+			addr = unmapped_area_topdown(&info_b);
+			if (!offset_in_page(addr))
+				return addr;
+		default:
+			break;
+		}
+	}
 	/*
 	 * Adjust search limits by the desired length.
 	 * See implementation comment at top of unmapped_area().
@@ -2210,6 +2325,9 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 	info.flags = VM_UNMAPPED_AREA_TOPDOWN;
 	info.length = len;
 	info.low_limit = max(PAGE_SIZE, mmap_min_addr);
+	if (mm->va_feature & 0x1)
+		info.low_limit = max_t(unsigned long, dbg_pm[0], info.low_limit);
+
 	info.high_limit = mm->mmap_base;
 	info.align_mask = 0;
 	addr = vm_unmapped_area(&info);
@@ -2225,6 +2343,14 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 		info.flags = 0;
 		info.low_limit = TASK_UNMAPPED_BASE;
 		info.high_limit = TASK_SIZE;
+		addr = vm_unmapped_area(&info);
+	}
+
+	if ((mm->va_feature & 0x1) && offset_in_page(addr)) {
+		VM_BUG_ON(addr != -ENOMEM);
+		info.flags = VM_UNMAPPED_AREA_TOPDOWN;
+		info.low_limit = max(PAGE_SIZE, mmap_min_addr);
+		info.high_limit = mm->mmap_base;
 		addr = vm_unmapped_area(&info);
 	}
 

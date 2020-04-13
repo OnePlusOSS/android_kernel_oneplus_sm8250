@@ -362,7 +362,11 @@ struct cnss_plat_data {
 	void *get_info_cb_ctx;
 	int (*get_info_cb)(void *ctx, void *event, int event_len);
 	u8 use_nv_mac;
+	u8 set_wlaon_pwr_ctrl;
+	struct kobject *shutdown_kobj;
 };
+
+int get_wifi_chain_mode(void);
 
 #ifdef CONFIG_ARCH_QCOM
 static inline u64 cnss_get_host_timestamp(struct cnss_plat_data *plat_priv)

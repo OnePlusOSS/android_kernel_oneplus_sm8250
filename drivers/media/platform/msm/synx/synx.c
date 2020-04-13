@@ -1035,7 +1035,7 @@ static int synx_handle_deregister_user_payload(
 
 	mutex_lock(&synx_dev->row_locks[row->index]);
 
-	state = synx_status_locked(row);
+	state = synx_status(row);
 	list_for_each_entry_safe(user_payload_kernel, temp,
 			&row->user_payload_list, list) {
 		if (user_payload_kernel->data.payload_data[0] ==

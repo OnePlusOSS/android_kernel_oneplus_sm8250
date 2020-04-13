@@ -22,6 +22,8 @@
 #include <linux/compat.h>
 #endif
 #include <linux/jiffies.h>
+#include <linux/oem/boot_mode.h>
+#include <linux/oem/project_info.h>
 
 struct nqx_platform_data {
 	unsigned int irq_gpio;
@@ -1099,21 +1101,28 @@ err_nfcc_reset_failed:
 
 	switch (nqx_dev->nqx_info.info.chip_type) {
 	case NFCC_NQ_310:
+	case NFCC_NQ_310_V2:
 		dev_dbg(&client->dev,
 		"%s: ## NFCC == NQ310 ##\n", __func__);
+		push_component_info(NFC, "NQ310", "NXP");
 		break;
 	case NFCC_NQ_330:
 		dev_dbg(&client->dev,
 		"%s: ## NFCC == NQ330 ##\n", __func__);
+		push_component_info(NFC, "NQ330", "NXP");
 		break;
 	case NFCC_PN66T:
 		dev_dbg(&client->dev,
 		"%s: ## NFCC == PN66T ##\n", __func__);
+		push_component_info(NFC, "PN66T", "NXP");
 		break;
 	case NFCC_SN100_A:
 	case NFCC_SN100_B:
+	case NFCC_SN100:
+	case NFCC_SN100_V2:
 		dev_dbg(&client->dev,
 		"%s: ## NFCC == SN100x ##\n", __func__);
+		push_component_info(NFC, "SN100", "NXP");
 		break;
 	default:
 		dev_err(&client->dev,
@@ -1248,6 +1257,12 @@ static int nqx_probe(struct i2c_client *client,
 	int irqn = 0;
 	struct nqx_platform_data *platform_data;
 	struct nqx_dev *nqx_dev;
+
+
+	if (get_small_board_1_absent() == 1) {
+		pr_err("second board absent, don't probe pn5xx\n", __func__);
+		goto err_platform_data;
+	}
 
 	dev_dbg(&client->dev, "%s: enter\n", __func__);
 	if (client->dev.of_node) {

@@ -150,7 +150,13 @@ static int tsens2xxx_get_temp(struct tsens_sensor *sensor, int *temp)
 
 		} else {
 			pr_err("%s: tsens controller got reset\n", __func__);
-			BUG();
+			tmdev->trdy_fail_ctr++;
+			if (tmdev->trdy_fail_ctr >= 50) {
+				if (tmdev->ops->dbg)
+					tmdev->ops->dbg(tmdev, 0,
+						TSENS_DBG_LOG_BUS_ID_DATA, NULL);
+				BUG();
+			}
 		}
 		return -EAGAIN;
 	}

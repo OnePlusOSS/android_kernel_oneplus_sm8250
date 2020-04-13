@@ -11,6 +11,8 @@
 #include "esoc.h"
 #include "esoc-mdm.h"
 #include "mdm-dbg.h"
+#include <linux/oem/boot_mode.h>
+#include <linux/oem/oem_force_dump.h>
 
 /* Default number of powerup trial requests per session */
 #define ESOC_DEF_PON_REQ	3
@@ -420,7 +422,13 @@ static int mdm_handle_boot_fail(struct esoc_clink *esoc_clink, u8 *pon_trial)
 		break;
 	case BOOT_FAIL_ACTION_PANIC:
 		esoc_mdm_log("Calling panic!!\n");
-		panic("Panic requested on external modem boot failure\n");
+		if (get_small_board_1_absent() == 0 &&
+		    get_small_board_2_absent() == 0) {
+			send_msg_sync_mdm_dump();
+			get_mdm_umount_state();
+			panic("Panic requested on external modem boot failure\n");
+		} else
+			pr_err("Panic requested on external modem boot failure\n");
 		break;
 	case BOOT_FAIL_ACTION_NOP:
 		esoc_mdm_log("Leaving the modem in its curent state\n");

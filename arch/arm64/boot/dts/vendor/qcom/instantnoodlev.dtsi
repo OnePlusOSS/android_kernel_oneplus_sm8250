@@ -1,0 +1,389 @@
+/*this is for different project dtsi*/
+#include "instantnoodle.dtsi"
+#include "kona-thermal.dtsi"
+/* @bsp, Battery & Charging config STRAT */
+&qupv3_se16_i2c {
+	oneplus_fastchg@26{
+		op,4300mAh_4p45_support;
+	};
+};
+
+&pm8150b_charger {
+	/* ibatmax setting for different temp regions */
+	ibatmax-little-cold-ma = <350>;
+	ibatmax-cool-ma = <2000>;
+	ibatmax-little-cool-ma = <2000>;
+	ibatmax-pre-normal-ma = <2000>;
+	ibatmax-normal-ma = <2000>;
+	ibatmax-warm-ma = <1150>;
+	ibatmax-little-cool-thr-ma = <1900>;
+	ibatmax-cool-thr-ma = <1150>;
+	/* vbatmax setting for different temp regions */
+	vbatmax-little-cold-mv = <3975>;
+	vbatmax-cool-mv = <4435>;
+	vbatmax-little-cool-mv = <4435>;
+	vbatmax-pre-normal-mv = <4435>;
+	vbatmax-normal-mv = <4435>;
+	vbatmax-warm-mv = <4130>;
+	little-cool-vbat-thr-mv = <4180>;
+	cool-vbat-thr-mv = <4180>;
+	/* vbatdet setting for different temp regions */
+	vbatdet-little-cold-mv = <3675>;
+	vbatdet-cool-mv = <4235>;
+	vbatdet-little-cool-mv = <4335>;
+	vbatdet-pre-normal-mv = <4335>;
+	vbatdet-normal-mv = <4335>;
+	vbatdet-warm-mv = <4030>;
+	/* temp region settings */
+	cold-bat-decidegc = <20>;
+	little-cold-bat-decidegc = <0>;
+	cool-bat-decidegc = <50>;
+	little-cool-bat-decidegc = <120>;
+	pre-normal-bat-decidegc = <160>;
+	warm-bat-decidegc = <450>;
+	hot-bat-decidegc = <500>;
+	qcom,otg-cl-ua = <1500000>;
+	op,sw-iterm-ma = <310>;
+	op,sw-check-full-enable;
+	/* temp region settings */
+	cold-bat-decidegc = <20>;
+	little-cold-bat-decidegc = <0>;
+	cool-bat-decidegc = <50>;
+	little-cool-bat-decidegc = <120>;
+	pre-normal-bat-decidegc = <160>;
+	warm-bat-decidegc = <450>;
+	hot-bat-decidegc = <500>;
+	qcom,otg-cl-ua = <1500000>;
+	op,sw-iterm-ma = <225>;
+	op,sw-check-full-enable;
+
+	/*ffc temp region*/
+	ffc-pre-normal-decidegc = <120>;
+	ffc-normal-decidegc = <350>;
+	ffc-warm-decidegc = <400>;
+	ffc-normal-fcc-ma = <1050>;
+	ffc-warm-fcc-ma = <1100>;
+	ffc-normal-cutoff-ma = <880>;
+	ffc-warm-cutoff-ma = <950>;
+	ffc-full-vbat-mv = <4480>;
+
+	/* skin thermal temp adjust the dash current */
+	op,skin-thermal-high-threshold = <41>;
+	op,skin-thermal-pre-high-threshold = <39>;
+	op,skin-thermal-medium-threshold = <38>;
+	op,skin-thermal-normal-threshold = <36>;
+	op,enable-dash-current-dynamic-adjust;
+
+	/* skin thermal temp adjust the pd current */
+	op,pd-skin-thermal-high-threshold = <38>;
+	op,pd-skin-thermal-normal-threshold = <36>;
+	op,enable-pd-current-dynamic-adjust;
+	op,slowy-charge-check;
+};
+
+&kona_mtp_batterydata {
+	#include "OP-fg-batterydata-4300mah.dtsi"
+};
+/* @bsp, Battery & Charging config STRAT */
+
+/delete-node/ &skin_therm_19821;
+/delete-node/ &msm_therm_19821;
+
+&thermal_zones {
+	skin-therm-usr { //modem_skin  MDM
+		polling-delay-passive = <0>;
+		polling-delay = <0>;
+		thermal-governor = "step_wise";
+		thermal-sensors = <&pm8150_adc_tm ADC_AMUX_THM1_PU2>;
+		wake-capable-sensor;
+		trips {
+			skin_therm_usr_trip0: skin_therm_usr_trip0 {
+				temperature = <50000>;
+				hysteresis = <7000>;
+				type = "passive";
+			};
+			skin_therm_usr_trip1: skin_therm_usr_trip1 {
+				temperature = <54000>;
+				hysteresis = <9000>;
+				type = "passive";
+			};
+			skin_therm_usr_trip3: skin_therm_usr_trip3 {
+				temperature = <58000>;
+				hysteresis = <7000>;
+				type = "passive";
+			};
+		};
+		cooling-maps {
+			modem_Tj_lvl1 {
+				trip = <&skin_therm_usr_trip0>;
+				cooling-device = <&modem_tj 1 1>;
+			};
+			modem_skin_lvl1 {
+				trip = <&skin_therm_usr_trip1>;
+				cooling-device = <&modem_skin 1 1>;
+			};
+			modem_skin_lvl3 {
+				trip = <&skin_therm_usr_trip3>;
+				cooling-device = <&modem_skin 3 3>;
+			};
+		};
+	};
+
+	mmw-pa1-usr { //mmw_skin0 QTM0
+		polling-delay-passive = <0>;
+		polling-delay = <0>;
+		thermal-governor = "step_wise";
+		thermal-sensors = <&pm8150_adc_tm ADC_AMUX_THM2_PU2>;
+		wake-capable-sensor;
+		trips {
+			mmw_pa1_usr_trip0: mmw_pa1_usr_trip0 {
+				temperature = <48000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+			mmw_pa1_usr_trip1: mmw_pa1_usr_trip1 {
+				temperature = <50000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+			mmw_pa1_usr_trip2: mmw_pa1_usr_trip2 {
+				temperature = <52000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+		};
+		cooling-maps {
+			mmw_skin0_lvl1 {
+				trip = <&mmw_pa1_usr_trip0>;
+				cooling-device = <&modem_mmw_skin0 1 1>;
+			};
+			mmw_skin0_lvl2 {
+				trip = <&mmw_pa1_usr_trip1>;
+				cooling-device = <&modem_mmw_skin0 2 2>;
+			};
+			mmw_skin0_lvl3 {
+				trip = <&mmw_pa1_usr_trip2>;
+				cooling-device = <&modem_mmw_skin0 3 3>;
+			};
+		};
+	};
+
+	xo-therm-usr { //mmw_skin1 QTM1
+		polling-delay-passive = <0>;
+		polling-delay = <0>;
+		thermal-governor = "step_wise";
+		thermal-sensors = <&pm8150_adc_tm ADC_XO_THERM_PU2>;
+		wake-capable-sensor;
+		trips {
+			xo_therm_usr_trip0: xo_therm_usr_trip0 {
+				temperature = <56000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+			xo_therm_usr_trip1: xo_therm_usr_trip1 {
+				temperature = <58000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+			xo_therm_usr_trip2: xo_therm_usr_trip2 {
+				temperature = <60000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+		};
+		cooling-maps {
+			mmw_skin1_lvl1 {
+				trip = <&xo_therm_usr_trip0>;
+				cooling-device = <&modem_mmw_skin1 1 1>;
+			};
+			mmw_skin1_lvl2 {
+				trip = <&xo_therm_usr_trip1>;
+				cooling-device = <&modem_mmw_skin1 2 2>;
+			};
+			mmw_skin1_lvl3 {
+				trip = <&xo_therm_usr_trip2>;
+				cooling-device = <&modem_mmw_skin1 3 3>;
+			};
+		};
+	};
+
+	modem-mmw2-usr { //mmw2 QTM2
+		polling-delay-passive = <0>;
+		polling-delay = <0>;
+		thermal-governor = "step_wise";
+		thermal-sensors = <&qmi_sensor
+				(QMI_MODEM_NR_INST_ID+QMI_QFE_MMW_2)>;
+		wake-capable-sensor;
+		trips {
+			modem_mmw2_usr_trip0: modem_mmw2_usr_trip0{
+				temperature = <56000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+			modem_mmw2_usr_trip1: modem_mmw2_usr_trip1{
+				temperature = <58000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+			modem_mmw2_usr_trip2: modem_mmw2_usr_trip2{
+				temperature = <60000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+		};
+		cooling-maps {
+			mmw2_lvl1 {
+				trip = <&modem_mmw2_usr_trip0>;
+				cooling-device = <&modem_mmw2 1 1>;
+			};
+			mmw2_lvl2 {
+				trip = <&modem_mmw2_usr_trip1>;
+				cooling-device = <&modem_mmw2 2 2>;
+			};
+			mmw2_lvl3 {
+				trip = <&modem_mmw2_usr_trip2>;
+				cooling-device = <&modem_mmw2 3 3>;
+			};
+		};
+	};
+
+	skin_therm_19867: skin-therm{
+		polling-delay-passive = <0>;
+		polling-delay = <0>;
+		thermal-governor = "step_wise";
+		thermal-sensors = <&pm8150b_adc_tm ADC_AMUX_THM1_PU2>;
+		wake-capable-sensor;
+		trips {
+			skint_therm_trip0: skint_therm_trip0 {
+				temperature = <44000>;
+				hysteresis = <2000>;
+				type = "passive";
+			};
+			skint_therm_trip1: skint_therm_trip1 {
+				temperature = <46000>;
+				hysteresis = <2000>;
+				type = "passive";
+			};
+			skint_therm_trip2: skint_therm_trip2 {
+				temperature = <50000>;
+				hysteresis = <2000>;
+				type = "passive";
+			};
+		};
+		cooling-maps {
+			freq_dev0 {
+				trip = <&skint_therm_trip0>;
+				cooling-device =
+					<&msm_gpu THERMAL_NO_LIMIT (THERMAL_MAX_LIMIT-2)>;/*441.6(SVS_L0)*/
+			};
+			freq_dev1 {
+				trip = <&skint_therm_trip0>;
+				cooling-device =
+					<&CPU0 3 3>;/*1516.8MHz(Nominal)*/
+			};
+			freq_dev2 {
+				trip = <&skint_therm_trip0>;
+				cooling-device =
+					<&CPU4 9 9>;/*1574.4MHz(Nominal_L1)*/
+			};
+			freq_dev3 {
+				trip = <&skint_therm_trip0>;
+				cooling-device =
+					<&CPU7 12 12>;/*1632.0MHz(Nominal)*/
+			};
+			freq_dev4 {
+				trip = <&skint_therm_trip1>;
+				cooling-device =
+					<&msm_gpu THERMAL_NO_LIMIT (THERMAL_MAX_LIMIT-1)>;/*400(SVS)*/
+			};
+			freq_dev5 {
+				trip = <&skint_therm_trip1>;
+				cooling-device =
+					<&CPU0 5 5>;/*1344MHz(Nominal)*/
+			};
+			freq_dev6 {
+				trip = <&skint_therm_trip1>;
+				cooling-device =
+					<&CPU4 14 14>;/*1056Mhz(SVS_L1)*/
+			};
+			freq_dev7 {
+				trip = <&skint_therm_trip1>;
+				cooling-device =
+					<&cpu7_isolate 1 1>;  /*Disable(cpu7_isolate 1 1)*/
+			};
+			freq_dev8 {
+				trip = <&skint_therm_trip2>;
+				cooling-device =
+					<&CPU0 10 10>;/*883.2Mhz(SVS)*/
+			};
+			freq_dev9 {
+				trip = <&skint_therm_trip2>;
+				cooling-device =
+					<&cpu4_isolate 1 1>;  /*Disable(cpu4_isolate 1 1)*/
+			};
+		};
+	};
+
+	msm_therm_19867: msm-therm {
+		polling-delay-passive = <0>;
+		polling-delay = <0>;
+		thermal-governor = "step_wise";
+		thermal-sensors = <&pm8150l_adc_tm ADC_AMUX_THM2_PU2>;
+		wake-capable-sensor;
+		trips {
+			msm_therm_trip0: msm_therm_trip0 {
+				temperature = <63000>;
+				hysteresis = <2000>;
+				type = "passive";
+			};
+			msm_therm_trip1: msm_therm_trip1 {
+				temperature = <65000>;
+				hysteresis = <2000>;
+				type = "passive";
+			};
+		};
+		cooling-maps {
+			freq_dev0 {
+				trip = <&msm_therm_trip0>;
+				cooling-device =
+					<&msm_gpu THERMAL_NO_LIMIT (THERMAL_MAX_LIMIT-3)>;/*490(SVS_L1)*/
+			};
+			freq_dev1 {
+				trip = <&msm_therm_trip0>;
+				cooling-device =
+					<&CPU0 2 2>;/*1612MHz(Nominal_L1)*/
+			};
+			freq_dev2 {
+				trip = <&msm_therm_trip0>;
+				cooling-device =
+					<&CPU4 7 7>;/*1766.4MHz(Nominal_L1)*/
+			};
+			freq_dev3 {
+				trip = <&msm_therm_trip0>;
+				cooling-device =
+					<&CPU7 8 8>;/*2073.6MHz(Nominal_L1)*/
+			};
+			freq_dev4 {
+				trip = <&msm_therm_trip1>;
+				cooling-device =
+					<&msm_gpu THERMAL_NO_LIMIT (THERMAL_MAX_LIMIT-2)>;/*441.6(SVS_L0)*/
+			};
+			freq_dev5 {
+				trip = <&msm_therm_trip1>;
+				cooling-device =
+					<&CPU0 3 3>;/*1516.8MHz(Nominal)*/
+			};
+			freq_dev6 {
+				trip = <&msm_therm_trip1>;
+				cooling-device =
+					<&CPU4 9 9>;/*1574.4MHz(Nominal_L1)*/
+			};
+			freq_dev7 {
+				trip = <&msm_therm_trip1>;
+				cooling-device =
+				<&CPU7 12 12>;/*1632.0MHz(Nominal)*/
+			};
+		};
+	};
+
+};

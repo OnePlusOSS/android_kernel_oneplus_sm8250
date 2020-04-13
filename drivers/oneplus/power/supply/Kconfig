@@ -1,0 +1,4 @@
+# oem device driver for charge
+#
+source "drivers/power/supply/qcom/Kconfig"
+source "drivers/power/supply/wlchg/Kconfig"

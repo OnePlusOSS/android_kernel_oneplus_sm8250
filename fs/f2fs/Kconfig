@@ -97,3 +97,13 @@ config F2FS_FAULT_INJECTION
 	  Test F2FS to inject faults such as ENOMEM, ENOSPC, and so on.
 
 	  If unsure, say N.
+
+config F2FS_OF2FS
+	bool "OF2FS optimization"
+	depends on F2FS_FS
+	default y
+	help
+	  Optimization based on F2FS, trys to optimize the gc and discard behaviour.
+	  This option is default a 'y'.
+
+	  If unsure, say N.

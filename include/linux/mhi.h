@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (c) 2018-2019, The Linux Foundation. All rights reserved. */
+/* Copyright (c) 2018-2020, The Linux Foundation. All rights reserved. */
 
 #ifndef _MHI_H_
 #define _MHI_H_
@@ -15,6 +15,8 @@ struct mhi_buf_info;
 struct mhi_sfr_info;
 
 #define REG_WRITE_QUEUE_LEN 1024
+
+#define SFR_BUF_SIZE 100
 
 /**
  * enum MHI_CB - MHI callback
@@ -306,7 +308,7 @@ struct mhi_controller {
 	u32 msi_allocated;
 	int *irq; /* interrupt table */
 	struct mhi_event *mhi_event;
-	struct list_head lp_ev_rings; /* low priority event rings */
+	struct list_head sp_ev_rings; /* low priority event rings */
 
 	/* cmd rings */
 	struct mhi_cmd *mhi_cmd;
@@ -347,7 +349,9 @@ struct mhi_controller {
 	/* worker for different state transitions */
 	struct work_struct st_worker;
 	struct work_struct fw_worker;
-	struct work_struct low_priority_worker;
+	struct work_struct special_work;
+	struct workqueue_struct *special_wq;
+
 	wait_queue_head_t state_event;
 
 	/* shadow functions */
@@ -398,8 +402,6 @@ struct mhi_controller {
 	/* controller specific data */
 	const char *name;
 	bool power_down;
-	bool need_force_m3;
-	bool force_m3_done;
 	void *priv_data;
 	void *log_buf;
 	struct dentry *dentry;
@@ -773,7 +775,7 @@ int mhi_force_rddm_mode(struct mhi_controller *mhi_cntrl);
  * mhi_dump_sfr - Print SFR string from RDDM table.
  * @mhi_cntrl: MHI controller
  */
-void mhi_dump_sfr(struct mhi_controller *mhi_cntrl);
+void mhi_dump_sfr(struct mhi_controller *mhi_cntrl, char *buf, size_t len);
 
 /**
  * mhi_get_remote_time_sync - Get external soc time relative to local soc time

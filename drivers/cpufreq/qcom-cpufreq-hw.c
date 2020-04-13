@@ -15,6 +15,12 @@
 #include <linux/energy_model.h>
 #include <linux/sched.h>
 #include <linux/cpu_cooling.h>
+// rock.lin@ASTI, 2019/12/12, add for pccore CONFIG_PCCORE
+#include <oneplus/pccore/pccore_helper.h>
+#include <oneplus/control_center/control_center_helper.h>
+#include <oneplus/houston/houston_helper.h>
+
+#include <trace/events/power.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/dcvsh.h>
@@ -104,13 +110,25 @@ static ssize_t dcvsh_freq_limit_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%lu\n", c->dcvsh_freq_limit);
 }
 
-static unsigned long limits_mitigation_notify(struct cpufreq_qcom *c)
+static unsigned long limits_mitigation_notify(struct cpufreq_qcom *c,
+					bool limit)
 {
+	struct cpufreq_policy *policy;
+	u32 cpu;
 	unsigned long freq;
 
-	freq = readl_relaxed(c->reg_bases[REG_DOMAIN_STATE]) &
+	if (limit) {
+		freq = readl_relaxed(c->reg_bases[REG_DOMAIN_STATE]) &
 				GENMASK(7, 0);
-	freq = DIV_ROUND_CLOSEST_ULL(freq * c->xo_rate, 1000);
+		freq = DIV_ROUND_CLOSEST_ULL(freq * c->xo_rate, 1000);
+	} else {
+		cpu = cpumask_first(&c->related_cpus);
+		policy = cpufreq_cpu_get_raw(cpu);
+		if (!policy)
+			freq = U32_MAX;
+		else
+			freq = policy->cpuinfo.max_freq;
+	}
 
 	sched_update_cpu_freq_min_max(&c->related_cpus, 0, freq);
 	trace_dcvsh_freq(cpumask_first(&c->related_cpus), freq);
@@ -130,7 +148,7 @@ static void limits_dcvsh_poll(struct work_struct *work)
 
 	cpu = cpumask_first(&c->related_cpus);
 
-	freq_limit = limits_mitigation_notify(c);
+	freq_limit = limits_mitigation_notify(c, true);
 
 	dcvsh_freq = qcom_cpufreq_hw_get(cpu);
 
@@ -138,6 +156,9 @@ static void limits_dcvsh_poll(struct work_struct *work)
 		mod_delayed_work(system_highpri_wq, &c->freq_poll_work,
 				msecs_to_jiffies(LIMITS_POLLING_DELAY_MS));
 	} else {
+		/* Update scheduler for throttle removal */
+		limits_mitigation_notify(c, false);
+
 		regval = readl_relaxed(c->reg_bases[REG_INTR_CLR]);
 		regval |= GT_IRQ_STATUS;
 		writel_relaxed(regval, c->reg_bases[REG_INTR_CLR]);
@@ -163,7 +184,7 @@ static irqreturn_t dcvsh_handle_isr(int irq, void *data)
 	if (c->is_irq_enabled) {
 		c->is_irq_enabled = false;
 		disable_irq_nosync(c->dcvsh_irq);
-		limits_mitigation_notify(c);
+		limits_mitigation_notify(c, true);
 		mod_delayed_work(system_highpri_wq, &c->freq_poll_work,
 				msecs_to_jiffies(LIMITS_POLLING_DELAY_MS));
 
@@ -245,10 +266,55 @@ qcom_cpufreq_hw_fast_switch(struct cpufreq_policy *policy,
 			    unsigned int target_freq)
 {
 	int index;
+// rock.lin@ASTI, 2019/12/12, add for pccore CONFIG_PCCORE
+	int dp_level = get_op_level();
+	bool op_enable = get_op_select_freq_enable();
+	int dp_level_mode = get_op_fd_mode();
+	int idx_cache;
 
 	index = policy->cached_resolved_idx;
 	if (index < 0)
 		return 0;
+// rock.lin@ASTI, 2019/12/12, add for pccore CONFIG_PCCORE
+	idx_cache = index;
+
+	if (op_enable) {
+		if (!ht_pcc_alwayson() && ccdm_any_hint()) {
+			goto done;
+		}
+		if (dp_level_mode == 2) {
+
+			if (policy->freq_table_sorted == CPUFREQ_TABLE_SORTED_ASCENDING)
+				index = find_prefer_pd(policy->cpu, index, true, dp_level);
+			else
+				index = find_prefer_pd(policy->cpu, index, false, dp_level);
+
+		} else if (dp_level_mode == 1) {
+
+			if (policy->freq_table_sorted == CPUFREQ_TABLE_SORTED_ASCENDING) {
+
+				if (index - dp_level >= 0)
+					index -= dp_level;
+				else
+					index = 0;
+			} else {
+				int max = cpufreq_table_count_valid_entries(policy);
+
+				if (index + dp_level > max)
+					index = max;
+				else
+					index += dp_level;
+			}
+		}
+#ifdef CONFIG_PCCORE
+		/* limited by policy->min */
+		if (policy->freq_table[index].frequency < policy->min)
+			index = policy->min_idx;
+#endif
+	}
+done:
+	trace_find_freq(idx_cache, target_freq, index, policy->freq_table[index].frequency,
+		policy->cpu, op_enable, dp_level_mode, dp_level);
 
 	if (qcom_cpufreq_hw_target_index(policy, index))
 		return 0;

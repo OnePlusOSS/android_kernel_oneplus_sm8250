@@ -49,7 +49,7 @@ enum MHI_DEBUG_LEVEL  mhi_ipc_log_lvl = MHI_MSG_LVL_VERBOSE;
 
 #else
 
-#define MHI_IPC_LOG_PAGES (10)
+#define MHI_IPC_LOG_PAGES (100)
 enum MHI_DEBUG_LEVEL  mhi_ipc_log_lvl = MHI_MSG_LVL_ERROR;
 
 #endif
@@ -338,7 +338,6 @@ static void mhi_boot_monitor(void *data, async_cookie_t cookie)
 	struct mhi_controller *mhi_cntrl = data;
 	struct mhi_dev *mhi_dev = mhi_controller_get_devdata(mhi_cntrl);
 	struct arch_info *arch_info = mhi_dev->arch_info;
-	struct mhi_device *boot_dev;
 	/* 15 sec timeout for booting device */
 	const u32 timeout = msecs_to_jiffies(15000);
 
@@ -351,15 +350,10 @@ static void mhi_boot_monitor(void *data, async_cookie_t cookie)
 	ipc_log_string(arch_info->boot_ipc_log, HLOG "Device current ee = %s\n",
 		       TO_MHI_EXEC_STR(mhi_cntrl->ee));
 
-	/* if we successfully booted to amss disable boot log channel */
-	if (mhi_cntrl->ee == MHI_EE_AMSS) {
-		boot_dev = arch_info->boot_dev;
-		if (boot_dev)
-			mhi_unprepare_from_transfer(boot_dev);
-
+	/* if we successfully booted to amss, enable runtime pm */
+	if (mhi_cntrl->ee == MHI_EE_AMSS)
 		if (!mhi_dev->drv_supported || arch_info->drv_connected)
 			pm_runtime_allow(&mhi_dev->pci_dev->dev);
-	}
 }
 
 int mhi_arch_power_up(struct mhi_controller *mhi_cntrl)
@@ -372,6 +366,17 @@ int mhi_arch_power_up(struct mhi_controller *mhi_cntrl)
 		arch_info->cookie = async_schedule(mhi_boot_monitor, mhi_cntrl);
 
 	return 0;
+}
+
+void mhi_arch_mission_mode_enter(struct mhi_controller *mhi_cntrl)
+{
+	struct mhi_dev *mhi_dev = mhi_controller_get_devdata(mhi_cntrl);
+	struct arch_info *arch_info = mhi_dev->arch_info;
+	struct mhi_device *boot_dev = arch_info->boot_dev;
+
+	/* disable boot logger channel */
+	if (boot_dev)
+		mhi_unprepare_from_transfer(boot_dev);
 }
 
 static  int mhi_arch_pcie_scale_bw(struct mhi_controller *mhi_cntrl,
@@ -414,7 +419,7 @@ static int mhi_bl_probe(struct mhi_device *mhi_device,
 	snprintf(node_name, sizeof(node_name), "mhi_bl_%04x_%02u.%02u.%02u",
 		 mhi_device->dev_id, mhi_device->domain, mhi_device->bus,
 		 mhi_device->slot);
-
+	MHI_ERR("mhi_ipc %s", node_name);
 	arch_info->boot_dev = mhi_device;
 	arch_info->boot_ipc_log = ipc_log_context_create(MHI_IPC_LOG_PAGES,
 							 node_name, 0);
@@ -468,7 +473,7 @@ int mhi_arch_pcie_init(struct mhi_controller *mhi_cntrl)
 			 mhi_cntrl->slot);
 		mhi_cntrl->log_buf = ipc_log_context_create(MHI_IPC_LOG_PAGES,
 							    node, 0);
-		mhi_cntrl->log_lvl = mhi_ipc_log_lvl;
+		mhi_cntrl->log_lvl = MHI_MSG_LVL_VERBOSE;
 
 		snprintf(node, sizeof(node), "mhi_tsync_%04x_%02u.%02u.%02u",
 			 mhi_cntrl->dev_id, mhi_cntrl->domain, mhi_cntrl->bus,
@@ -753,7 +758,7 @@ int mhi_arch_link_resume(struct mhi_controller *mhi_cntrl)
 	}
 
 	msm_pcie_l1ss_timeout_enable(pci_dev);
-	mhi_cntrl->force_m3_done = true;
+	//mhi_cntrl->force_m3_done = true;
 
 	MHI_LOG("Exited\n");
 

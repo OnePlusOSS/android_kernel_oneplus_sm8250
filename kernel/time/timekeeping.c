@@ -722,13 +722,11 @@ static void timekeeping_forward_now(struct timekeeper *tk)
  *
  * Returns the time of day in a timespec64 (WARN if suspended).
  */
-void ktime_get_real_ts64(struct timespec64 *ts)
+void  __getnstimeofday64(struct timespec64 *ts)
 {
 	struct timekeeper *tk = &tk_core.timekeeper;
 	unsigned long seq;
 	u64 nsecs;
-
-	WARN_ON(timekeeping_suspended);
 
 	do {
 		seq = read_seqcount_begin(&tk_core.seq);
@@ -740,6 +738,13 @@ void ktime_get_real_ts64(struct timespec64 *ts)
 
 	ts->tv_nsec = 0;
 	timespec64_add_ns(ts, nsecs);
+}
+EXPORT_SYMBOL(__getnstimeofday64);
+
+void ktime_get_real_ts64(struct timespec64 *ts)
+{
+	WARN_ON(timekeeping_suspended);
+	__getnstimeofday64(ts);
 }
 EXPORT_SYMBOL(ktime_get_real_ts64);
 

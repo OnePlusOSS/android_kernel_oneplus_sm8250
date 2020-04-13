@@ -19,6 +19,8 @@
 #include <linux/kthread.h>
 #include <linux/sched/core_ctl.h>
 
+#include <linux/oem/control_center.h>
+
 /*
  * Sched will provide the data for every 20ms window,
  * will collect the data for 15 windows(300ms) and then update
@@ -63,6 +65,9 @@ static int set_cpu_min_freq(const char *buf, const struct kernel_param *kp)
 	struct cpu_status *i_cpu_stats;
 	struct cpufreq_policy policy;
 	cpumask_var_t limit_mask;
+#ifdef CONFIG_CONTROL_CENTER
+	bool boost_on_big_hint = false;
+#endif
 
 	while ((cp = strpbrk(cp + 1, " :")))
 		ntokens++;
@@ -102,6 +107,11 @@ static int set_cpu_min_freq(const char *buf, const struct kernel_param *kp)
 		if (cpufreq_get_policy(&policy, i))
 			continue;
 
+#ifdef CONFIG_CONTROL_CENTER
+		if (i == 7 && policy.max == i_cpu_stats->min)
+			boost_on_big_hint = true;
+#endif
+
 		if (cpu_online(i) && (policy.min != i_cpu_stats->min))
 			cpufreq_update_policy(i);
 
@@ -110,6 +120,23 @@ static int set_cpu_min_freq(const char *buf, const struct kernel_param *kp)
 	}
 	put_online_cpus();
 
+#ifdef CONFIG_CONTROL_CENTER
+	if (boost_on_big_hint) {
+		struct cc_command cc;
+
+		/* init default turbo boost command */
+		memset(&cc, 0, sizeof(struct cc_command));
+		cc.pid = current->pid;
+		cc.prio = CC_PRIO_HIGH;
+		cc.period_us = 2 * 1000 * 1000; /* us */
+		cc.group = CC_CTL_GROUP_SYSTEM;
+		cc.response = 0;
+		cc.status = 0;
+		cc.type = CC_CTL_TYPE_PERIOD_NONBLOCK;
+		cc.category = CC_CTL_CATEGORY_TB_PLACE_BOOST;
+		cc_tsk_process(&cc);
+	}
+#endif
 	return 0;
 }
 

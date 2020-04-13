@@ -160,6 +160,12 @@ binder_alloc_get_free_async_space(struct binder_alloc *alloc)
 	mutex_unlock(&alloc->mutex);
 	return free_async_space;
 }
+#ifdef CONFIG_OPCHAIN
+// morison.yan@ASTI, 2019/4/29, add for uxrealm CONFIG_OPCHAIN
+void binder_alloc_pass_binder_buffer(struct binder_alloc *alloc,
+				struct binder_buffer *buffer,
+				binder_size_t buffer_size);
+#endif
 
 unsigned long
 binder_alloc_copy_user_to_buffer(struct binder_alloc *alloc,

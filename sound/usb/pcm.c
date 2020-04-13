@@ -41,6 +41,8 @@
 
 #define MAX_SETALT_TIMEOUT_MS 1000
 
+static int snd_usb_pcm_change_state(struct snd_usb_substream *subs, int state);
+
 /* return the estimated delay based on USB frame counters */
 snd_pcm_uframes_t snd_usb_pcm_delay(struct snd_usb_substream *subs,
 				    unsigned int rate)
@@ -666,6 +668,11 @@ int snd_usb_enable_audio_stream(struct snd_usb_substream *subs,
 	}
 
 	snd_usb_autoresume(subs->stream->chip);
+
+	ret = snd_usb_pcm_change_state(subs, UAC3_PD_STATE_D0);
+	if (ret < 0)
+		return ret;
+
 	if (datainterval != -EINVAL)
 		fmt = find_format_and_si(subs, datainterval);
 	else

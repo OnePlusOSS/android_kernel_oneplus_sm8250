@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2016-2019, The Linux Foundation. All rights reserved. */
+/* Copyright (c) 2016-2020, The Linux Foundation. All rights reserved. */
 
 #include <linux/delay.h>
 #include <linux/jiffies.h>
@@ -19,6 +19,9 @@
 #include "bus.h"
 #include "debug.h"
 #include "genl.h"
+#include <linux/oem/project_info.h>
+static u32 fw_version;
+static u32 fw_version_ext;
 
 #define CNSS_DUMP_FORMAT_VER		0x11
 #define CNSS_DUMP_FORMAT_VER_V2		0x22
@@ -47,6 +50,31 @@
 static struct cnss_plat_data *plat_env;
 
 static DECLARE_RWSEM(cnss_pm_sem);
+
+int  bdf_WifiChain_mode;
+EXPORT_SYMBOL(bdf_WifiChain_mode);
+
+int get_wifi_chain_mode(void)
+{
+	return bdf_WifiChain_mode;
+}
+EXPORT_SYMBOL(get_wifi_chain_mode);
+
+static ssize_t wifichain_flag_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, sizeof(buf), "%u\n", bdf_WifiChain_mode);
+}
+EXPORT_SYMBOL(wifichain_flag_show);
+
+static ssize_t wifichain_flag_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
+{
+	if (buf && size != 0)
+		bdf_WifiChain_mode = *buf;
+	return bdf_WifiChain_mode;
+}
+EXPORT_SYMBOL(wifichain_flag_store);
+
+static DEVICE_ATTR_RW(wifichain_flag);
 
 static struct cnss_fw_files FW_FILES_QCA6174_FW_3_0 = {
 	"qwlan30.bin", "bdwlan30.bin", "otp30.bin", "utf30.bin",
@@ -665,6 +693,14 @@ int cnss_idle_restart(struct device *dev)
 
 	cnss_pr_dbg("Doing idle restart\n");
 
+	reinit_completion(&plat_priv->power_up_complete);
+
+	if (test_bit(CNSS_IN_REBOOT, &plat_priv->driver_state)) {
+		cnss_pr_dbg("Reboot or shutdown is in progress, ignore idle restart\n");
+		ret = -EINVAL;
+		goto out;
+	}
+
 	ret = cnss_driver_event_post(plat_priv,
 				     CNSS_DRIVER_EVENT_IDLE_RESTART,
 				     CNSS_EVENT_SYNC_UNINTERRUPTIBLE, NULL);
@@ -677,13 +713,18 @@ int cnss_idle_restart(struct device *dev)
 	}
 
 	timeout = cnss_get_boot_timeout(dev);
-
-	reinit_completion(&plat_priv->power_up_complete);
 	ret = wait_for_completion_timeout(&plat_priv->power_up_complete,
 					  msecs_to_jiffies(timeout) << 2);
 	if (!ret) {
 		cnss_pr_err("Timeout waiting for idle restart to complete\n");
-		ret = -EAGAIN;
+		ret = -ETIMEDOUT;
+		goto out;
+	}
+
+	if (test_bit(CNSS_IN_REBOOT, &plat_priv->driver_state)) {
+		cnss_pr_dbg("Reboot or shutdown is in progress, ignore idle restart\n");
+		del_timer(&plat_priv->fw_boot_timer);
+		ret = -EINVAL;
 		goto out;
 	}
 
@@ -1949,6 +1990,23 @@ static void cnss_unregister_bus_scale(struct cnss_plat_data *plat_priv)
 		msm_bus_scale_unregister_client(bus_bw_info->bus_client);
 }
 
+static ssize_t shutdown_store(struct kobject *kobj,
+			      struct kobj_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct cnss_plat_data *plat_priv = cnss_get_plat_priv(NULL);
+
+	if (plat_priv) {
+		set_bit(CNSS_IN_REBOOT, &plat_priv->driver_state);
+		del_timer(&plat_priv->fw_boot_timer);
+		complete_all(&plat_priv->power_up_complete);
+	}
+
+	cnss_pr_dbg("Received shutdown notification\n");
+
+	return count;
+}
+
 static ssize_t fs_ready_store(struct device *dev,
 			      struct device_attribute *attr,
 			      const char *buf, size_t count)
@@ -1992,7 +2050,41 @@ static ssize_t fs_ready_store(struct device *dev,
 	return count;
 }
 
+static struct kobj_attribute shutdown_attribute = __ATTR_WO(shutdown);
 static DEVICE_ATTR_WO(fs_ready);
+
+static int cnss_create_shutdown_sysfs(struct cnss_plat_data *plat_priv)
+{
+	int ret = 0;
+
+	plat_priv->shutdown_kobj = kobject_create_and_add("shutdown_wlan",
+							  kernel_kobj);
+	if (!plat_priv->shutdown_kobj) {
+		cnss_pr_err("Failed to create shutdown_wlan kernel object\n");
+		return -ENOMEM;
+	}
+
+	ret = sysfs_create_file(plat_priv->shutdown_kobj,
+				&shutdown_attribute.attr);
+	if (ret) {
+		cnss_pr_err("Failed to create sysfs shutdown file, err = %d\n",
+			    ret);
+		kobject_put(plat_priv->shutdown_kobj);
+		plat_priv->shutdown_kobj = NULL;
+	}
+
+	return ret;
+}
+
+static void cnss_remove_shutdown_sysfs(struct cnss_plat_data *plat_priv)
+{
+	if (plat_priv->shutdown_kobj) {
+		sysfs_remove_file(plat_priv->shutdown_kobj,
+				  &shutdown_attribute.attr);
+		kobject_put(plat_priv->shutdown_kobj);
+		plat_priv->shutdown_kobj = NULL;
+	}
+}
 
 static int cnss_create_sysfs(struct cnss_plat_data *plat_priv)
 {
@@ -2000,9 +2092,12 @@ static int cnss_create_sysfs(struct cnss_plat_data *plat_priv)
 
 	ret = device_create_file(&plat_priv->plat_dev->dev, &dev_attr_fs_ready);
 	if (ret) {
-		cnss_pr_err("Failed to create device file, err = %d\n", ret);
+		cnss_pr_err("Failed to create device fs_ready file, err = %d\n",
+			    ret);
 		goto out;
 	}
+
+	cnss_create_shutdown_sysfs(plat_priv);
 
 	return 0;
 out:
@@ -2011,6 +2106,7 @@ out:
 
 static void cnss_remove_sysfs(struct cnss_plat_data *plat_priv)
 {
+	cnss_remove_shutdown_sysfs(plat_priv);
 	device_remove_file(&plat_priv->plat_dev->dev, &dev_attr_fs_ready);
 }
 
@@ -2105,6 +2201,18 @@ static void cnss_init_control_params(struct cnss_plat_data *plat_priv)
 	plat_priv->ctrl_params.time_sync_period = CNSS_TIME_SYNC_PERIOD_DEFAULT;
 }
 
+static void cnss_get_wlaon_pwr_ctrl_info(struct cnss_plat_data *plat_priv)
+
+{
+	struct device *dev = &plat_priv->plat_dev->dev;
+
+	plat_priv->set_wlaon_pwr_ctrl =
+		of_property_read_bool(dev->of_node, "qcom,set-wlaon-pwr-ctrl");
+
+	cnss_pr_dbg("set_wlaon_pwr_ctrl is %d\n",
+		    plat_priv->set_wlaon_pwr_ctrl);
+}
+
 static const struct platform_device_id cnss_platform_id_table[] = {
 	{ .name = "qca6174", .driver_data = QCA6174_DEVICE_ID, },
 	{ .name = "qca6290", .driver_data = QCA6290_DEVICE_ID, },
@@ -2130,6 +2238,25 @@ static const struct of_device_id cnss_of_match_table[] = {
 };
 MODULE_DEVICE_TABLE(of, cnss_of_match_table);
 
+/* Initial and show wlan firmware build version */
+void cnss_set_fw_version(u32 version, u32 ext)
+{
+	fw_version = version;
+	fw_version_ext = ext;
+}
+EXPORT_SYMBOL(cnss_set_fw_version);
+
+static ssize_t cnss_version_information_show(struct device *dev,
+					     struct device_attribute *attr,
+					     char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%u.%u.%u.%u.%u\n",
+		(fw_version & 0xf0000000) >> 28,
+	(fw_version & 0xf000000) >> 24, (fw_version & 0xf00000) >> 20,
+	fw_version & 0x7fff, (fw_version_ext & 0xf0000000) >> 28);
+}
+
+static DEVICE_ATTR_RO(cnss_version_information);
 static inline bool
 cnss_use_nv_mac(struct cnss_plat_data *plat_priv)
 {
@@ -2175,6 +2302,7 @@ static int cnss_probe(struct platform_device *plat_dev)
 	INIT_LIST_HEAD(&plat_priv->vreg_list);
 	INIT_LIST_HEAD(&plat_priv->clk_list);
 
+	cnss_get_wlaon_pwr_ctrl_info(plat_priv);
 	cnss_get_cpr_info(plat_priv);
 	cnss_init_control_params(plat_priv);
 
@@ -2226,7 +2354,11 @@ static int cnss_probe(struct platform_device *plat_dev)
 	ret = cnss_genl_init();
 	if (ret < 0)
 		cnss_pr_err("CNSS genl init failed %d\n", ret);
-
+	device_create_file(&plat_priv->plat_dev->dev,
+			   &dev_attr_cnss_version_information);
+	push_component_info(WCN, "QCA6391", "QualComm");
+	device_create_file(&plat_priv->plat_dev->dev,
+			   &dev_attr_wifichain_flag);
 	cnss_pr_info("Platform driver probed successfully.\n");
 
 	return 0;
@@ -2276,7 +2408,10 @@ static int cnss_remove(struct platform_device *plat_dev)
 	cnss_put_resources(plat_priv);
 	platform_set_drvdata(plat_dev, NULL);
 	plat_env = NULL;
-
+	device_remove_file(&plat_priv->plat_dev->dev,
+			   &dev_attr_cnss_version_information);
+	device_remove_file(&plat_priv->plat_dev->dev,
+			   &dev_attr_wifichain_flag);
 	return 0;
 }
 

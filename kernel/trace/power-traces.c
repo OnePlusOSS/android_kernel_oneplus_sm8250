@@ -18,4 +18,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(suspend_resume);
 EXPORT_TRACEPOINT_SYMBOL_GPL(cpu_idle);
 EXPORT_TRACEPOINT_SYMBOL_GPL(cpu_frequency);
 EXPORT_TRACEPOINT_SYMBOL_GPL(powernv_throttle);
+// rock.lin@ASTI, 2019/12/12, add for pccore CONFIG_PCCORE
+EXPORT_TRACEPOINT_SYMBOL_GPL(cpu_frequency_select);
 

@@ -67,3 +67,15 @@ config NFC_NQ
           This enables the NFC driver for NQx based devices.
           This is for i2c connected version. NCI protocol logic
           resides in the usermode and it has no other NFC dependencies.
+
+#
+# Nxp Nci protocol (I2C) devices
+#
+config NFC_PN553_DEVICES
+	bool "Nxp pn553 NCI protocol driver (I2C) devices"
+	default y
+	---help---
+	  You'll have to say Y if your computer contains an I2C device that
+	  you want to use under Linux.
+
+	  You can say N here if you don't have any SPI connected to your computer.

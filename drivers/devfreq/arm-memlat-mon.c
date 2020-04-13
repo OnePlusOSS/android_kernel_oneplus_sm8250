@@ -27,6 +27,10 @@
 #include <linux/of_device.h>
 #include <linux/mutex.h>
 
+#ifdef CONFIG_HOUSTON
+#include <oneplus/houston/houston_helper.h>
+#endif
+
 enum common_ev_idx {
 	INST_IDX,
 	CYC_IDX,
@@ -219,6 +223,11 @@ static unsigned long get_cnt(struct memlat_hwmon *hw)
 			devstats->inst_count = 0;
 			devstats->mem_count = 1;
 		}
+
+
+#ifdef CONFIG_HOUSTON
+		// ht_update_hw_events(devstats->inst_count, devstats->mem_count, cyc_cnt);
+#endif
 	}
 
 	return 0;

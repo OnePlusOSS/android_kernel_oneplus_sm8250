@@ -314,8 +314,9 @@ static inline bool is_suh_max(void)
 static inline bool walt_should_kick_upmigrate(struct task_struct *p, int cpu)
 {
 	struct related_thread_group *rtg = p->grp;
+	int groupid = DEFAULT_CGROUP_COLOC_ID;
 
-	if (is_suh_max() && rtg && rtg->id == DEFAULT_CGROUP_COLOC_ID &&
+	if (is_suh_max() && rtg && rtg->id == groupid &&
 			    rtg->skip_min && p->unfilter)
 		return is_min_capacity_cpu(cpu);
 

@@ -143,3 +143,31 @@ config SCSI_UFS_HISI
 
 	  Select this if you have UFS controller on Hisilicon chipset.
 	  If unsure, say N.
+
+config UFSFEATURE
+	bool "UFS feature activate"
+	default y
+	depends on SCSI_UFSHCD
+	help
+	  UFS feature activate such as hpb, tw and etc.
+
+config UFSHPB
+	bool "UFSHPB"
+	default n
+	depends on SCSI_UFSHCD && UFSFEATURE
+	help
+	  UFS HPB Feature Enable
+
+config UFSTW
+	bool "UFSTW"
+	default y
+	depends on SCSI_UFSHCD && UFSFEATURE
+	help
+	  UFS TW Feature Enable
+
+config UFSTW_IGNORE_GUARANTEE_BIT
+	bool "UFSTW_IGNORE_GUARANTEE_BIT"
+	default y
+	depends on SCSI_UFSHCD && UFSFEATURE && UFSTW
+	help
+	  ignore the guarantee bit[31] of dTurboWriteBufferLifeTimeEst for PoC

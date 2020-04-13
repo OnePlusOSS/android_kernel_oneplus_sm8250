@@ -1,0 +1,3 @@
+
+source "drivers/oneplus/input/touchscreen/samsung/s6sy761/Kconfig"
+

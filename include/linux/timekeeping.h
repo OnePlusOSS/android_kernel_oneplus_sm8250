@@ -43,6 +43,7 @@ extern void ktime_get_ts64(struct timespec64 *ts);
 extern void ktime_get_real_ts64(struct timespec64 *tv);
 extern void ktime_get_coarse_ts64(struct timespec64 *ts);
 extern void ktime_get_coarse_real_ts64(struct timespec64 *ts);
+extern void __getnstimeofday64(struct timespec64 *tv);
 
 void getboottime64(struct timespec64 *ts);
 

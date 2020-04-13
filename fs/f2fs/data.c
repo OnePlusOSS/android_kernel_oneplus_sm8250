@@ -992,6 +992,11 @@ static int __allocate_data_block(struct dnode_of_data *dn, int seg_type)
 alloc:
 	set_summary(&sum, dn->nid, dn->ofs_in_node, ni.version);
 	old_blkaddr = dn->data_blkaddr;
+#ifdef CONFIG_F2FS_BD_STAT
+	bd_lock(sbi);
+	bd_inc_array_val(sbi, hotcold_count, HC_DIRECT_IO, 1);
+	bd_unlock(sbi);
+#endif
 	f2fs_allocate_data_block(sbi, NULL, old_blkaddr, &dn->data_blkaddr,
 					&sum, seg_type, NULL, false);
 	if (GET_SEGNO(sbi, old_blkaddr) != NULL_SEGNO)
@@ -1923,6 +1928,9 @@ int f2fs_do_write_data_page(struct f2fs_io_info *fio)
 	struct node_info ni;
 	bool ipu_force = false;
 	int err = 0;
+#ifdef CONFIG_F2FS_BD_STAT
+	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
+#endif
 
 	set_new_dnode(&dn, inode, NULL, NULL, 0);
 	if (need_inplace_update(fio) &&
@@ -1968,6 +1976,17 @@ got_it:
 	if (ipu_force ||
 		(__is_valid_data_blkaddr(fio->old_blkaddr) &&
 					need_inplace_update(fio))) {
+#ifdef CONFIG_F2FS_BD_STAT
+		if (S_ISDIR(inode->i_mode)) {
+			bd_lock(sbi);
+			bd_inc_array_val(sbi, hotcold_count, HC_REWRITE_HOT_DATA, 1);
+			bd_unlock(sbi);
+		} else {
+			bd_lock(sbi);
+			bd_inc_array_val(sbi, hotcold_count, HC_REWRITE_WARM_DATA, 1);
+			bd_unlock(sbi);
+		}
+#endif
 		err = encrypt_one_page(fio);
 		if (err)
 			goto out_writepage;

@@ -204,6 +204,9 @@ struct page {
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
 	int _last_cpupid;
 #endif
+#if defined(CONFIG_MEMPLUS) && !(defined(CONFIG_PAGE_EXTENSION) && defined(CONFIG_PAGE_OWNER_ENABLE_DEFAULT))
+	int8_t next_event;
+#endif
 } _struct_page_alignment;
 
 #define PAGE_FRAG_CACHE_MAX_SIZE	__ALIGN_MASK(32768, ~PAGE_MASK)
@@ -286,6 +289,12 @@ struct vm_area_struct {
 	struct mm_struct *vm_mm;	/* The address space we belong to. */
 	pgprot_t vm_page_prot;		/* Access permissions of this VMA. */
 	unsigned long vm_flags;		/* Flags, see mm.h. */
+#ifdef CONFIG_MEMPLUS
+	unsigned int memplus_flags;
+#endif
+#ifdef CONFIG_VM_FRAGMENT_MONITOR
+	unsigned long rb_glfragment_gap;
+#endif
 
 	/*
 	 * For areas with an address space and backing store,
@@ -505,6 +514,9 @@ struct mm_struct {
 		/* HMM needs to track a few things per mm */
 		struct hmm *hmm;
 #endif
+		unsigned int zygoteheap_in_MB;
+		int va_feature;
+		unsigned long va_feature_rnd;
 	} __randomize_layout;
 
 	/*

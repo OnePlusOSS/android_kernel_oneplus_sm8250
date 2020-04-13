@@ -667,6 +667,19 @@ int geni_se_clk_freq_match(struct se_geni_rsc *rsc, unsigned long req_freq,
 int geni_se_tx_dma_prep(struct device *wrapper_dev, void __iomem *base,
 			void *tx_buf, int tx_len, dma_addr_t *tx_dma);
 
+ /**
+  * geni_se_rx_dma_start() - Prepare the Serial Engine registers for RX DMA
+				transfers.
+  * @base:		Base address of the SE register block.
+  * @rx_len:		Length of the RX buffer.
+  * @rx_dma:		Pointer to store the mapped DMA address.
+  *
+  * This function is used to prepare the Serial Engine registers for DMA RX.
+  *
+  * Return:	None.
+  */
+void geni_se_rx_dma_start(void __iomem *base, int rx_len, dma_addr_t *rx_dma);
+
 /**
  * geni_se_rx_dma_prep() - Prepare the Serial Engine for RX DMA transfer
  * @wrapper_dev:	QUPv3 Wrapper Device to which the TX buffer is mapped.
@@ -799,6 +812,11 @@ void geni_se_dump_dbg_regs(struct se_geni_rsc *rsc, void __iomem *base,
 static inline unsigned int geni_read_reg_nolog(void __iomem *base, int offset)
 {
 	return 0;
+}
+
+static void geni_se_rx_dma_start(void __iomem *base, int rx_len,
+				dma_addr_t *rx_dma)
+{
 }
 
 static inline void geni_write_reg_nolog(unsigned int value,

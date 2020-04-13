@@ -73,6 +73,11 @@
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
 #include "internal.h"
+/* bin.zhong@ASTI add CONFIG_DEFRAG */
+#include <oneplus/defrag/defrag_helper.h>
+#ifdef CONFIG_ONEPLUS_MEM_MONITOR
+#include <linux/oem/memory_monitor.h>
+#endif
 
 /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */
 static DEFINE_MUTEX(pcp_batch_high_lock);
@@ -247,6 +252,9 @@ char * const migratetype_names[MIGRATE_TYPES] = {
 	"CMA",
 #endif
 	"HighAtomic",
+#ifdef CONFIG_DEFRAG
+	"Defrag-Pool",
+#endif
 #ifdef CONFIG_MEMORY_ISOLATION
 	"Isolate",
 #endif
@@ -292,6 +300,9 @@ int watermark_scale_factor = 10;
  * down to the min watermarks controlled by min_free_kbytes above.
  */
 int extra_free_kbytes = 0;
+#ifdef CONFIG_KSWAPD_LAZY_RECLAIM
+atomic_t alloc_ongoing = ATOMIC_INIT(0);
+#endif
 
 static unsigned long nr_kernel_pages __meminitdata;
 static unsigned long nr_all_pages __meminitdata;
@@ -2080,6 +2091,10 @@ static int fallbacks[MIGRATE_TYPES][4] = {
 #ifdef CONFIG_CMA
 	[MIGRATE_CMA]         = { MIGRATE_TYPES }, /* Never used */
 #endif
+#ifdef CONFIG_DEFRAG
+	[MIGRATE_UNMOVABLE_DEFRAG_POOL]		=  {MIGRATE_TYPES},
+#endif
+
 #ifdef CONFIG_MEMORY_ISOLATION
 	[MIGRATE_ISOLATE]     = { MIGRATE_TYPES }, /* Never used */
 #endif
@@ -2428,6 +2443,10 @@ static void reserve_highatomic_pageblock(struct page *page, struct zone *zone,
 
 	/* Yoink! */
 	mt = get_pageblock_migratetype(page);
+	/* bin.zhong@ASTI add CONFIG_DEFRAG */
+	if (is_migrate_defrag(mt))
+		goto out_unlock;
+
 	if (!is_migrate_highatomic(mt) && !is_migrate_isolate(mt)
 	    && !is_migrate_cma(mt)) {
 		zone->nr_reserved_highatomic += pageblock_nr_pages;
@@ -2648,6 +2667,15 @@ static inline struct page *__rmqueue_cma(struct zone *zone, unsigned int order)
 {
 	return NULL;
 }
+#endif
+
+#ifdef CONFIG_DEFRAG
+struct page *defrag___rmqueue(struct zone *zone, unsigned int order,
+			int migratetype)
+{
+	return __rmqueue_smallest(zone, order, migratetype);
+}
+EXPORT_SYMBOL(defrag___rmqueue);
 #endif
 
 /*
@@ -3233,6 +3261,11 @@ struct page *rmqueue(struct zone *preferred_zone,
 	 * allocate greater than order-1 page units with __GFP_NOFAIL.
 	 */
 	WARN_ON_ONCE((gfp_flags & __GFP_NOFAIL) && (order > 1));
+	/* bin.zhong@ASTI add CONFIG_DEFRAG */
+	page = defrag_alloc(zone, flags, migratetype, order);
+	if (page)
+		goto out;
+
 	spin_lock_irqsave(&zone->lock, flags);
 
 	do {
@@ -3401,6 +3434,8 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 	if (!(alloc_flags & ALLOC_CMA))
 		free_pages -= zone_page_state(z, NR_FREE_CMA_PAGES);
 #endif
+	/* bin.zhong@ASTI add CONFIG_DEFRAG */
+	free_pages -= defrag_calc(z, order, alloc_flags);
 
 	/*
 	 * Check watermarks for an order-0 allocation request. If these
@@ -3441,6 +3476,11 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 			return true;
 		}
 #endif
+		/* bin.zhong@ASTI add CONFIG_DEFRAG */
+		if (defrag_check_alloc_flag(alloc_flags, order) &&
+				IS_NOT_DEFRAG_POOL_EMPTY(area))
+			return true;
+
 		if (alloc_harder &&
 			!list_empty(&area->free_list[MIGRATE_HIGHATOMIC]))
 			return true;
@@ -3466,6 +3506,8 @@ static inline bool zone_watermark_fast(struct zone *z, unsigned int order,
 	if (!(alloc_flags & ALLOC_CMA))
 		cma_pages = zone_page_state(z, NR_FREE_CMA_PAGES);
 #endif
+	/* bin.zhong@ASTI add CONFIG_DEFRAG */
+	cma_pages += defrag_zone_free_size(z);
 
 	/*
 	 * Fast check for order-0 only. If this fails then the reserves
@@ -4215,12 +4257,22 @@ static void wake_all_kswapds(unsigned int order, gfp_t gfp_mask,
 	struct zone *zone;
 	pg_data_t *last_pgdat = NULL;
 	enum zone_type high_zoneidx = ac->high_zoneidx;
+#ifdef CONFIG_KSWAPD_LAZY_RECLAIM
+	struct task_struct *kswapd;
+#endif
 
 	for_each_zone_zonelist_nodemask(zone, z, ac->zonelist, high_zoneidx,
 					ac->nodemask) {
 		if (last_pgdat != zone->zone_pgdat)
 			wakeup_kswapd(zone, gfp_mask, order, high_zoneidx);
 		last_pgdat = zone->zone_pgdat;
+#ifdef CONFIG_KSWAPD_LAZY_RECLAIM
+		kswapd = zone->zone_pgdat->kswapd;
+
+		/* early state check to prevent memory barrier and spinlock */
+		if (ac->lr_handle && kswapd->state == TASK_INTERRUPTIBLE)
+			wake_up_state(kswapd, TASK_INTERRUPTIBLE);
+#endif
 	}
 }
 
@@ -4263,6 +4315,10 @@ gfp_to_alloc_flags(gfp_t gfp_mask)
 				(gfp_mask & __GFP_CMA))
 		alloc_flags |= ALLOC_CMA;
 #endif
+	/* bin.zhong@ASTI add CONFIG_DEFRAG */
+	defrag_migrate_to_alloc_flag(alloc_flags,
+		gfpflags_to_migratetype(gfp_mask));
+
 	return alloc_flags;
 }
 
@@ -4458,6 +4514,9 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 	int no_progress_loops;
 	unsigned int cpuset_mems_cookie;
 	int reserve_flags;
+#ifdef CONFIG_ONEPLUS_MEM_MONITOR
+	unsigned long oneplus_alloc_start = jiffies;
+#endif
 
 	/*
 	 * We also sanity check to catch abuse of atomic reserves being used by
@@ -4696,6 +4755,9 @@ fail:
 	warn_alloc(gfp_mask, ac->nodemask,
 			"page allocation failure: order:%u", order);
 got_pg:
+#ifdef CONFIG_ONEPLUS_MEM_MONITOR
+	memory_alloc_monitor(gfp_mask, order, jiffies_to_msecs(jiffies - oneplus_alloc_start));
+#endif
 	return page;
 }
 
@@ -4708,6 +4770,9 @@ static inline bool prepare_alloc_pages(gfp_t gfp_mask, unsigned int order,
 	ac->zonelist = node_zonelist(preferred_nid, gfp_mask);
 	ac->nodemask = nodemask;
 	ac->migratetype = gfpflags_to_migratetype(gfp_mask);
+#ifdef CONFIG_KSWAPD_LAZY_RECLAIM
+	ac->lr_handle = false;
+#endif
 
 	if (cpusets_enabled()) {
 		*alloc_mask |= __GFP_HARDWALL;
@@ -4725,9 +4790,18 @@ static inline bool prepare_alloc_pages(gfp_t gfp_mask, unsigned int order,
 	if (should_fail_alloc_page(gfp_mask, order))
 		return false;
 
+#ifdef CONFIG_KSWAPD_LAZY_RECLAIM
+	if (current->signal->oom_score_adj <= vm_breath_priority) {
+		ac->lr_handle = true;
+		atomic_inc(&alloc_ongoing);
+	}
+#endif
+
 	if (IS_ENABLED(CONFIG_CMA) && ac->migratetype == MIGRATE_MOVABLE &&
 			(gfp_mask & __GFP_CMA))
 		*alloc_flags |= ALLOC_CMA;
+	/* bin.zhong@ASTI add CONFIG_DEFRAG */
+	defrag_migrate_to_alloc_flag(*alloc_flags, ac->migratetype);
 
 	return true;
 }
@@ -4775,6 +4849,9 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order, int preferred_nid,
 
 	finalise_ac(gfp_mask, &ac);
 
+	/* bin.zhong@ASTI add CONFIG_DEFRAG */
+	ADD_ORDER_USAGE(order);
+
 	/*
 	 * Forbid the first pass from falling back to types that fragment
 	 * memory until all local zones are considered.
@@ -4785,6 +4862,9 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order, int preferred_nid,
 	page = get_page_from_freelist(alloc_mask, order, alloc_flags, &ac);
 	if (likely(page))
 		goto out;
+
+	/* bin.zhong@ASTI add CONFIG_DEFRAG */
+	ADD_ORDER_FAIL(order);
 
 	/*
 	 * Apply scoped allocation constraints. This is mainly about GFP_NOFS
@@ -4812,6 +4892,13 @@ out:
 	}
 
 	trace_mm_page_alloc(page, order, alloc_mask, ac.migratetype);
+
+#ifdef CONFIG_KSWAPD_LAZY_RECLAIM
+	if (ac.lr_handle) {
+		ac.lr_handle = false;
+		atomic_dec(&alloc_ongoing);
+	}
+#endif
 
 	return page;
 }
@@ -5242,6 +5329,10 @@ static void show_migration_types(unsigned char type)
 #ifdef CONFIG_MEMORY_ISOLATION
 		[MIGRATE_ISOLATE]	= 'I',
 #endif
+#ifdef CONFIG_DEFRAG
+		[MIGRATE_UNMOVABLE_DEFRAG_POOL] = 'D',
+#endif
+
 	};
 	char tmp[MIGRATE_TYPES + 1];
 	char *p = tmp;
@@ -5285,6 +5376,8 @@ void show_free_areas(unsigned int filter, nodemask_t *nodemask)
 		" unevictable:%lu dirty:%lu writeback:%lu unstable:%lu\n"
 		" slab_reclaimable:%lu slab_unreclaimable:%lu\n"
 		" mapped:%lu shmem:%lu pagetables:%lu bounce:%lu\n"
+		/* bin.zhong@ASTI, 2019/10/11, add for CONFIG_SMART_BOOST */
+		" ramboost:%lu\n"
 		" free:%lu free_pcp:%lu free_cma:%lu\n",
 		global_node_page_state(NR_ACTIVE_ANON),
 		global_node_page_state(NR_INACTIVE_ANON),
@@ -5303,6 +5396,8 @@ void show_free_areas(unsigned int filter, nodemask_t *nodemask)
 		global_zone_page_state(NR_PAGETABLE),
 		global_zone_page_state(NR_BOUNCE),
 		global_zone_page_state(NR_FREE_PAGES),
+		/* bin.zhong@ASTI, 2019/10/11, add for CONFIG_SMART_BOOST */
+		UID_LRU_SIZE,
 		free_pcp,
 		global_zone_page_state(NR_FREE_CMA_PAGES));
 
@@ -5386,6 +5481,8 @@ void show_free_areas(unsigned int filter, nodemask_t *nodemask)
 			" bounce:%lukB"
 			" free_pcp:%lukB"
 			" local_pcp:%ukB"
+			/* bin.zhong@ASTI, 2019/10/11, add for CONFIG_SMART_BOOST */
+			" ramboost:%lukB"
 			" free_cma:%lukB"
 			"\n",
 			zone->name,
@@ -5407,6 +5504,8 @@ void show_free_areas(unsigned int filter, nodemask_t *nodemask)
 			K(zone_page_state(zone, NR_BOUNCE)),
 			K(free_pcp),
 			K(this_cpu_read(zone->pageset->pcp.count)),
+			/* bin.zhong@ASTI, 2019/10/11, add for CONFIG_SMART_BOOST */
+			K(ZONE_UID_LRU_SIZE(zone)),
 			K(zone_page_state(zone, NR_FREE_CMA_PAGES)));
 		printk("lowmem_reserve[]:");
 		for (i = 0; i < MAX_NR_ZONES; i++)

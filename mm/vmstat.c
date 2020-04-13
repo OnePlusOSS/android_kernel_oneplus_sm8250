@@ -1112,6 +1112,10 @@ const char * const vmstat_text[] = {
 	"nr_zone_active_anon",
 	"nr_zone_inactive_file",
 	"nr_zone_active_file",
+#ifdef CONFIG_MEMPLUS
+	"nr_zone_inactive_anon_swpcache",
+	"nr_zone_active_anon_swpcache",
+#endif
 	"nr_zone_unevictable",
 	"nr_zone_write_pending",
 	"nr_mlock",
@@ -1121,7 +1125,16 @@ const char * const vmstat_text[] = {
 #if IS_ENABLED(CONFIG_ZSMALLOC)
 	"nr_zspages",
 #endif
+#ifdef CONFIG_SMART_BOOST
+	"nr_uid_lru",
+#endif
+#ifdef CONFIG_ONEPLUS_HEALTHINFO
+	"nr_ioncache_pages",
+#endif
 	"nr_free_cma",
+#ifdef CONFIG_DEFRAG
+	"nr_free_defrag",
+#endif
 
 	/* enum numa_stat_item counters */
 #ifdef CONFIG_NUMA
@@ -1138,6 +1151,10 @@ const char * const vmstat_text[] = {
 	"nr_active_anon",
 	"nr_inactive_file",
 	"nr_active_file",
+#ifdef CONFIG_MEMPLUS
+	"nr_inactive_anon_swpcache",
+	"nr_active_anon_swpcache",
+#endif
 	"nr_unevictable",
 	"nr_slab_reclaimable",
 	"nr_slab_unreclaimable",
@@ -1292,6 +1309,19 @@ const char * const vmstat_text[] = {
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
 	"speculative_pgfault_anon",
 	"speculative_pgfault_file",
+#endif
+#ifdef CONFIG_MEMPLUS
+	"anonfault",
+	"wpfault",
+	"swapfault",
+	"swapmajfault",
+	"pgcachemiss",
+	"readfault",
+	"cowfault",
+	"sharedfault",
+	"filemajfault",
+	"retrypage",
+	"specretry"
 #endif
 #endif /* CONFIG_VM_EVENT_COUNTERS */
 };

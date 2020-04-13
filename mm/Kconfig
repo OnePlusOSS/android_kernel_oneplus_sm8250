@@ -838,7 +838,7 @@ endmenu
 config PROCESS_RECLAIM
 	bool "Enable process reclaim"
 	depends on PROC_FS
-	default y
+	default n
 	help
 	 It allows to reclaim pages of the process by /proc/pid/reclaim.
 
@@ -850,3 +850,19 @@ config PROCESS_RECLAIM
 	 (addr, addr + size-bytes) of the process.
 
 	 Any other value is ignored.
+
+config DIRECT_SWAPPINESS
+	bool "direct swappiness"
+	default n
+	help
+	  set direct swappiness rate, higher means more swap and slowly.
+	  echo ratio > proc/sys/vm/direct_swapiness  default_value 60
+	  cat /sys/module/memplus_core/parameters/memory_plus_enabled
+	  default_value 0
+
+config KSWAPD_LAZY_RECLAIM
+	default n
+	bool "Don't keep kswapd busy looping"
+	help
+	 Kswapd can dynamically sleep for a while once memory is
+	 reclaimed.

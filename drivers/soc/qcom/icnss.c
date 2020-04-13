@@ -46,6 +46,9 @@
 #include <soc/qcom/ramdump.h>
 #include "icnss_private.h"
 #include "icnss_qmi.h"
+#include <linux/project_info.h>
+static u32 fw_version;
+static u32 fw_version_ext;
 
 #define MAX_PROP_SIZE			32
 #define NUM_LOG_PAGES			10
@@ -957,7 +960,6 @@ static int icnss_call_driver_probe(struct icnss_priv *priv)
 		icnss_block_shutdown(false);
 		goto out;
 	}
-
 	icnss_block_shutdown(false);
 	set_bit(ICNSS_DRIVER_PROBED, &priv->state);
 
@@ -1015,7 +1017,6 @@ static int icnss_pd_restart_complete(struct icnss_priv *priv)
 		goto call_probe;
 
 	icnss_pr_dbg("Calling driver reinit state: 0x%lx\n", priv->state);
-
 	icnss_hw_power_on(priv);
 
 	icnss_block_shutdown(true);
@@ -3487,6 +3488,9 @@ static int icnss_remove(struct platform_device *pdev)
 	device_init_wakeup(&penv->pdev->dev, false);
 
 	icnss_debugfs_destroy(penv);
+
+	device_remove_file(&penv->pdev->dev,
+		 &dev_attr_cnss_version_information);
 
 	icnss_sysfs_destroy(penv);
 

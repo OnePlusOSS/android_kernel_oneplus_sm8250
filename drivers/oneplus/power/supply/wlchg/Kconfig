@@ -1,0 +1,10 @@
+# oem device driver for charge
+
+config ONEPLUS_WIRELESSCHG
+	tristate "ONEPLUS WIRELESS CHARGE"
+	depends on I2C
+	help
+	  Say Y here to enable the ONEPLUS WIRELESS CHARGE driver.This adds support
+	  for wireless charge and state of charge of battery connected to
+	  the battery. The state of charge is reported through a battery power
+	  supply property

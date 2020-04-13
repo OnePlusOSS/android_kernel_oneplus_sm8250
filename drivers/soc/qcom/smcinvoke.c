@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -17,6 +17,7 @@
 #include <linux/uaccess.h>
 #include <linux/dma-buf.h>
 #include <linux/kref.h>
+#include <linux/signal.h>
 
 #include <soc/qcom/scm.h>
 #include <asm/cacheflush.h>
@@ -826,9 +827,17 @@ static void process_kernel_obj(void *buf, size_t buf_len)
 {
 	struct smcinvoke_tzcb_req *cb_req = buf;
 
-	cb_req->result = (cb_req->hdr.op == OBJECT_OP_MAP_REGION) ?
-			smcinvoke_map_mem_region(buf, buf_len) :
-			OBJECT_ERROR_INVALID;
+	switch (cb_req->hdr.op) {
+	case OBJECT_OP_MAP_REGION:
+		cb_req->result = smcinvoke_map_mem_region(buf, buf_len);
+		break;
+	case OBJECT_OP_YIELD:
+		cb_req->result = OBJECT_OK;
+		break;
+	default:
+		cb_req->result = OBJECT_ERROR_INVALID;
+		break;
+	}
 }
 
 static void process_mem_obj(void *buf, size_t buf_len)
@@ -1446,6 +1455,7 @@ static long process_accept_req(struct file *filp, unsigned int cmd,
 						unsigned long arg)
 {
 	int ret = -1;
+	sigset_t pending_sig;
 	struct smcinvoke_file_data *server_obj = filp->private_data;
 	struct smcinvoke_accept user_args = {0};
 	struct smcinvoke_cb_txn *cb_txn = NULL;
@@ -1517,6 +1527,22 @@ static long process_accept_req(struct file *filp, unsigned int cmd,
 		if (ret) {
 			pr_debug("%s wait_event interrupted: ret = %d\n",
 							__func__, ret);
+
+			/*
+			 * Ideally, we should destroy server if accept threads
+			 * are returning due to client being killed or device
+			 * going down (Shutdown/Reboot) but that would make
+			 * server_info invalid. Other accept/invoke threads are
+			 * using server_info and would crash. So dont do that.
+			 */
+			pending_sig = (&current->pending)->signal;
+			if (sigismember(&pending_sig, SIGKILL)) {
+				mutex_lock(&g_smcinvoke_lock);
+				server_info->state =
+					SMCINVOKE_SERVER_STATE_DEFUNCT;
+				wake_up_interruptible(&server_info->rsp_wait_q);
+				mutex_unlock(&g_smcinvoke_lock);
+			}
 			goto out;
 		}
 

@@ -1,0 +1,7 @@
+config DYNAMIC_PAGE_POOL
+	default n
+	bool "Dynamic Page Pool"
+	help
+	 Dynamic Page Pool is pre-allocated zeroed pages and will be used
+         for anon allocation. This brings improvements in launch latencies
+         where anon allocation are significant.

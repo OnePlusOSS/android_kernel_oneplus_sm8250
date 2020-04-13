@@ -27,6 +27,11 @@
  *  CHGR Peripheral Registers  *
  ********************************/
 #define BATTERY_CHARGER_STATUS_1_REG		(CHGR_BASE + 0x06)
+/* @bsp, 2019/07/05 Battery & Charging porting */
+#define BVR_INITIAL_RAMP_BIT		BIT(7)
+#define ZERO_CHARGE_CURRENT_BIT		BIT(6)
+#define STEP_CHARGING_STATUS_SHIFT	3
+#define STEP_CHARGING_STATUS_MASK	GENMASK(5, 3)
 #define BATTERY_CHARGER_STATUS_MASK		GENMASK(2, 0)
 enum {
 	INHIBIT_CHARGE = 0,
@@ -142,12 +147,21 @@ enum {
 #define DCDC_CMD_OTG_REG			(DCDC_BASE + 0x40)
 #define OTG_EN_BIT				BIT(0)
 
+#define DCDC_VBOOST_CFG				(DCDC_BASE + 0x86)
+
 #define DCDC_FSW_SEL_REG			(DCDC_BASE + 0x50)
 
 #define DCDC_OTG_CURRENT_LIMIT_CFG_REG		(DCDC_BASE + 0x52)
 
 #define DCDC_OTG_CFG_REG			(DCDC_BASE + 0x53)
 #define OTG_EN_SRC_CFG_BIT			BIT(1)
+
+/* @bsp, 2019/07/05 Battery & Charging porting */
+/*DCDC_VPH_TRACK_SEL*/
+#define DCDC_VPH_TRACK_SEL			(DCDC_BASE + 0x89)
+#define VPH_TRACK_SEL_MASK			GENMASK(1, 0)
+#define SEL_200MV				BIT(0)
+#define SEL_300MV				BIT(1)
 
 #define OTG_FAULT_CONDITION_CFG_REG		(DCDC_BASE + 0x56)
 #define USBIN_MID_COMP_FAULT_EN_BIT		BIT(5)
@@ -259,6 +273,13 @@ enum {
 #define FORCE_5V				BIT(0)
 #define FORCE_NULL				0
 
+/* @bsp, 2019/08/30 Wireless Charging porting */
+#define USBIN_ADAPTER_ALLOW_OVERRIDE_REG (USBIN_BASE + 0x44)
+#define USBIN_ADAPTER_CONTINUOUS_BIT			         BIT(3)
+#define USBIN_ADAPTER_FORCE_9V_BIT			         BIT(1)
+#define USBIN_ADAPTER_FORCE_5V_BIT			         BIT(0)
+
+
 #define USB_CMD_PULLDOWN_REG			(USBIN_BASE + 0x45)
 #define EN_PULLDOWN_USB_IN_BIT			BIT(0)
 
@@ -272,6 +293,20 @@ enum {
 	HVDCP_PULSE_COUNT_MAX_QC2_9V = 0x40,
 	HVDCP_PULSE_COUNT_MAX_QC2_12V = 0x80,
 	HVDCP_PULSE_COUNT_MAX_QC2_INVALID = 0xC0
+};
+
+/* @bsp, 2019/08/30 Wireless Charging porting */
+#define USBIN_ADAPTER_ALLOW_CFG_REG		(USBIN_BASE + 0x60)
+enum {
+	USBIN_ADAPTER_ALLOW_5V		= 0,
+	USBIN_ADAPTER_ALLOW_9V		= 2,
+	USBIN_ADAPTER_ALLOW_5V_OR_9V	= 3,
+	USBIN_ADAPTER_ALLOW_12V		= 4,
+	USBIN_ADAPTER_ALLOW_5V_OR_12V	= 5,
+	USBIN_ADAPTER_ALLOW_9V_TO_12V	= 6,
+	USBIN_ADAPTER_ALLOW_5V_OR_9V_TO_12V = 7,
+	USBIN_ADAPTER_ALLOW_5V_TO_9V	= 8,
+	USBIN_ADAPTER_ALLOW_5V_TO_12V	= 12,
 };
 
 #define USBIN_OPTIONS_1_CFG_REG			(USBIN_BASE + 0x62)
@@ -303,6 +338,20 @@ enum {
 #define SUSPEND_ON_COLLAPSE_USBIN_BIT		BIT(7)
 #define USBIN_AICL_PERIODIC_RERUN_EN_BIT	BIT(4)
 #define USBIN_AICL_ADC_EN_BIT			BIT(3)
+/* @bsp 2019/07/05 add for porting & chage */
+#define SUSPEND_ON_COLLAPSE_USBIN_BIT		BIT(7)
+#define USBIN_AICL_HDC_EN_BIT			BIT(6)
+#define USBIN_AICL_START_AT_MAX_BIT		BIT(5)
+#define USBIN_AICL_EN_BIT			BIT(2)
+#define USBIN_HV_COLLAPSE_RESPONSE_BIT		BIT(1)
+#define USBIN_LV_COLLAPSE_RESPONSE_BIT		BIT(0)
+
+#define USBIN_5V_AICL_THRESHOLD_CFG_REG		(USBIN_BASE + 0x81)
+#define USBIN_5V_AICL_THRESHOLD_CFG_MASK	GENMASK(2, 0)
+
+#define USBIN_CONT_AICL_THRESHOLD_CFG_REG	(USBIN_BASE + 0x84)
+#define USBIN_CONT_AICL_THRESHOLD_CFG_MASK	GENMASK(5, 0)
+
 #define USBIN_AICL_EN_BIT			BIT(2)
 
 #define USB_ENG_SSUPPLY_USB2_REG		(USBIN_BASE + 0xC0)
@@ -334,6 +383,8 @@ enum {
  ********************************/
 #define TYPE_C_SNK_STATUS_REG			(TYPEC_BASE + 0x06)
 #define DETECTED_SRC_TYPE_MASK			GENMASK(6, 0)
+
+/* add to fix huawei cable compatible issue */
 #define SNK_DAM_500MA_BIT			BIT(6)
 #define SNK_DAM_1500MA_BIT			BIT(5)
 #define SNK_DAM_3000MA_BIT			BIT(4)
@@ -353,6 +404,9 @@ enum {
 
 #define TYPE_C_STATE_MACHINE_STATUS_REG		(TYPEC_BASE + 0x09)
 #define TYPEC_ATTACH_DETACH_STATE_BIT		BIT(5)
+
+/* add to fix huawei cable compatible issue */
+#define DEBUG_ACCESS_SNK_CFG_REG                (TYPEC_BASE + 0x4A)
 
 #define TYPE_C_MISC_STATUS_REG			(TYPEC_BASE + 0x0B)
 #define TYPEC_WATER_DETECTION_STATUS_BIT	BIT(7)
@@ -378,7 +432,9 @@ enum {
 #define TYPEC_TRY_MODE_MASK			GENMASK(4, 3)
 #define EN_TRY_SNK_BIT				BIT(4)
 #define EN_TRY_SRC_BIT				BIT(3)
-#define TYPEC_POWER_ROLE_CMD_MASK		GENMASK(2, 0)
+#define EN_DRP_MODE				0
+/* @bsp, 2019/07/05 Battery & Charging porting */
+#define TYPEC_POWER_ROLE_CMD_MASK		GENMASK(4, 0)
 #define EN_SRC_ONLY_BIT				BIT(2)
 #define EN_SNK_ONLY_BIT				BIT(1)
 #define TYPEC_DISABLE_CMD_BIT			BIT(0)

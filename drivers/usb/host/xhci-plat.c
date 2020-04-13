@@ -337,7 +337,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (device_property_read_u32(&pdev->dev, "usb-core-id", &xhci->core_id))
 		xhci->core_id = -EINVAL;
 
-	hcd->usb_phy = devm_usb_get_phy_by_phandle(sysdev, "usb-phy", 0);
+	hcd->usb_phy = devm_usb_get_phy_by_phandle(pdev->dev.parent, "usb-phy",
+					0);
 	if (IS_ERR(hcd->usb_phy)) {
 		ret = PTR_ERR(hcd->usb_phy);
 		if (ret == -EPROBE_DEFER)
@@ -348,6 +349,16 @@ static int xhci_plat_probe(struct platform_device *pdev)
 		if (ret)
 			goto put_usb3_hcd;
 		hcd->skip_phy_initialization = 1;
+	}
+
+
+	hcd->usb3_phy = devm_usb_get_phy_by_phandle(pdev->dev.parent, "usb-phy",
+					1);
+	if (IS_ERR(hcd->usb3_phy)) {
+		ret = PTR_ERR(hcd->usb3_phy);
+		if (ret == -EPROBE_DEFER)
+			goto put_usb3_hcd;
+		hcd->usb3_phy = NULL;
 	}
 
 	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);

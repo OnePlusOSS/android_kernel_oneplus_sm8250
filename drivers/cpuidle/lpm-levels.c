@@ -44,6 +44,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/trace_msm_low_power.h>
 
+#include <oneplus/control_center/control_center_helper.h>
+
 #define SCLK_HZ (32768)
 #define PSCI_POWER_STATE(reset) (reset << 30)
 #define PSCI_AFFINITY_LEVEL(lvl) ((lvl & 0x3) << 24)
@@ -124,6 +126,12 @@ module_param_named(print_parsed_dt, print_parsed_dt, bool, 0664);
 
 static bool sleep_disabled;
 module_param_named(sleep_disabled, sleep_disabled, bool, 0664);
+
+void msm_cpuidle_set_sleep_disable(bool disable)
+{
+	sleep_disabled = disable;
+	pr_info("%s:sleep_disabled=%d\n", __func__, disable);
+}
 
 /**
  * msm_cpuidle_get_deep_idle_latency - Get deep idle latency value
@@ -652,6 +660,11 @@ static inline bool lpm_disallowed(s64 sleep_us, int cpu, struct lpm_cpu *pm_cpu)
 {
 	uint64_t bias_time = 0;
 
+#ifdef CONFIG_CONTROL_CENTER
+	uint64_t tb_block_ts;
+	int tb_ccdm_idx = cpu + CCDM_TB_CPU_0_IDLE_BLOCK;
+#endif
+
 	if (cpu_isolated(cpu))
 		goto out;
 
@@ -664,7 +677,16 @@ static inline bool lpm_disallowed(s64 sleep_us, int cpu, struct lpm_cpu *pm_cpu)
 		return true;
 	}
 
+#ifdef CONFIG_CONTROL_CENTER
+	tb_block_ts = ccdm_get_hint(tb_ccdm_idx);
+	if (!time_after64(get_jiffies_64(), tb_block_ts))
+		return true;
+#endif
+
 out:
+#ifdef CONFIG_CONTROL_CENTER
+	ccdm_update_hint_1(tb_ccdm_idx, ULLONG_MAX);
+#endif
 	if (sleep_us < 0)
 		return true;
 
@@ -703,6 +725,7 @@ static int cpu_power_select(struct cpuidle_device *dev,
 	uint32_t next_wakeup_us = (uint32_t)sleep_us;
 	uint32_t min_residency, max_residency;
 	struct power_params *pwr_params;
+
 
 	if (lpm_disallowed(sleep_us, dev->cpu, cpu))
 		goto done_select;

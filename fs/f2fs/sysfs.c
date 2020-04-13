@@ -667,6 +667,149 @@ static int __maybe_unused victim_bits_seq_show(struct seq_file *seq,
 	return 0;
 }
 
+#ifdef CONFIG_F2FS_OF2FS
+/* [ASTI-147]: add f2fs frag_score and undiscard_score */
+extern block_t of2fs_seg_freefrag(struct f2fs_sb_info *sbi, unsigned int segno, block_t *blocks, unsigned int n);
+static int __maybe_unused frag_score_seq_show(struct seq_file *seq, void *offset)
+{
+	struct super_block *sb = seq->private;
+	struct f2fs_sb_info *sbi = F2FS_SB(sb);
+
+	unsigned int i, total_segs =
+			le32_to_cpu(sbi->raw_super->segment_count_main);
+	block_t blocks[9], total_blocks = 0;
+	unsigned int score;
+
+	memset(blocks, 0, sizeof(blocks));
+	for (i = 0; i < total_segs; i++) {
+		total_blocks += of2fs_seg_freefrag(sbi, i,
+			blocks, ARRAY_SIZE(blocks));
+		cond_resched();
+	}
+
+	f2fs_msg(sbi->sb, KERN_INFO, "Extent Size Range: Free Blocks");
+	for (i = 0; i < ARRAY_SIZE(blocks); i++) {
+		if (!blocks[i])
+			continue;
+		else if (i < 8)
+			f2fs_msg(sbi->sb, KERN_INFO,
+				"%dK...%dK-: %u", 4<<i, 4<<(i+1), blocks[i]);
+		else
+			f2fs_msg(sbi->sb, KERN_INFO,
+				"%dM...%dM-: %u", 1<<(i-8), 1<<(i-7), blocks[i]);
+	}
+
+	score = total_blocks ? (blocks[0] + blocks[1]) * 100ULL / total_blocks : 0;
+	seq_printf(seq, "%u\n", score);
+	return 0;
+}
+
+static int __maybe_unused undiscard_score_seq_show(struct seq_file *seq, void *offset)
+{
+	struct super_block *sb = seq->private;
+	struct f2fs_sb_info *sbi = F2FS_SB(sb);
+	unsigned int undiscard_blks = 0;
+	unsigned int free_blks = sbi->user_block_count - valid_user_blocks(sbi);
+	unsigned int score;
+
+	if (SM_I(sbi) && SM_I(sbi)->dcc_info)
+		undiscard_blks =  SM_I(sbi)->dcc_info->undiscard_blks;
+	score = free_blks ? undiscard_blks * 100ULL / free_blks : 0;
+	seq_printf(seq, "%u\n", score < 100 ? score : 100);
+	return 0;
+}
+
+static int gc_opt_enable_seq_show(struct seq_file *seq, void *p)
+{
+	struct super_block *sb = seq->private;
+	struct f2fs_sb_info *sbi = F2FS_SB(sb);
+
+	seq_printf(seq, "%d\n", sbi->gc_opt_enable);
+	return 0;
+}
+
+static ssize_t gc_opt_enable_write(struct file *filp, const char __user *ubuf,
+	size_t cnt, loff_t *ppos)
+{
+	char buf[64] = { 0 };
+	int user_set_value = 0;
+	int ret = -1;
+	struct seq_file *seq = filp->private_data;
+	struct super_block *sb = seq->private;
+	struct f2fs_sb_info *sbi = F2FS_SB(sb);
+
+	if (cnt > sizeof(buf) - 1)
+		cnt = sizeof(buf) - 1;
+
+	if (copy_from_user(&buf[0], ubuf, cnt))
+		return -EFAULT;
+	ret = kstrtoint(strstrip(&buf[0]), 0, &user_set_value);
+	if (ret < 0)
+		return ret;
+
+	sbi->gc_opt_enable = !!user_set_value;
+	if (sbi->gc_opt_enable)
+		sbi->interval_time[GC_TIME] = DEF_GC_IDLE_INTERVAL;
+	else
+		sbi->interval_time[GC_TIME] = DEF_IDLE_INTERVAL;
+	return cnt;
+}
+
+static int gc_opt_enable_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, gc_opt_enable_seq_show, PDE_DATA(inode));
+}
+
+static const struct file_operations f2fs_seq_gc_opt_enable_fops = {
+	.open = gc_opt_enable_open,
+	.read = seq_read,
+	.write = gc_opt_enable_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+/* [ASTI-147]: add for oDiscard */
+static int f2fs_odiscard_enable_seq_show(struct seq_file *seq, void *p)
+{
+	seq_printf(seq, "%d\n", f2fs_odiscard_enable);
+	return 0;
+}
+
+static ssize_t f2fs_odiscard_enable_write(struct file *filp, const char __user *ubuf,
+	size_t cnt, loff_t *ppos)
+{
+	char buf[64] = { 0 };
+	int user_set_value = 0;
+	int ret = -1;
+
+	if (cnt > sizeof(buf) - 1)
+		cnt = sizeof(buf) - 1;
+
+	if (copy_from_user(&buf[0], ubuf, cnt))
+		return -EFAULT;
+
+	ret = kstrtoint(strstrip(&buf[0]), 0, &user_set_value);
+
+	if (ret < 0)
+		return ret;
+
+	f2fs_odiscard_enable = user_set_value;
+	return cnt;
+}
+static int f2fs_odiscard_enable_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, f2fs_odiscard_enable_seq_show, NULL);
+}
+
+static const struct file_operations f2fs_odiscard_enable_fops = {
+	.open = f2fs_odiscard_enable_open,
+	.read = seq_read,
+	.write = f2fs_odiscard_enable_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+#endif
+
 int __init f2fs_init_sysfs(void)
 {
 	int ret;
@@ -710,14 +853,29 @@ int f2fs_register_sysfs(struct f2fs_sb_info *sbi)
 		sbi->s_proc = proc_mkdir(sb->s_id, f2fs_proc_root);
 
 	if (sbi->s_proc) {
-		proc_create_single_data("segment_info", S_IRUGO, sbi->s_proc,
+#ifdef CONFIG_F2FS_OF2FS
+		/* [ASTI-147]: add f2fs frag_score and undiscard_score */
+		/* [ASTI-147]: add for oDiscard */
+		proc_create_single_data("frag_score", 0444, sbi->s_proc,
+				frag_score_seq_show, sb);
+		proc_create_single_data("udc_score", 0444, sbi->s_proc,
+				undiscard_score_seq_show, sb);
+		proc_create_data("gc_enable", 0644, sbi->s_proc,
+				 &f2fs_seq_gc_opt_enable_fops, sb);
+		proc_create_data("dc_enable", 0644, sbi->s_proc,
+				 &f2fs_odiscard_enable_fops, sb);
+#endif
+		proc_create_single_data("segment_info", 0444, sbi->s_proc,
 				segment_info_seq_show, sb);
-		proc_create_single_data("segment_bits", S_IRUGO, sbi->s_proc,
+		proc_create_single_data("segment_bits", 0444, sbi->s_proc,
 				segment_bits_seq_show, sb);
-		proc_create_single_data("iostat_info", S_IRUGO, sbi->s_proc,
+		proc_create_single_data("iostat_info", 0444, sbi->s_proc,
 				iostat_info_seq_show, sb);
-		proc_create_single_data("victim_bits", S_IRUGO, sbi->s_proc,
+		proc_create_single_data("victim_bits", 0444, sbi->s_proc,
 				victim_bits_seq_show, sb);
+#ifdef CONFIG_F2FS_BD_STAT
+		f2fs_build_bd_stat(sbi);
+#endif
 	}
 	return 0;
 }
@@ -725,10 +883,21 @@ int f2fs_register_sysfs(struct f2fs_sb_info *sbi)
 void f2fs_unregister_sysfs(struct f2fs_sb_info *sbi)
 {
 	if (sbi->s_proc) {
+#ifdef CONFIG_F2FS_BD_STAT
+		f2fs_destroy_bd_stat(sbi);
+#endif
 		remove_proc_entry("iostat_info", sbi->s_proc);
 		remove_proc_entry("segment_info", sbi->s_proc);
 		remove_proc_entry("segment_bits", sbi->s_proc);
 		remove_proc_entry("victim_bits", sbi->s_proc);
+#ifdef CONFIG_F2FS_OF2FS
+		/* [ASTI-147]: add f2fs frag_score and undiscard_score */
+		/* [ASTI-147]: add for oDiscard */
+		remove_proc_entry("gc_enable", sbi->s_proc);
+		remove_proc_entry("udc_score", sbi->s_proc);
+		remove_proc_entry("frag_score", sbi->s_proc);
+		remove_proc_entry("dc_enable", sbi->s_proc);
+#endif
 		remove_proc_entry(sbi->sb->s_id, f2fs_proc_root);
 	}
 	kobject_del(&sbi->s_kobj);

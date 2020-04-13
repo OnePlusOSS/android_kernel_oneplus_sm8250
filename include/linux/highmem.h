@@ -8,6 +8,7 @@
 #include <linux/mm.h>
 #include <linux/uaccess.h>
 #include <linux/hardirq.h>
+#include <oneplus/dynamic_page_pool.h>
 
 #include <asm/cacheflush.h>
 
@@ -166,7 +167,19 @@ __alloc_zeroed_user_highpage(gfp_t movableflags,
 			struct vm_area_struct *vma,
 			unsigned long vaddr)
 {
-	struct page *page = alloc_page_vma(GFP_HIGHUSER | movableflags,
+	struct page *page;
+
+#ifdef DYNAMIC_PAGE_POOL
+	if (global_zone_page_state(NR_FREE_CMA_PAGES) > 511)
+		goto default_way;
+
+	page = dynamic_page_pool_alloc(anon_pool);
+	if (page)
+		return page;
+
+default_way:
+#endif
+	page = alloc_page_vma(GFP_HIGHUSER | movableflags,
 			vma, vaddr);
 
 	if (page)

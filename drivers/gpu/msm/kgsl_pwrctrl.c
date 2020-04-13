@@ -15,6 +15,9 @@
 #include "kgsl_device.h"
 #include "kgsl_pwrscale.h"
 #include "kgsl_trace.h"
+#ifdef CONFIG_HOUSTON
+#include <oneplus/houston/houston_helper.h>
+#endif
 
 #define KGSL_PWRFLAGS_POWER_ON 0
 #define KGSL_PWRFLAGS_CLK_ON   1
@@ -2393,6 +2396,9 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 	of_property_read_string(pdev->dev.of_node, "qcom,tzone-name",
 		&pwr->tzone_name);
 
+#ifdef CONFIG_HOUSTON
+	ht_register_kgsl_pwrctrl(pwr);
+#endif
 	return result;
 
 error_cleanup_bus_ib:

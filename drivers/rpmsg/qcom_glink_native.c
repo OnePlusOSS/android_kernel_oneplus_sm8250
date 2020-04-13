@@ -1899,6 +1899,18 @@ static void qcom_glink_notif_reset(void *data)
 	spin_unlock_irqrestore(&glink->idr_lock, flags);
 }
 
+/* Modify for glink name */
+struct g_sub_name {
+	const char *g_name;
+	const char *s_name;
+} sub_name[] = {
+	{"adsp", "glink-adsp"},
+	{"cdsp", "glink-cdsp"},
+	{"slpi", "glink-slpi"},
+	{"modem", "glink-modem"},
+	{"npu", "glink-npu"},
+};
+
 struct qcom_glink *qcom_glink_native_probe(struct device *dev,
 					   unsigned long features,
 					   struct qcom_glink_pipe *rx,
@@ -1910,6 +1922,8 @@ struct qcom_glink *qcom_glink_native_probe(struct device *dev,
 	int size;
 	int irq;
 	int ret;
+	/* Modify for glink name */
+	int i;
 
 	glink = devm_kzalloc(dev, sizeof(*glink), GFP_KERNEL);
 	if (!glink)
@@ -1962,13 +1976,21 @@ struct qcom_glink *qcom_glink_native_probe(struct device *dev,
 		dev_err(dev, "failed to register early notif %d\n", ret);
 
 	irq = of_irq_get(dev->of_node, 0);
-	ret = devm_request_irq(dev, irq,
-			       qcom_glink_native_intr,
-			       IRQF_NO_SUSPEND | IRQF_SHARED,
-			       "glink-native", glink);
-	if (ret) {
-		dev_err(dev, "failed to request IRQ\n");
-		goto unregister;
+
+	/* Modify for glink name */
+	for (i = 0; i < ARRAY_SIZE(sub_name); i++) {
+		if (strcmp(sub_name[i].g_name, glink->name) == 0) {
+			ret = devm_request_irq(dev, irq,
+				qcom_glink_native_intr,
+				IRQF_NO_SUSPEND | IRQF_SHARED,
+				sub_name[i].s_name, glink);
+
+			if (ret) {
+				dev_err(dev, "failed to request IRQ\n");
+				goto unregister;
+			}
+			break;
+		}
 	}
 
 	glink->irq = irq;

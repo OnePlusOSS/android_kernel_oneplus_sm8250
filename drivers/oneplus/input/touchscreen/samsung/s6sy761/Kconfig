@@ -1,0 +1,12 @@
+
+config TOUCHPANEL_SAMSUNG_S6SY761
+	default y
+	bool "TP Samsung s6sy761 IC enable or not for oem"
+	---help---
+	say Y to enable driver for Touchpanel using Samsung s6sy761
+	
+config TOUCHPANEL_SAMSUNG
+	default y
+	bool "TP Samsung IC enable or not for oem"
+	---help---
+	say Y to enable driver for Touchpanel using Samsung

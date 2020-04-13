@@ -19,6 +19,9 @@
 #include <linux/compiler.h>
 #include <linux/atomic.h>
 
+/* WIFI MODIFICATION */
+#include <linux/netfilter/nf_conntrack_dns.h>
+/* WIFI MODIFICATION */
 #include <linux/netfilter/nf_conntrack_tcp.h>
 #include <linux/netfilter/nf_conntrack_dccp.h>
 #include <linux/netfilter/nf_conntrack_sctp.h>
@@ -35,6 +38,9 @@ union nf_conntrack_proto {
 	struct ip_ct_tcp tcp;
 	struct nf_ct_gre gre;
 	unsigned int tmpl_padto;
+	/* WIFI MODIFICATION */
+	struct nf_ct_dns dns;
+	/* WIFI MODIFICATION */
 };
 
 union nf_conntrack_expect_proto {
@@ -86,6 +92,23 @@ struct nf_conn {
 #endif
 	/* all members below initialized via memset */
 	u8 __nfct_init_offset[0];
+
+	/* WIFI MODIFICATION */
+	u32 op_game_skb_len;
+	u32 op_game_detect_status;
+	u32 op_game_time_interval;
+	int op_game_up_count;
+	int op_game_down_count;
+	int op_game_lost_count;
+	int op_game_same_count;
+	int op_app_type;
+	unsigned int op_tcp_last_total_retrans;
+	int op_tcp_continue_retrans;
+	s64 op_game_timestamp;
+	s64 op_game_last_timestamp;
+	s64 op_game_special_rx_pkt_timestamp;
+	s64 op_game_rx_normal_time_record;
+	/* WIFI MODIFICATION */
 
 	/* If we were expected by an expectation, this will be it */
 	struct nf_conn *master;

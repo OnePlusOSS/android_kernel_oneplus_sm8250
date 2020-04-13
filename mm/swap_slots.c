@@ -352,7 +352,9 @@ repeat:
 		if (entry.val)
 			goto out;
 	}
-
+	/* CONFIG_MEMPLUS add start by bin.zhong@ASTI */
+	__set_memplus_entry(entry, page_private(page));
+	/* add end */
 	get_swap_pages(1, &entry, 1);
 out:
 	if (mem_cgroup_try_charge_swap(page, entry)) {
