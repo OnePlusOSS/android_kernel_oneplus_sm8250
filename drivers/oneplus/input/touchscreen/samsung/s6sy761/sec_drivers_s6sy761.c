@@ -320,15 +320,25 @@ static int sec_limit_switch_mode(struct chip_data_s6sy761 *chip_info, bool enabl
 		ret = touch_i2c_write_block(chip_info->client, SEC_CMD_SCREEN_ORIEN, 3, cmd);
 	}
 	//dead zone type 1
-	if (g_tp->project_info == 1)//19811 project add dead zone 1
-		buf[2] = 0x19;
-	else
-		buf[2] = 0x00;
+	if (g_tp->project_info == 1) {//19811 project add dead zone 1
+		buf[2] = 0x19;	//x=25px
+	} else {
+		if ((g_tp->limit_switch == 1) || (g_tp->limit_switch == 3)) {	//landscape
+			buf[2] = 0x0A;	//x=10px
+		} else {	//portrait
+			buf[2] = 0x14;	//x=20px
+		}
+	}
 	ret = touch_i2c_write_block(chip_info->client, SEC_CMD_GRIP_PARA, 5, buf);
 	//dead zone type 2
 	buf[0] = 0x01;
-	buf[2] = 0x1E;//x=30px
-	buf[4] = 0x82;//y=130px
+	if ((g_tp->limit_switch == 1) || (g_tp->limit_switch == 3)) {	//landscape
+		buf[2] = 0x50;//x=80px
+		buf[4] = 0x50;//y=80px
+	} else {	//portrait
+		buf[2] = 0x1E;//x=30px
+		buf[4] = 0x82;//y=130px
+	}
 	ret = touch_i2c_write_block(chip_info->client, SEC_CMD_GRIP_PARA, 5, buf);
 	//long press reject zone
 	buf[0] = 0x02;
