@@ -393,6 +393,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_TX_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CP_CURRENT_NOW,
+	POWER_SUPPLY_PROP_ICON_DELAY,
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT,
 	/* Properties of type `const char *' */
