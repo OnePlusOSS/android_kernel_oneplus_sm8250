@@ -58,8 +58,12 @@ static struct bq2597x *exchgpump_bq;
 static struct rx_chip *g_rx_chip;
 struct smb_charger *normal_charger;
 static int reverse_charge_status = 0;
-
 static int wpc_chg_quit_max_cnt;
+/*
+ * Determine whether to delay the disappearance of the charging
+ * icon when charging is disconnected.
+ */
+static int chg_icon_update_delay = true;
 
 #ifdef OP_DEBUG
 static bool force_epp;
@@ -1225,6 +1229,7 @@ static enum power_supply_property wlchg_wireless_props[] = {
 	POWER_SUPPLY_PROP_WIRELESS_MODE,
 	POWER_SUPPLY_PROP_WIRELESS_TYPE,
 	POWER_SUPPLY_PROP_OP_DISABLE_CHARGE,
+	POWER_SUPPLY_PROP_ICON_DELAY,
 };
 
 static int wlchg_wireless_get_prop(struct power_supply *psy,
@@ -1381,6 +1386,9 @@ static int wlchg_wireless_get_prop(struct power_supply *psy,
 			val->intval = 0;
 		}
 		break;
+	case POWER_SUPPLY_PROP_ICON_DELAY:
+		val->intval = chg_icon_update_delay;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1411,6 +1419,9 @@ static int wlchg_wireless_set_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_OP_DISABLE_CHARGE:
 		rc = wlchg_disable_batt_charge(chip, (bool)val->intval);
 		break;
+	case POWER_SUPPLY_PROP_ICON_DELAY:
+		chg_icon_update_delay = (bool)val->intval;
+		break;
 	default:
 		chg_err("set prop %d is not supported\n", psp);
 		rc = -EINVAL;
@@ -1429,6 +1440,7 @@ static int wlchg_wireless_prop_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 	case POWER_SUPPLY_PROP_OP_DISABLE_CHARGE:
+	case POWER_SUPPLY_PROP_ICON_DELAY:
 		rc = 1;
 		break;
 	default:
@@ -2789,7 +2801,7 @@ static int fastchg_startup_process(struct op_chg_chip *chip)
 	    (chg_status->fastchg_startup_step >= FASTCHG_EN_CHGPUMP2_STEP) ||
 	    (((chg_status->fastchg_startup_step == FASTCHG_WAIT_PMIC_STABLE_STEP) ||
 	      (chg_status->fastchg_startup_step == FASTCHG_SET_CHGPUMP2_VOL_AGAIN_STEP)) &&
-	     (bq_adc_vbus > bq_adc_vbat * 2))) {
+	     (bq_adc_vbus > (bq_adc_vbat * 2 + 150)))) {
 		chg_info("fastchg_startup_step:%d\n", chg_status->fastchg_startup_step);
 		if (chg_status->vol_set_ok)
 			cep_err_count = 0;
@@ -2865,7 +2877,7 @@ static int fastchg_startup_process(struct op_chg_chip *chip)
 				if (curr_err_count > 100) {
 					curr_err_count = 0;
 					chg_err("pmic charging current is too small to start fast charge\n");
-					vote(chip->fastchg_disable_votable, CURR_ERR_VOTER, true, 0);
+					//vote(chip->fastchg_disable_votable, CURR_ERR_VOTER, true, 0);
 					chg_status->charge_status = WPC_CHG_STATUS_FAST_CHARGING_EXIT;
 				}
 				break;
@@ -2897,7 +2909,7 @@ static int fastchg_startup_process(struct op_chg_chip *chip)
 				else
 					break;
 			} else {
-				if ((bq_adc_vbus > bq_adc_vbat * 2) &&
+				if ((bq_adc_vbus > (bq_adc_vbat * 2 + 150)) &&
 				    (bq_adc_vbus < temp_value) &&
 				    (cp2_enabled_count == 0)) {
 					chg_info("try enable cp2\n");
@@ -3004,7 +3016,7 @@ static int fastchg_startup_process(struct op_chg_chip *chip)
 	if (!chg_status->vol_set_ok &&
 	    (chg_status->fastchg_startup_step < FASTCHG_EN_CHGPUMP2_STEP)) {
 		cep_err_count++;
-		if (cep_err_count > 50) { //5s
+		if (cep_err_count > 300) { //30s
 			cep_err_count = 0;
 			chg_err("Cannot rise to target voltage, exit fast charge\n");
 			chg_status->fastchg_retry_count++;
@@ -3910,7 +3922,7 @@ static void wlchg_disconnect_func(struct op_chg_chip *chip)
 		 * compensate the time consumption from receiving the disconnect
 		 * signal to running here.
 		 */
-		if (time_is_before_jiffies(delay_time))
+		if (time_is_before_jiffies(delay_time) || !chg_icon_update_delay)
 			delay_time = 0;
 		else
 			delay_time = delay_time - jiffies;
@@ -4781,8 +4793,16 @@ static void curr_vol_check_process(struct work_struct *work)
 				}
 			} else {
 				if (chg_status->target_vol > chg_status->vol_set) {
-					chg_status->vol_set = chg_status->target_vol;
-					wlchg_rx_set_vout(g_rx_chip, chg_status->vol_set);
+					tmp_val = chg_status->target_vol - chg_status->vol_set;
+					if (tmp_val > VOL_INC_STEP_MAX) {
+						if (chg_status->vol_set < VOL_ADJ_LIMIT) {
+							chg_status->vol_set = VOL_ADJ_LIMIT;
+						} else {
+							chg_status->vol_set += VOL_INC_STEP_MAX;
+						}
+					} else {
+						chg_status->vol_set += tmp_val;
+					}
 				} else if (chg_status->target_vol < chg_status->vol_set) {
 					if (chg_status->vol_not_step) {
 						chg_status->vol_set = chg_status->target_vol;
@@ -4792,8 +4812,8 @@ static void curr_vol_check_process(struct work_struct *work)
 						tmp_val = tmp_val < VOL_DEC_STEP_MAX ? tmp_val : VOL_DEC_STEP_MAX;
 						chg_status->vol_set -= tmp_val;
 					}
-					wlchg_rx_set_vout(g_rx_chip, chg_status->vol_set);
 				}
+				wlchg_rx_set_vout(g_rx_chip, chg_status->vol_set);
 				wait_cep = true;
 			}
 		} else {
