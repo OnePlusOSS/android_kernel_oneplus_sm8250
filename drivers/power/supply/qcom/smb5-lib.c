@@ -8072,6 +8072,7 @@ static void op_handle_usb_removal(struct smb_charger *chg)
 	chg->ck_unplug_count = 0;
 	chg->count_run = 0;
 	chg->chg_disabled = 0;
+	chg->fastchg_present_wait_count = 0;
 	vote(chg->fcc_votable,
 		DEFAULT_VOTER, true, SDP_CURRENT_UA);
 	vote(chg->chg_disable_votable,
@@ -10534,12 +10535,17 @@ static void op_heartbeat_work(struct work_struct *work)
 			if (!chg->disable_normal_chg_for_dash)
 				op_charging_en(chg, false);
 			chg->disable_normal_chg_for_dash = true;
+			chg->fastchg_present_wait_count = 0;
 		}
 		goto out;
 	} else {
 		if (chg->disable_normal_chg_for_dash) {
-			chg->disable_normal_chg_for_dash = false;
-			op_charging_en(chg, true);
+			chg->fastchg_present_wait_count++;
+			if (chg->fastchg_present_wait_count >= FULL_DELAY_COUNT) {
+				chg->disable_normal_chg_for_dash = false;
+				op_charging_en(chg, true);
+				chg->fastchg_present_wait_count = 0;
+			}
 		}
 		schedule_delayed_work(&chg->check_switch_dash_work,
 							msecs_to_jiffies(100));

@@ -126,6 +126,9 @@ enum print_reason {
 #define BOOST_BACK_STORM_COUNT	3
 #define WEAK_CHG_STORM_COUNT	8
 
+#define FULL_DELAY_COUNT 3
+
+
 #define VBAT_TO_VRAW_ADC(v)		div_u64((u64)v * 1000000UL, 194637UL)
 
 #define ITERM_LIMITS_PMI632_MA		5000
@@ -603,6 +606,7 @@ struct smb_charger {
 	int				redet_count;
 	int				reset_count;
 	int				dump_count;
+	int				fastchg_present_wait_count;
 	int				ck_apsd_count;
 	int				slow_chg_count;
 	int				ck_dash_count;
