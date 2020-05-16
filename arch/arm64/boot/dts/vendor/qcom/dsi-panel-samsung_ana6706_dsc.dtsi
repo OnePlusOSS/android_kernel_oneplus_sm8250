@@ -393,6 +393,28 @@
 				qcom,mdss-dsi-panel-level2-key-enable-command = [
 					39 01 00 00 00 00 03 F0 5A 5A
 				];
+				qcom,mdss-dsi-panel-gamma-otp-read-c7-command = [
+					06 01 00 00 00 00 01 C7
+				];
+				qcom,mdss-dsi-panel-gamma-otp-read-c9-command = [
+					06 01 00 00 00 00 01 C9
+				];
+				qcom,mdss-dsi-panel-gamma-change-write-command = [
+					39 01 00 00 00 00 03 F0 5A 5A
+					15 01 00 00 00 00 02 B0 AA
+					39 01 00 00 00 00 09 C7 2B 14 C1 2C 0F AE 10 FB
+					15 01 00 00 00 00 02 B0 B5
+					15 01 00 00 00 00 02 C7 00
+					15 01 00 00 00 00 02 F7 0F
+					39 01 00 00 00 00 03 F0 A5 A5
+					39 01 00 00 00 00 03 F0 5A 5A
+					15 01 00 00 00 00 02 B0 A7
+					39 01 00 00 00 00 09 C9 01 04 3D AE 01 36 00 A5
+					15 01 00 00 00 00 02 B0 B2
+					15 01 00 00 00 00 02 C9 00
+					15 01 00 00 00 00 02 F7 0F
+					39 01 00 00 00 00 03 F0 A5 A5
+				];
 				qcom,mdss-dsi-panel-level2-key-disable-command = [
 					39 01 00 00 00 00 03 F0 A5 A5
 				];
@@ -438,6 +460,9 @@
 				qcom,mdss-dsi-mca-setting-mode-0-command-state	= "dsi_lp_mode";
 				qcom,mdss-dsi-panel-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-enable-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-otp-read-c7-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-otp-read-c9-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-change-write-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-disable-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-read-ic_v-register-open-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-ic_v-command-state = "dsi_lp_mode";
@@ -790,6 +815,28 @@
 				qcom,mdss-dsi-panel-level2-key-enable-command = [
 					39 01 00 00 00 00 03 F0 5A 5A
 				];
+				qcom,mdss-dsi-panel-gamma-otp-read-c7-command = [
+					06 01 00 00 00 00 01 C7
+				];
+				qcom,mdss-dsi-panel-gamma-otp-read-c9-command = [
+					06 01 00 00 00 00 01 C9
+				];
+				qcom,mdss-dsi-panel-gamma-change-write-command = [
+					39 01 00 00 00 00 03 F0 5A 5A
+					15 01 00 00 00 00 02 B0 AA
+					39 01 00 00 00 00 09 C7 2B 14 C1 2C 0F AE 10 FB
+					15 01 00 00 00 00 02 B0 B5
+					15 01 00 00 00 00 02 C7 00
+					15 01 00 00 00 00 02 F7 0F
+					39 01 00 00 00 00 03 F0 A5 A5
+					39 01 00 00 00 00 03 F0 5A 5A
+					15 01 00 00 00 00 02 B0 A7
+					39 01 00 00 00 00 09 C9 01 04 3D AE 01 36 00 A5
+					15 01 00 00 00 00 02 B0 B2
+					15 01 00 00 00 00 02 C9 00
+					15 01 00 00 00 00 02 F7 0F
+					39 01 00 00 00 00 03 F0 A5 A5
+				];
 				qcom,mdss-dsi-panel-level2-key-disable-command = [
 					39 01 00 00 00 00 03 F0 A5 A5
 				];
@@ -835,6 +882,9 @@
 				qcom,mdss-dsi-mca-setting-mode-0-command-state	= "dsi_lp_mode";
 				qcom,mdss-dsi-panel-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-enable-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-otp-read-c7-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-otp-read-c9-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-change-write-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-disable-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-read-ic_v-register-open-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-ic_v-command-state = "dsi_lp_mode";
@@ -1179,6 +1229,28 @@
 				qcom,mdss-dsi-panel-level2-key-enable-command = [
 					39 01 00 00 00 00 03 F0 5A 5A
 				];
+				qcom,mdss-dsi-panel-gamma-otp-read-c7-command = [
+					06 01 00 00 00 00 01 C7
+				];
+				qcom,mdss-dsi-panel-gamma-otp-read-c9-command = [
+					06 01 00 00 00 00 01 C9
+				];
+				qcom,mdss-dsi-panel-gamma-change-write-command = [
+					39 01 00 00 00 00 03 F0 5A 5A
+					15 01 00 00 00 00 02 B0 AA
+					39 01 00 00 00 00 09 C7 2B 14 C1 2C 0F AE 10 FB
+					15 01 00 00 00 00 02 B0 B5
+					15 01 00 00 00 00 02 C7 00
+					15 01 00 00 00 00 02 F7 0F
+					39 01 00 00 00 00 03 F0 A5 A5
+					39 01 00 00 00 00 03 F0 5A 5A
+					15 01 00 00 00 00 02 B0 A7
+					39 01 00 00 00 00 09 C9 01 04 3D AE 01 36 00 A5
+					15 01 00 00 00 00 02 B0 B2
+					15 01 00 00 00 00 02 C9 00
+					15 01 00 00 00 00 02 F7 0F
+					39 01 00 00 00 00 03 F0 A5 A5
+				];
 				qcom,mdss-dsi-panel-level2-key-disable-command = [
 					39 01 00 00 00 00 03 F0 A5 A5
 				];
@@ -1224,6 +1296,9 @@
 				qcom,mdss-dsi-mca-setting-mode-0-command-state	= "dsi_lp_mode";
 				qcom,mdss-dsi-panel-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-enable-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-otp-read-c7-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-otp-read-c9-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-change-write-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-disable-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-read-ic_v-register-open-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-ic_v-command-state = "dsi_lp_mode";
@@ -1569,6 +1644,28 @@
 				qcom,mdss-dsi-panel-level2-key-enable-command = [
 					39 01 00 00 00 00 03 F0 5A 5A
 				];
+				qcom,mdss-dsi-panel-gamma-otp-read-c7-command = [
+					06 01 00 00 00 00 01 C7
+				];
+				qcom,mdss-dsi-panel-gamma-otp-read-c9-command = [
+					06 01 00 00 00 00 01 C9
+				];
+				qcom,mdss-dsi-panel-gamma-change-write-command = [
+					39 01 00 00 00 00 03 F0 5A 5A
+					15 01 00 00 00 00 02 B0 AA
+					39 01 00 00 00 00 09 C7 2B 14 C1 2C 0F AE 10 FB
+					15 01 00 00 00 00 02 B0 B5
+					15 01 00 00 00 00 02 C7 00
+					15 01 00 00 00 00 02 F7 0F
+					39 01 00 00 00 00 03 F0 A5 A5
+					39 01 00 00 00 00 03 F0 5A 5A
+					15 01 00 00 00 00 02 B0 A7
+					39 01 00 00 00 00 09 C9 01 04 3D AE 01 36 00 A5
+					15 01 00 00 00 00 02 B0 B2
+					15 01 00 00 00 00 02 C9 00
+					15 01 00 00 00 00 02 F7 0F
+					39 01 00 00 00 00 03 F0 A5 A5
+				];
 				qcom,mdss-dsi-panel-level2-key-disable-command = [
 					39 01 00 00 00 00 03 F0 A5 A5
 				];
@@ -1614,6 +1711,9 @@
 				qcom,mdss-dsi-mca-setting-mode-0-command-state	= "dsi_lp_mode";
 				qcom,mdss-dsi-panel-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-enable-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-otp-read-c7-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-otp-read-c9-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-panel-gamma-change-write-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-disable-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-read-ic_v-register-open-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-ic_v-command-state = "dsi_lp_mode";
