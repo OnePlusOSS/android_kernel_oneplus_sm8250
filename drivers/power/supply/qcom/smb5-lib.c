@@ -9040,10 +9040,8 @@ void set_chg_ibat_vbat_max(
 	    temp_region != BATT_TEMP_LITTLE_COLD &&
 	    temp_region != BATT_TEMP_HOT) {
 		vote(chg->fcc_votable, DEFAULT_VOTER, false, 0);
-	} else if (chg->pd_active && (
-		temp_region == BATT_TEMP_NORMAL
-		|| temp_region == BATT_TEMP_PRE_NORMAL
-		|| temp_region == BATT_TEMP_LITTLE_COOL)) {
+	} else if (chg->pd_active &&
+		temp_region == BATT_TEMP_NORMAL) {
 		vote(chg->fcc_votable,
 			DEFAULT_VOTER, true, PD_PANELOFF_CURRENT_UA);
 	} else {
