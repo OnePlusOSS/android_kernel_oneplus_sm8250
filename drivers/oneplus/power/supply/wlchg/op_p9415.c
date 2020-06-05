@@ -2245,7 +2245,9 @@ static void p9415_update_work_process(struct work_struct *work)
 
 	if (!chip->check_fw_update) {
 		if (wlchg_get_usbin_val() == 0) {
+			__pm_stay_awake(&chip->update_fw_wake_lock);
 			rc = p9415_check_idt_fw_update(chip);
+			__pm_relax(&chip->update_fw_wake_lock);
 		} else {
 			pr_err("<IDT UPDATE> usb cable is in, retry later.!\n");
 			p9415_set_vbat_en_val(chip, 1);
@@ -2411,6 +2413,7 @@ static int p9415_driver_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&chip->idt_connect_int_work, p9415_connect_int_func);
 	INIT_DELAYED_WORK(&chip->p9415_update_work, p9415_update_work_process);
 	INIT_DELAYED_WORK(&chip->check_ldo_on_work, p9415_check_ldo_on_func);
+	wakeup_source_init(&chip->update_fw_wake_lock, "p9415_update_fw_wake_lock");
 
 	if (get_boot_mode() == MSM_BOOT_MODE_CHARGE) {
 		schedule_delayed_work(&chip->idt_connect_int_work, msecs_to_jiffies(5000));

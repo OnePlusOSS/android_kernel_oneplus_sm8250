@@ -50,6 +50,7 @@ struct op_p9415_ic {
 	struct delayed_work idt_event_int_work;
 	struct delayed_work idt_connect_int_work;
 	struct delayed_work check_ldo_on_work;
+	struct wakeup_source update_fw_wake_lock;
 };
 
 #endif
