@@ -198,11 +198,15 @@ void operate_mode_switch(struct touchpanel_data *ts)
 		if (ts->glove_mode_support)
 			ts->ts_ops->mode_switch(ts->chip_data, MODE_GLOVE, ts->glove_enable);
 
-		if (ts->charge_detect_support)
-			ts->ts_ops->mode_switch(ts->chip_data, MODE_CHARGE, ts->charge_detect);
+		if (ts->charge_detect_support) {
+			if (ts->charge_detect == 1)//if in charge status,enable charge mode
+				ts->ts_ops->mode_switch(ts->chip_data, MODE_CHARGE, true);
+		}
 
-		if (ts->wireless_charge_support)
-			ts->ts_ops->mode_switch(ts->chip_data, MODE_WIRELESS_CHARGE, ts->wireless_charge_detect);
+		if (ts->wireless_charge_support) {
+			if (ts->wireless_charge_detect == 1)//if in wireless sstatus, enable wireless mode
+				ts->ts_ops->mode_switch(ts->chip_data, MODE_WIRELESS_CHARGE, true);
+		}
 
 		if (ts->touch_hold_support)
 			if (!ts->skip_enable_touchhold)//fingerprint is lock, enable touchhold when resume.
@@ -213,6 +217,11 @@ void operate_mode_switch(struct touchpanel_data *ts)
 
 		if (ts->audio_noise_support)
 			ts->ts_ops->mode_switch(ts->chip_data, MODE_AUDIO_NOISE, ts->audio_noise_detect);
+
+		if (ts->wet_mode_status)
+			ts->ts_ops->mode_switch(ts->chip_data, MODE_WET_DETECT, ts->wet_mode_status);
+
+		ts->ts_ops->mode_switch(ts->chip_data, MODE_LIMIT_SWITCH, ts->limit_switch);
 
 		ts->ts_ops->mode_switch(ts->chip_data, MODE_NORMAL, true);
 	}
@@ -1465,6 +1474,47 @@ static const struct file_operations proc_limit_switch_fops = {
 	.owner = THIS_MODULE,
 };
 
+static ssize_t proc_dead_zone_write(struct file *file, const char __user *buffer, size_t count, loff_t *ppos)
+{
+	char buf[8] = {0};
+	int data[6] = {0};
+	struct touchpanel_data *ts = PDE_DATA(file_inode(file));
+
+	if (!ts) {
+		TPD_INFO("%s: ts is NULL\n",__func__);
+		return count;
+	}
+
+	if (copy_from_user(buf, buffer, count)) {
+		TPD_INFO("%s: read proc input error.\n", __func__);
+		return count;
+	}
+	copy_from_user(buf, buffer, count);
+	if (sscanf(buf, "%d,%d", &data[0], &data[1]) == 2) {
+		if (data[0] > 50 || data[1] > 50) {
+			TPD_INFO("data not allow\n");
+			return count;
+		}
+		ts->dead_zone_l = data[0];
+		ts->dead_zone_p = data[1];
+	}
+	TPD_INFO("data[0] is %d, data[1] is %d\n", data[0], data[1]);
+
+	if (ts->is_suspended == 0) {
+		mutex_lock(&ts->mutex);
+		ts->ts_ops->mode_switch(ts->chip_data, MODE_LIMIT_SWITCH, ts->limit_switch);
+		mutex_unlock(&ts->mutex);
+	}
+
+	return count;
+}
+
+static const struct file_operations proc_tp_dead_zone_fops = {
+	.write = proc_dead_zone_write,
+	.open  = simple_open,
+	.owner = THIS_MODULE,
+};
+
 //proc/touchpanel/black_screen_test
 static ssize_t proc_black_screen_test_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
 {
@@ -2363,6 +2413,12 @@ static int init_touchpanel_proc(struct touchpanel_data *ts)
 	}
 
 	prEntry_tmp = proc_create_data("tpedge_limit_enable", 0666, prEntry_tp, &proc_limit_switch_fops, ts);
+	if (prEntry_tmp == NULL) {
+		ret = -ENOMEM;
+		TPD_INFO("%s: Couldn't create proc entry, %d\n", __func__, __LINE__);
+	}
+
+	prEntry_tmp = proc_create_data("tp_switch_dead_zone", 0666, prEntry_tp, &proc_tp_dead_zone_fops, ts);
 	if (prEntry_tmp == NULL) {
 		ret = -ENOMEM;
 		TPD_INFO("%s: Couldn't create proc entry, %d\n", __func__, __LINE__);
@@ -4864,6 +4920,14 @@ int register_common_touch_device(struct touchpanel_data *pdata)
 	ts->charge_detect = 0;
 	ts->firmware_update_type = 0;
 	ts->corner_delay_up = -1;
+	ts->wet_mode_status = 0;
+	if (ts->project_info == 1) {//project 19811
+		ts->dead_zone_l = 25;
+		ts->dead_zone_p = 25;
+	} else {
+		ts->dead_zone_l = 20;
+		ts->dead_zone_p = 20;
+	}
 	if(ts->is_noflash_ic) {
 		ts->irq = ts->s_client->irq;
 	} else {

@@ -1,7 +1,7 @@
 /***************************************************
  * File:synaptics_common.h
  * VENDOR_EDIT
- * Copyright (c)  2008- 2030  ONEPLUS Mobile communication Corp.ltd.
+ * Copyright (c)  2008- 2030  Oppo Mobile communication Corp.ltd.
  * Description:
  *             synaptics common driver
  * Version:1.0:

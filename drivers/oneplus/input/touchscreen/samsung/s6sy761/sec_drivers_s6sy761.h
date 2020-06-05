@@ -153,7 +153,8 @@
 #define SEC_CMD_GRIP_PARA						0xAC
 #define SET_CMD_SET_AUDIO_NOISE_MODE			0x46
 #define SEC_NOISE_MODE							0xBB
-
+#define SEC_WET_MODE							0x8B
+#define SEC_STATUS								0x3B
 
 
 

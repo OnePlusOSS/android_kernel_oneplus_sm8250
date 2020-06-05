@@ -138,6 +138,7 @@ typedef enum {
 	MODE_FINGERPRINT_TEST,
 	MODE_AUDIO_NOISE,
 	MODE_REVERSE_WIRELESS_CHARGE,
+	MODE_WET_DETECT,
 }work_mode;
 
 typedef enum {
@@ -434,7 +435,8 @@ struct touchpanel_data {
 	int max_num;                                        /*max muti-touch num supportted*/
 	int irq_slot;                                       /*debug use, for print all finger's first touch log*/
 	int firmware_update_type;                           /*firmware_update_type: 0=check firmware version 1=force update; 2=for FAE debug*/
-
+	int dead_zone_l;                                    /*landscape dead zone*/
+	int dead_zone_p;                                    /*portrait dead zone*/
 	tp_resume_order tp_resume_order;
 	tp_suspend_order tp_suspend_order;
 	tp_interrupt_mode int_mode;                         /*whether interrupt and be disabled*/
@@ -450,7 +452,7 @@ struct touchpanel_data {
 	u8 limit_switch;									/*0 is phone up 1 is crosswise*/
 	u8 touchold_event;									/*0 is touchhold down 1 is up*/
 	bool reverse_charge_status;							/*reverse charge status*/
-
+	bool wet_mode_status;								/*wet_mode_status*/
 #if defined(TPD_USE_EINT)
 	struct hrtimer         timer;                       /*using polling instead of IRQ*/
 #endif

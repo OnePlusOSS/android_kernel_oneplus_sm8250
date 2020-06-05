@@ -8,8 +8,8 @@
  * Version     : V1.0 
  *
  ***********************************************************/
-#ifndef OP_TP_DEVICES_H
-#define OP_TP_DEVICES_H
+#ifndef OPPO_TP_DEVICES_H
+#define OPPO_TP_DEVICES_H
 //device list define
 typedef enum tp_dev{
     TP_OFILM,

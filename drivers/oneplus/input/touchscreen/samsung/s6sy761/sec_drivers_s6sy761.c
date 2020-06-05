@@ -161,6 +161,22 @@ static int sec_enable_reverse_wireless_charge(struct chip_data_s6sy761 *chip_inf
 	return ret;
 
 }
+
+static int sec_disable_wet_mode(struct chip_data_s6sy761 *chip_info, bool enable)
+{
+	int ret = -1;
+
+	if (enable) {
+		g_tp->wet_mode_status = 1;
+		ret = touch_i2c_write_byte(chip_info->client, SEC_WET_MODE, 1);
+		TPD_INFO("enter wet mode, close it\n");
+	} else {
+		g_tp->wet_mode_status = 0;
+		ret = touch_i2c_write_byte(chip_info->client, SEC_WET_MODE, 0);
+	}
+
+	return 0;
+}
 static int sec_audio_noise_mode(struct chip_data_s6sy761 *chip_info, bool enable)
 {
 	int ret = -1;
@@ -320,15 +336,11 @@ static int sec_limit_switch_mode(struct chip_data_s6sy761 *chip_info, bool enabl
 		ret = touch_i2c_write_block(chip_info->client, SEC_CMD_SCREEN_ORIEN, 3, cmd);
 	}
 	//dead zone type 1
-	if (g_tp->project_info == 1) {//19811 project add dead zone 1
-		buf[2] = 0x19;	//x=25px
-	} else {
-		if ((g_tp->limit_switch == 1) || (g_tp->limit_switch == 3)) {	//landscape
-			buf[2] = 0x0A;	//x=10px
-		} else {	//portrait
-			buf[2] = 0x14;	//x=20px
-		}
-	}
+	if ((g_tp->limit_switch == 1) || (g_tp->limit_switch == 3))	//landscape
+		buf[2] = g_tp->dead_zone_l;	//default x=15px
+	else	//portrait
+		buf[2] = g_tp->dead_zone_p;	//default x=15px
+
 	ret = touch_i2c_write_block(chip_info->client, SEC_CMD_GRIP_PARA, 5, buf);
 	//dead zone type 2
 	buf[0] = 0x01;
@@ -1027,6 +1039,13 @@ static fw_update_state sec_fw_update(void *chip_data, const struct firmware *fw,
 	config_version_in_ic = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
 	TPD_INFO("config version in bin is 0x%04x, config version in ic is 0x%04x\n", config_version_in_bin, config_version_in_ic);
 
+	msleep(10);
+	ret = touch_i2c_read_byte(chip_info->client, SEC_STATUS);//check wet mode status
+	TPD_INFO("ret is %d\n", ret);
+	if (ret == 1) {
+		TPD_INFO("enter water mode\n");
+		g_tp->wet_mode_status = 1;
+	}
 	ret = touch_i2c_read_byte(chip_info->client, SEC_READ_BOOT_STATUS);
 	if (ret == SEC_STATUS_BOOT_MODE) {
 		force = 1;
@@ -1103,8 +1122,10 @@ static u8 sec_trigger_reason(void *chip_data, int gesture_enable, int is_suspend
 		}
 		if (i2c_error_num == 4) {
 			TPD_INFO("%s: read one event failed\n", __func__);
-			sec_reset(chip_info);
-			operate_mode_switch(g_tp);
+			if (!g_tp->is_suspended) {//suspend not allow reset.
+				sec_reset(chip_info);
+				operate_mode_switch(g_tp);
+			}
 			pm_qos_remove_request(&pm_qos_req_stp);
 			return IRQ_IGNORE;
 		}
@@ -1620,6 +1641,12 @@ static int sec_mode_switch(void *chip_data, work_mode mode, bool flag)
 			ret = sec_enable_reverse_wireless_charge(chip_info, flag);
 			if (ret < 0)
 				TPD_INFO("%s: switch reverse wireless mode : %d failes\n", __func__, flag);
+			break;
+
+		case MODE_WET_DETECT:
+			ret = sec_disable_wet_mode(chip_info, flag);
+			if (ret < 0)
+				TPD_INFO("%s: change wet mode : %d failes\n", __func__, flag);
 			break;
 
 		default:
