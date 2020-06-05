@@ -606,7 +606,8 @@ static int fg_soc_calibrate(struct  bq27541_device_info *di, int soc)
 	get_current_time(&soc_current_time);
 	time_last = soc_current_time - di->soc_pre_time;
 	if (charging_status) { /* is charging */
-		if (ret.intval == POWER_SUPPLY_STATUS_FULL) {
+		if ((ret.intval == POWER_SUPPLY_STATUS_FULL) &&
+		    (di->soc_pre > 60)) {
 			soc_calib = di->soc_pre;
 			if (di->soc_pre < 100
 					&& (temp_region == BATT_TEMP_LITTLE_COOL
