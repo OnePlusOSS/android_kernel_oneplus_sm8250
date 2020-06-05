@@ -2491,6 +2491,7 @@ static int smb5_batt_set_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_IS_AGING_TEST:
 		chg->is_aging_test = (bool)val->intval;
 		__debug_mask = PR_OP_DEBUG;
+		pr_info("user set is_aging_test:%d\n", chg->is_aging_test);
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		rc = smblib_set_prop_batt_capacity(chg, val);
