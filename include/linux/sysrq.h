@@ -38,6 +38,8 @@ struct sysrq_key_op {
 
 extern int panic_flush_device_cache(int timeout);
 extern int oem_get_download_mode(void);
+extern bool oem_get_twice_modemdump_state(void);
+extern int oem_get_modemdump_mode(void);
 
 #ifdef CONFIG_MAGIC_SYSRQ
 

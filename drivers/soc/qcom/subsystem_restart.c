@@ -1412,7 +1412,7 @@ int subsystem_restart_dev(struct subsys_device *dev)
 	if (get_small_board_1_absent() == 1 || get_small_board_2_absent() == 1) {
 		pr_warn("subsys-restart: small board absent restart request for %s\n", name);
 		__subsystem_restart_dev(dev);
-	} else if (ap_mdm_dump_once() && !(strcmp(name, "esoc0")) && oem_get_download_mode()) {
+	} else if (!oem_get_modemdump_mode() && !(strcmp(name, "esoc0")) && oem_get_download_mode()) {
 		pr_err("%s ssr state=%d\n", name, get_esoc_ssr_state());
 		if (get_esoc_ssr_state() == 0) {
 			set_esoc_ssr_state(1);

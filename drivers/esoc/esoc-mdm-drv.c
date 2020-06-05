@@ -59,6 +59,13 @@ struct mdm_drv {
 
 #define S3_RESET_DELAY_MS	1000
 
+bool oem_twice_modemdump_en;
+bool oem_get_twice_modemdump_state(void)
+{
+	return oem_twice_modemdump_en;
+}
+EXPORT_SYMBOL(oem_get_twice_modemdump_state);
+
 static void esoc_client_link_power_off(struct esoc_clink *esoc_clink,
 							unsigned int flags);
 static void esoc_client_link_mdm_crash(struct esoc_clink *esoc_clink);
@@ -456,6 +463,7 @@ static int mdm_subsys_powerup(const struct subsys_desc *crashed_subsys)
 	const struct esoc_clink_ops * const clink_ops = esoc_clink->clink_ops;
 	int timeout = INT_MAX;
 	u8 pon_trial = 0;
+	oem_twice_modemdump_en = false;
 
 	esoc_mdm_log("Powerup request from SSR\n");
 
@@ -526,6 +534,12 @@ static int mdm_subsys_powerup(const struct subsys_desc *crashed_subsys)
 			"Boot failed. Doing cleanup and attempting to retry\n");
 			pon_trial++;
 			mdm_subsys_retry_powerup_cleanup(esoc_clink, 0);
+			// oem sdx5x modem dump checkpoint
+			if (oem_get_download_mode() && oem_get_modemdump_mode()) {
+				pr_err("[MDM] Trigger oem twice modemdump\n");
+				esoc_mdm_log("[MDM] Trigger oem twice modemdump\n");
+				oem_twice_modemdump_en = true;
+			}
 		} else if (mdm_drv->pon_state == PON_SUCCESS) {
 			break;
 		}

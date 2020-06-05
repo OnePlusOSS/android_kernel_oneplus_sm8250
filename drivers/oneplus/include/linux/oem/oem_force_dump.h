@@ -24,4 +24,27 @@ int  msm_serial_oem_init(void);
 #else
 inline int  msm_serial_oem_init(void){ return 0;}
 #endif
+
+enum key_stat_item {
+	KEY_RELEASED,
+	KEY_PRESSED
+};
+
+extern void send_sig_to_get_trace(char *name);
+extern void compound_key_to_get_trace(char *name);
+extern enum key_stat_item pwr_status, vol_up_status;
+
+static inline void set_pwr_status(enum key_stat_item status)
+{
+	pwr_status = status;
+}
+
+static inline void set_vol_up_status(enum key_stat_item status)
+{
+	vol_up_status = status;
+}
+
 #endif
+
+extern int oem_get_modemdump_mode(void);
+extern bool oem_get_twice_modemdump_state(void);

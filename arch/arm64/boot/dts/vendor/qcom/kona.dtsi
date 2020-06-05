@@ -1356,6 +1356,11 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
+		download_mode@0 {
+			compatible = "qcom,msm-imem-download_mode";
+			reg = <0x658 4>;
+		};
+
 		mem_dump_table@10 {
 			compatible = "qcom,msm-imem-mem_dump_table";
 			reg = <0x10 0x8>;

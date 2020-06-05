@@ -447,10 +447,16 @@ static void mdm_get_restart_reason(struct work_struct *work)
 	}
 	mdm->get_restart_reason = false;
 
-	if (get_esoc_ssr_state() == 1) {
+	// oem twice or fusion modemdump checkpoint
+	if (get_esoc_ssr_state() || oem_get_twice_modemdump_state()) {
 		if (oem_get_download_mode()) {
-			char detial_buf[] = "\r\nSDX5x esoc0 modem crash";
-			strlcat(sfr_buf, detial_buf, RD_BUF_SIZE);
+			char fusion_buf[] = "\r\nSDX5x esoc0 modem crash";
+			char twice_buf[] = "\r\nTwice Dump To Get Modem Dump\r\n";
+
+			if (oem_get_modemdump_mode())
+				strlcat(sfr_buf, twice_buf, RD_BUF_SIZE);
+			else
+				strlcat(sfr_buf, fusion_buf, RD_BUF_SIZE);
 			esoc_mdm_log("Trigger panic by OEM to get SDX5x dump!\n");
 			dev_err(dev, "Trigger panic by OEM to get SDX5x dump!\n");
 			msleep(5000);
@@ -641,7 +647,8 @@ static irqreturn_t mdm_status_change(int irq, void *dev_id)
 		esoc_clink_evt_notify(ESOC_BOOT_STATE, esoc);
 		mdm_trigger_dbg(mdm);
 		queue_work(mdm->mdm_queue, &mdm->mdm_status_work);
-		if (mdm->get_restart_reason)
+		/* OEM : get_restart_reason if twice modemdump is triggered */
+		if (mdm->get_restart_reason || oem_get_twice_modemdump_state())
 			queue_work(mdm->mdm_queue, &mdm->restart_reason_work);
 		if (esoc->auto_boot)
 			esoc->clink_ops->notify(ESOC_BOOT_DONE, esoc);

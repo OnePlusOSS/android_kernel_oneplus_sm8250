@@ -7,5 +7,6 @@ extern void oem_force_minidump_mode(void);
 extern int panic_flush_device_cache(int timeout);
 extern void panic_flush_device_cache_circled_on(void);
 extern void panic_flush_device_cache_circled_off(void);
+extern bool oem_get_twice_modemdump_state(void);
 
 #endif
