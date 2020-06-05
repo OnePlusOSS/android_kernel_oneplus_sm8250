@@ -1511,7 +1511,12 @@ static int select_fallback_rq(int cpu, struct task_struct *p, bool allow_iso)
 	enum { cpuset, possible, fail, bug } state = cpuset;
 	int dest_cpu;
 	int isolated_candidate = -1;
+	bool is_rtg;
 
+	is_rtg = task_in_related_thread_group(p);
+	if (sysctl_sched_skip_affinity && is_rtg &&
+			cpu_active(cpu) && !cpu_isolated(cpu))
+		return cpu;
 	/*
 	 * If the node that the CPU is on has been offlined, cpu_to_node()
 	 * will return -1. There is no CPU on the node, and we should
@@ -1600,11 +1605,14 @@ static inline
 int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags,
 		   int sibling_count_hint)
 {
+	bool is_rtg;
 	bool allow_isolated = (p->flags & PF_KTHREAD);
 
 	lockdep_assert_held(&p->pi_lock);
 
-	if (p->nr_cpus_allowed > 1)
+//	if (p->nr_cpus_allowed > 1)
+	is_rtg = task_in_related_thread_group(p);
+	if (p->nr_cpus_allowed > 1 || (sysctl_sched_skip_affinity && is_rtg))
 		cpu = p->sched_class->select_task_rq(p, cpu, sd_flags, wake_flags,
 						     sibling_count_hint);
 	else
@@ -1621,8 +1629,13 @@ int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags,
 	 *   not worry about this generic constraint ]
 	 */
 	if (unlikely(!is_cpu_allowed(p, cpu)) ||
-			(cpu_isolated(cpu) && !allow_isolated))
-		cpu = select_fallback_rq(task_cpu(p), p, allow_isolated);
+//			(cpu_isolated(cpu) && !allow_isolated))
+//		cpu = select_fallback_rq(task_cpu(p), p, allow_isolated);
+		(cpu_isolated(cpu) && !allow_isolated)) {
+		if (!sysctl_sched_skip_affinity || !is_rtg)
+			cpu = task_cpu(p);
+		cpu = select_fallback_rq(cpu, p, allow_isolated);
+	}
 
 	return cpu;
 }

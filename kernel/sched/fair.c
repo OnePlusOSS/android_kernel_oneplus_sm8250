@@ -6961,6 +6961,7 @@ enum fastpaths {
 	MANY_WAKEUP,
 };
 
+unsigned int sysctl_sched_skip_affinity;
 static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 					struct task_struct *p,
 					struct find_best_target_env *fbt_env)
@@ -6988,6 +6989,8 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 	int prev_cpu = task_cpu(p);
 	bool next_group_higher_cap = false;
 	int isolated_candidate = -1;
+	bool is_rtg;
+	cpumask_t new_allowed_cpus;
 
 	/*
 	 * In most cases, target_capacity tracks capacity_orig of the most
@@ -7027,8 +7030,14 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 
 	/* Scan CPUs in all SDs */
 	sg = start_sd->groups;
+	is_rtg = task_in_related_thread_group(p);
+	if (sysctl_sched_skip_affinity && is_rtg)
+		cpumask_setall(&new_allowed_cpus);
+	else
+		cpumask_copy(&new_allowed_cpus, &p->cpus_allowed);
 	do {
-		for_each_cpu_and(i, &p->cpus_allowed, sched_group_span(sg)) {
+		//for_each_cpu_and(i, &p->cpus_allowed, sched_group_span(sg)) {
+		for_each_cpu_and(i, &new_allowed_cpus, sched_group_span(sg)) {
 			unsigned long capacity_curr = capacity_curr_of(i);
 			unsigned long capacity_orig = capacity_orig_of(i);
 			unsigned long wake_util, new_util, new_util_cuml;

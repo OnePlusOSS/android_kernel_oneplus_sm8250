@@ -109,6 +109,7 @@ struct sched_walt_cpu_load {
 	u64 ws;
 };
 
+extern unsigned int sysctl_sched_skip_affinity;
 #ifdef CONFIG_SCHED_WALT
 extern unsigned int sched_ravg_window;
 
