@@ -36,7 +36,7 @@ static u32 fw_version_ext;
 #define CNSS_EVENT_PENDING		2989
 #define COLD_BOOT_CAL_SHUTDOWN_DELAY_MS	50
 
-#define CNSS_QUIRKS_DEFAULT		BIT(DISABLE_IO_COHERENCY)
+#define CNSS_QUIRKS_DEFAULT		0
 #ifdef CONFIG_CNSS_EMULATION
 #define CNSS_MHI_TIMEOUT_DEFAULT	90000
 #else
@@ -1049,6 +1049,10 @@ static int cnss_do_recovery(struct cnss_plat_data *plat_priv,
 
 	switch (reason) {
 	case CNSS_REASON_LINK_DOWN:
+		if (!cnss_bus_check_link_status(plat_priv)) {
+			cnss_pr_dbg("Skip link down recovery as link is already up\n");
+			return 0;
+		}
 		if (test_bit(LINK_DOWN_SELF_RECOVERY,
 			     &plat_priv->ctrl_params.quirks))
 			goto self_recovery;
