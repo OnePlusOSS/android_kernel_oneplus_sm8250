@@ -51,11 +51,15 @@
 #include <drm/drm_panel.h>
 
 #include "memplus.h"
+#include <linux/cpumask.h>
+#include <linux/sched.h>
 
 #define PF_NO_TAIL(page, enforce) ({					\
 		VM_BUG_ON_PGFLAGS(enforce && PageTail(page), page);	\
 		compound_head(page);})
 
+#define MEMEX_SIZE 512
+#define MEMEX_DEBUG 0
 #define GC_SIZE 1024
 #define DEBUG_GCD 0 /*print gcd info */
 #define GCD_SST 0 /* stress test */
@@ -109,6 +113,16 @@ static unsigned long display_on_jiffies;
 static pid_t proc[GC_SIZE] = { 0 };
 static struct task_struct *gc_tsk;
 static bool display_on = true;
+
+/* MemEx mode */
+static struct task_struct *memex_tsk;
+static unsigned int memex_threshold __read_mostly;
+static pid_t memex_proc[MEMEX_SIZE];
+static unsigned int vm_cam_aware __read_mostly = 1;
+#if MEMEX_DEBUG
+static unsigned int vm_swapin __read_mostly = 0;
+module_param_named(memory_plus_swapin, vm_swapin, uint, S_IRUGO | S_IWUSR);
+#endif
 
 /* -1 = system free to use swap, 0 = disable retention, swap not available, 1 = enable retention */
 static int vm_memory_plus __read_mostly = 0;
@@ -1040,6 +1054,242 @@ static int gc_fn(void *p)
 	}
 	return 0;
 }
+
+#if MEMEX_DEBUG
+static ssize_t memex_do_swapin_anon(struct task_struct *task)
+{
+	struct mm_struct *mm;
+	struct vm_area_struct *vma;
+	struct mm_walk walk = {};
+	int task_anon = 0, task_swap = 0, err = 0;
+
+retry:
+	mm = get_task_mm(task);
+	if (!mm)
+		goto out;
+
+	task_anon = get_mm_counter(mm, MM_ANONPAGES);
+	task_swap = get_mm_counter(mm, MM_SWAPENTS);
+
+	walk.mm = mm;
+	walk.pmd_entry = memplus_swapin_walk_pmd_entry;
+
+	down_read(&mm->mmap_sem);
+
+	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+		if (is_vm_hugetlb_page(vma))
+			continue;
+
+		if (vma->vm_file)
+			continue;
+
+		/* if mlocked, don't reclaim it */
+		if (vma->vm_flags & VM_LOCKED)
+			continue;
+
+		walk.private = vma;
+		err = walk_page_range(vma->vm_start, vma->vm_end, &walk);
+		if (err == -1)
+			break;
+	}
+
+	flush_tlb_mm(mm);
+	up_read(&mm->mmap_sem);
+	mmput(mm);
+	if (err) {
+		err = 0;
+		//schedule();
+#if MEMEX_DEBUG
+		/* TODO: it's possible to loop forever here
+		 * if we're swapin camera which is foreground actively used */
+#endif
+		goto retry;
+	}
+out:
+	lru_add_drain();	/* Push any new pages onto the LRU now */
+	return 0;
+}
+#endif
+
+/* get_task_struct before using this function */
+static ssize_t memex_do_reclaim_anon(struct task_struct *task, int prev_adj)
+{
+	struct mm_struct *mm;
+	struct vm_area_struct *vma;
+	struct mm_walk reclaim_walk = {};
+	struct mp_reclaim_param rp;
+	int task_anon = 0, task_swap = 0;
+	int a_task_anon = 0, a_task_swap = 0;
+
+	//u64 time_ns = 0;
+#if DEBUG_TIME_INFO
+	struct timespec ts1, ts2;
+	getnstimeofday(&ts1);
+#endif
+#if FEAT_RECLAIM_LIMIT
+	rp.start_jiffies = jiffies;
+#endif
+	rp.nr_to_reclaim = INT_MAX;
+	rp.nr_reclaimed = 0;
+	rp.nr_scanned = 0;
+	/* memex currently use zram by default */
+	rp.type = TYPE_FREQUENT;
+
+	/* if available zram is less than 32MB, quit early */
+	if (!enough_swap_size(8192, TYPE_FREQUENT))
+		goto out;
+
+	/* TODO: do we need to use p = find_lock_task_mm(tsk); in case main thread got killed */
+	mm = get_task_mm(task);
+	if (!mm)
+		goto out;
+
+	task_anon = get_mm_counter(mm, MM_ANONPAGES);
+	task_swap = get_mm_counter(mm, MM_SWAPENTS);
+
+	reclaim_walk.mm = mm;
+	reclaim_walk.pmd_entry = memplus_reclaim_pte;
+	reclaim_walk.private = &rp;
+
+	down_read(&mm->mmap_sem);
+	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+		if (is_vm_hugetlb_page(vma))
+			continue;
+
+		if (vma->vm_file)
+			continue;
+
+		/* if mlocked, don't reclaim it */
+		if (vma->vm_flags & VM_LOCKED)
+			continue;
+
+		rp.vma = vma;
+
+		/* TODO: do we need this check? */
+		if (!list_empty(&vma->vm_mm->mmap_sem.wait_list)) {
+#if MEMEX_DEBUG
+			pr_info("MemEX mmap_sem waiting %s(%d)\n", task->comm, task->pid);
+#endif
+			break;
+		}
+
+		walk_page_range(vma->vm_start, vma->vm_end,
+				&reclaim_walk);
+
+		if (!rp.nr_to_reclaim)
+			break;
+	}
+
+	flush_tlb_mm(mm);
+	up_read(&mm->mmap_sem);
+	a_task_anon = get_mm_counter(mm, MM_ANONPAGES);
+	a_task_swap = get_mm_counter(mm, MM_SWAPENTS);
+	mmput(mm);
+out:
+#if DEBUG_TIME_INFO
+	getnstimeofday(&ts2);
+	ts2 = timespec_sub(ts2, ts1);
+	time_ns = timespec_to_ns(&ts2);
+#endif
+	/* TODO : return proper value */
+	return rp.nr_reclaimed;
+}
+
+static inline bool should_skip(const char *comm)
+{
+	if (!vm_cam_aware)
+		return false;
+	/* provider@2.4-se, camera@1.0-serv, cameraserver, .camera.service, ctureprocessing, .oneplus.camera */
+	return strnstr(comm, "camera", TASK_COMM_LEN)
+		|| !strncmp("provider@2.4-se", comm, TASK_COMM_LEN)
+		|| !strncmp("ctureprocessing", comm, TASK_COMM_LEN);
+}
+
+static int memex_fn(void *p)
+{
+	struct task_struct *tsk;
+	int i, idx_sys, idx_app;
+	cpumask_t tmask;
+
+	/* setup nice: 130 cpumask: 0x7f */
+	cpumask_parse("7f", &tmask);
+	set_cpus_allowed_ptr(current, &tmask);
+	set_user_nice(current, 10);
+
+	set_freezable();
+	while (1) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		freezable_schedule();
+
+		idx_sys = 0;
+		idx_app = MEMEX_SIZE - 1;
+		memset(memex_proc, 0, sizeof(memex_proc));
+
+		rcu_read_lock();
+		for_each_process(tsk) {
+			if (tsk->flags & PF_KTHREAD)
+				continue;
+
+			/* TODO: do we need this check? */
+			if (should_skip(tsk->comm))
+				continue;
+
+			if (task_uid(tsk).val >= AID_APP) {
+				memex_proc[idx_app--] = tsk->pid;
+			} else {
+				memex_proc[idx_sys++] = tsk->pid;
+			}
+
+			if (unlikely(idx_sys > idx_app))
+				break;
+		}
+#if MEMEX_DEBUG
+		pr_info("MemEX sys=%d app=%d\n", idx_sys, idx_app);
+#endif
+		rcu_read_unlock();
+
+		for (i = 0; i < MEMEX_SIZE; i++) {
+			int pid = memex_proc[i];
+
+			while (memex_threshold && memex_threshold <= (si_mem_available() * PAGE_SIZE / (1024 * 1024))) {
+#if MEMEX_DEBUG
+				pr_info("MemEX thresh = %u, MemAvail = %u\n"
+						, memex_threshold, (si_mem_available() * PAGE_SIZE / (1024 * 1024)));
+#endif
+				freezable_schedule_timeout_interruptible(HZ / 30);
+			}
+
+			/* monitor current mode change */
+			if (unlikely(!memex_threshold))
+				break;
+
+			if (pid == 0)
+				continue;
+
+			rcu_read_lock();
+			tsk = find_task_by_vpid(pid);
+			if (!tsk) {
+				rcu_read_unlock();
+				continue;
+			}
+			get_task_struct(tsk);
+			rcu_read_unlock();
+#if MEMEX_DEBUG
+			pr_info("MemEX processing %s (%d) \n", tsk->comm, tsk->pid);
+			if (vm_swapin)
+				memex_do_swapin_anon(tsk);
+			else
+#endif
+				memex_do_reclaim_anon(tsk, 0);
+			put_task_struct(tsk);
+		}
+
+		if (kthread_should_stop())
+			break;
+	}
+	return 0;
+}
+
 int get_anon_memory(struct task_struct *task, unsigned long __user *buf)
 {
 	unsigned long size = 0;
@@ -1201,6 +1451,12 @@ static int __init memplus_init(void)
 		gc_tsk = NULL;
 	}
 
+	memex_tsk = kthread_run(memex_fn, 0, "memex");
+	if (IS_ERR(memex_tsk)) {
+		pr_err("Failed to start memex_task\n");
+		memex_tsk = NULL;
+	}
+
 #if defined(CONFIG_PAGE_EXTENSION) && defined(CONFIG_PAGE_OWNER_ENABLE_DEFAULT)
 	pr_info("ext mode\n");
 #else
@@ -1355,6 +1611,32 @@ static int memory_plus_wake_gcd_store(const char *buf, const struct kernel_param
 	return 0;
 }
 
+/* return value mapping:
+ * 0     - success
+ * ESRCH - no MemEx daemon
+ * EINVAL- invalid input
+ */
+static int memory_plus_wake_memex_store(const char *buf, const struct kernel_param *kp)
+{
+	unsigned int val;
+
+	if (!memex_tsk)
+		return -ESRCH;
+	if (sscanf(buf, "%u\n", &val) <= 0)
+		return -EINVAL;
+
+	memex_threshold = val;
+	if (val)
+		wake_up_process(memex_tsk);
+
+	return 0;
+}
+
+static int memory_plus_wake_memex_show(char *buf, const struct kernel_param *kp)
+{
+	return snprintf(buf, PAGE_SIZE, "%u\n", memex_threshold);
+}
+
 static struct kernel_param_ops memory_plus_test_worstcase_ops = {
 	.set = memory_plus_test_worstcase_store,
 };
@@ -1363,10 +1645,17 @@ static struct kernel_param_ops memory_plus_wake_gcd_ops = {
 	.set = memory_plus_wake_gcd_store,
 };
 
+static struct kernel_param_ops memory_plus_wake_memex_ops = {
+	.set = memory_plus_wake_memex_store,
+	.get = memory_plus_wake_memex_show,
+};
+
 module_param_cb(memory_plus_test_worstcase, &memory_plus_test_worstcase_ops, NULL, 0200);
 module_param_cb(memory_plus_wake_gcd, &memory_plus_wake_gcd_ops, NULL, 0644);
+module_param_cb(memory_plus_wake_memex, &memory_plus_wake_memex_ops, NULL, 0644);
 
 module_param_named(memory_plus_enabled, vm_memory_plus, uint, S_IRUGO | S_IWUSR);
 module_param_named(memplus_add_to_swap, memplus_add_to_swap, ulong, S_IRUGO | S_IWUSR);
+module_param_named(memory_plus_cam_aware, vm_cam_aware, uint, S_IRUGO | S_IWUSR);
 
 module_init(memplus_init)
