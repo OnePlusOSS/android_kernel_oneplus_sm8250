@@ -64,14 +64,9 @@ static int32_t cam_actuator_power_up(struct cam_actuator_ctrl_t *a_ctrl)
 
 	if ((power_info->power_setting == NULL) &&
 		(power_info->power_down_setting == NULL)) {
-		CAM_INFO(CAM_ACTUATOR,
-			"Using default power settings");
-		rc = cam_actuator_construct_default_power_setting(power_info);
-		if (rc < 0) {
-			CAM_ERR(CAM_ACTUATOR,
-				"Construct default actuator power setting failed.");
-			return rc;
-		}
+		CAM_ERR(CAM_ACTUATOR,
+			"fatal! no power settings.");
+		return -EINVAL;
 	}
 
 	/* Parse and fill vreg params for power up settings */
