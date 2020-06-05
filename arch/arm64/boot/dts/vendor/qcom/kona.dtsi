@@ -415,7 +415,7 @@
 
 		removed_mem: removed_region@80b00000 {
 			no-map;
-			reg = <0x0 0x80b00000 0x0 0x5300000>;
+			reg = <0x0 0x80b00000 0x0 0x5700000>;
 		};
 
 		pil_camera_mem: pil_camera_region@86200000 {
@@ -2358,7 +2358,7 @@
 
 	qcom_seecom: qseecom@82400000 {
 		compatible = "qcom,qseecom";
-		reg = <0x82400000 0x3A00000>;
+		reg = <0x82400000 0x3E00000>;
 		reg-names = "secapp-region";
 		memory-region = <&qseecom_mem>;
 		qcom,hlos-num-ce-hw-instances = <1>;
