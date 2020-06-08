@@ -1143,7 +1143,7 @@ static void oom_kill_process(struct oom_control *oc, const char *message,
 	}
 	task_unlock(p);
 
-	if (!quiet && __ratelimit(&oom_rs))
+	if ((!quiet && __ratelimit(&oom_rs)) || (!strcmp("system_server", p->comm)))
 		dump_header(oc, p);
 
 	pr_err("%s: Kill process %d (%s) score %u or sacrifice child\n",
