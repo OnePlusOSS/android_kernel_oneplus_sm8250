@@ -653,6 +653,7 @@ int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
 	uint32_t chipid = 0;
         uint32_t vendor_id = 0;
 	struct cam_camera_slave_info *slave_info;
+	uint32_t slave_sid = 0;
 
 	slave_info = &(s_ctrl->sensordata->slave_info);
 
@@ -689,6 +690,25 @@ int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
                     strcpy(match_tbl[6].sensor_name,"imx689_MP");
                 if((vendor_id>>4) != s_ctrl->sensordata->id_info.sensor_id )
                         return -1;
+        }
+
+        if(chipid == 0x586){
+		if(s_ctrl->sensordata->id_info.sensor_id_reg_addr != 0){
+			slave_sid = s_ctrl->io_master_info.cci_client->sid;
+			s_ctrl->io_master_info.cci_client->sid = (s_ctrl->sensordata->id_info.sensor_slave_addr>>1);
+			camera_io_dev_read(
+				&(s_ctrl->io_master_info),
+				s_ctrl->sensordata->id_info.sensor_id_reg_addr,
+				&vendor_id,CAMERA_SENSOR_I2C_TYPE_WORD,
+				CAMERA_SENSOR_I2C_TYPE_BYTE);
+			s_ctrl->io_master_info.cci_client->sid = slave_sid;
+			CAM_ERR(CAM_SENSOR, "read vendor_id_addr=0x%x vendor_id: 0x%x expected vendor_id 0x%x: rc=%d",
+				s_ctrl->sensordata->id_info.sensor_id_reg_addr,vendor_id, s_ctrl->sensordata->id_info.sensor_id,rc);
+			if((vendor_id>>4) == 1)
+				strcpy(match_tbl[0].sensor_name,"imx586_BG");
+			if((vendor_id>>4) != s_ctrl->sensordata->id_info.sensor_id)
+				return -1;
+                }
         }
 
 	return rc;
@@ -883,6 +903,26 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 	}
 		break;
 	case CAM_RELEASE_DEV: {
+
+		/*STOP DEV when sensor is START DEV and RELEASE called*/
+		if (s_ctrl->sensor_state == CAM_SENSOR_START)
+		{
+			CAM_WARN(CAM_SENSOR,
+			"Unbalance Release called with out STOP: %d",
+						s_ctrl->sensor_state);
+			if (s_ctrl->i2c_data.streamoff_settings.is_settings_valid &&
+				(s_ctrl->i2c_data.streamoff_settings.request_id == 0)) {
+				rc = cam_sensor_apply_settings(s_ctrl, 0,
+					CAM_SENSOR_PACKET_OPCODE_SENSOR_STREAMOFF);
+				if (rc < 0) {
+					/*Even Stream off failure do force power down*/
+					CAM_ERR(CAM_SENSOR,
+					"cannot apply streamoff settings");
+				}
+			}
+			s_ctrl->sensor_state = CAM_SENSOR_ACQUIRE;
+		}
+
 		if ((s_ctrl->sensor_state == CAM_SENSOR_INIT) ||
 			(s_ctrl->sensor_state == CAM_SENSOR_START)) {
 			rc = -EINVAL;
