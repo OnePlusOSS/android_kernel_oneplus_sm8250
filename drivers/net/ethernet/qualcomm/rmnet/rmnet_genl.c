@@ -186,11 +186,8 @@ static void rmnet_create_pid_bps_resp(struct rmnet_core_pid_bps_resp
 			tx_bytes_cur = node_p->tx_bytes;
 			if (tx_bytes_cur <= node_p->tx_bytes_last_query) {
 				/* Dont send inactive pids to userspace */
-				/* TODO: can remove from hash table probably */
-				node_p->tx_bps = 0;
-				node_p->timstamp_last_query =
-					pid_bps_resp_ptr->timestamp;
-				node_p->sched_boost_remaining_ms = 0;
+				hash_del(&node_p->list);
+				kfree(node_p);
 				continue;
 			}
 
