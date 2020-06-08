@@ -38,6 +38,8 @@
 extern u32 mode_fps;
 extern int gamma_read_flag;
 extern int tp_1v8_power;
+extern char dimming_gamma_60hz[30];
+extern char dimming_gamma_120hz[15];
 
 enum dsi_gamma_cmd_set_type {
 	DSI_GAMMA_CMD_SET_SWITCH_60HZ = 0,
@@ -448,4 +450,6 @@ int dsi_panel_set_customer_srgb_mode(struct dsi_panel *panel, int level);
 int dsi_panel_set_customer_p3_mode(struct dsi_panel *panel, int level);
 int dsi_panel_set_seed_lp_mode(struct dsi_panel *panel, int seed_lp_level);
 int dsi_panel_set_mca_setting_mode(struct dsi_panel *panel, int mca_setting_mode);
+void dsi_panel_update_gamma_change_write(void);
+int dsi_panel_dimming_gamma_write(struct dsi_panel *panel);
 #endif /* _DSI_PANEL_H_ */

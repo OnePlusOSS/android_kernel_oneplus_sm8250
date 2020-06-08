@@ -1047,7 +1047,8 @@ error:
 		dsi_display_get_serial_number_AT(connector);
 	}
 
-	if ((gamma_read_flag < 2) && (strcmp(dsi_display->panel->name, "samsung dsc cmd mode oneplus dsi panel") == 0)) {
+	if ((gamma_read_flag < 2) && ((strcmp(dsi_display->panel->name, "samsung dsc cmd mode oneplus dsi panel") == 0)
+		|| (strcmp(dsi_display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0))) {
 		if (gamma_read_flag < 1) {
 			gamma_read_flag++;
 		}
@@ -5555,7 +5556,8 @@ static int dsi_display_res_init(struct dsi_display *display)
 		goto error_ctrl_put;
 	}
 
-	if (strcmp(display->panel->name, "samsung dsc cmd mode oneplus dsi panel") == 0) {
+	if ((strcmp(display->panel->name, "samsung dsc cmd mode oneplus dsi panel") == 0)
+			|| (strcmp(display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0)) {
 		INIT_DELAYED_WORK(&display->panel->gamma_read_work, dsi_display_gamma_read_work);
 		DSI_ERR("INIT_DELAYED_WORK: dsi_display_gamma_read_work\n");
 	}
@@ -9693,6 +9695,199 @@ error:
     return rc;
 }
 
+extern bool HBM_flag;
+
+int dsi_display_get_dimming_gamma_para(struct dsi_display *dsi_display, struct dsi_panel *panel)
+{
+	int rc = 0;
+	int count = 0;
+	int flags = 0;
+	int retry_times = 0;
+	unsigned char payload = 0;
+	struct dsi_cmd_desc *cmds;
+	struct mipi_dsi_device *dsi;
+	struct dsi_display_mode *mode;
+	struct dsi_display_ctrl *m_ctrl;
+
+	mode = panel->cur_mode;
+	dsi = &panel->mipi_device;
+	m_ctrl = &dsi_display->ctrl[dsi_display->cmd_master_idx];
+	if (!dsi_display || !panel || !mode || !dsi || !m_ctrl)
+		return -EINVAL;
+
+	rc = dsi_display_cmd_engine_enable(dsi_display);
+	if (rc) {
+		DSI_ERR("cmd engine enable failed\n");
+		return rc;
+	}
+
+	dsi_panel_acquire_panel_lock(panel);
+
+	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_ENABLE].count;
+	if (!count) {
+		DSI_ERR("This panel does not support level2 key enable command\n");
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_ENABLE);
+		if (rc) {
+			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_ENABLE commands\n");
+			goto error;
+		}
+	}
+
+	payload = 0xA4;
+	rc = mipi_dsi_dcs_write(dsi, 0xB0, &payload, sizeof(payload));
+	if (rc < 0) {
+		DSI_ERR("Failed to write mipi dsi dcs cmd\n");
+		goto error;
+	}
+
+	flags = 0;
+	retry_times = 0;
+	cmds = mode->priv_info->cmd_sets[DSI_CMD_SET_GAMMA_OTP_READ_C9].cmds;
+	if (cmds->last_command) {
+		cmds->msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+		flags |= DSI_CTRL_CMD_LAST_COMMAND;
+	}
+	flags |= (DSI_CTRL_CMD_FETCH_MEMORY | DSI_CTRL_CMD_READ);
+	if (!m_ctrl->ctrl->vaddr)
+		goto error;
+	cmds->msg.rx_buf = dimming_gamma_60hz;
+	cmds->msg.rx_len = 5;
+	do {
+		rc = dsi_ctrl_cmd_transfer(m_ctrl->ctrl, &cmds->msg, flags);
+		retry_times++;
+	} while ((rc <= 0) && (retry_times < 3));
+	if (rc <= 0) {
+		DSI_ERR("rx cmd transfer failed rc=%d\n", rc);
+		goto error;
+	}
+
+	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_DISABLE].count;
+	if (!count) {
+		DSI_ERR("This panel does not support level2 key disable command\n");
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_DISABLE);
+		if (rc) {
+			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_DISABLE commands\n");
+			goto error;
+		}
+	}
+
+	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_ENABLE].count;
+	if (!count) {
+		DSI_ERR("This panel does not support level2 key enable command\n");
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_ENABLE);
+		if (rc) {
+			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_ENABLE commands\n");
+			goto error;
+		}
+	}
+
+	payload = 0xA7;
+	rc = mipi_dsi_dcs_write(dsi, 0xB0, &payload, sizeof(payload));
+	if (rc < 0) {
+		DSI_ERR("Failed to write mipi dsi dcs cmd\n");
+		goto error;
+	}
+
+	flags = 0;
+	retry_times = 0;
+	cmds = mode->priv_info->cmd_sets[DSI_CMD_SET_GAMMA_OTP_READ_C7].cmds;
+	if (cmds->last_command) {
+		cmds->msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+		flags |= DSI_CTRL_CMD_LAST_COMMAND;
+	}
+	flags |= (DSI_CTRL_CMD_FETCH_MEMORY | DSI_CTRL_CMD_READ);
+	if (!m_ctrl->ctrl->vaddr)
+		goto error;
+	cmds->msg.rx_buf = dimming_gamma_120hz;
+	cmds->msg.rx_len = 5;
+	do {
+		rc = dsi_ctrl_cmd_transfer(m_ctrl->ctrl, &cmds->msg, flags);
+		retry_times++;
+	} while ((rc <= 0) && (retry_times < 3));
+	if (rc <= 0) {
+		DSI_ERR("rx cmd transfer failed rc=%d\n", rc);
+		goto error;
+	}
+
+	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_DISABLE].count;
+	if (!count) {
+		DSI_ERR("This panel does not support level2 key disable command\n");
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_DISABLE);
+		if (rc) {
+			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_DISABLE commands\n");
+			goto error;
+		}
+	}
+
+	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_ENABLE].count;
+	if (!count) {
+		DSI_ERR("This panel does not support level2 key enable command\n");
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_ENABLE);
+		if (rc) {
+			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_ENABLE commands\n");
+			goto error;
+		}
+	}
+
+	payload = 0x17;
+	rc = mipi_dsi_dcs_write(dsi, 0xB0, &payload, sizeof(payload));
+	if (rc < 0) {
+		DSI_ERR("Failed to write mipi dsi dcs cmd\n");
+		goto error;
+	}
+
+	flags = 0;
+	retry_times = 0;
+	cmds = mode->priv_info->cmd_sets[DSI_CMD_SET_GAMMA_OTP_READ_C9].cmds;
+	if (cmds->last_command) {
+		cmds->msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+		flags |= DSI_CTRL_CMD_LAST_COMMAND;
+	}
+	flags |= (DSI_CTRL_CMD_FETCH_MEMORY | DSI_CTRL_CMD_READ);
+	if (!m_ctrl->ctrl->vaddr)
+		goto error;
+	cmds->msg.rx_buf = &dimming_gamma_60hz[15];
+	cmds->msg.rx_len = 5;
+	do {
+		rc = dsi_ctrl_cmd_transfer(m_ctrl->ctrl, &cmds->msg, flags);
+		retry_times++;
+	} while ((rc <= 0) && (retry_times < 3));
+	if (rc <= 0) {
+		DSI_ERR("rx cmd transfer failed rc=%d\n", rc);
+		goto error;
+	}
+
+	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_DISABLE].count;
+	if (!count) {
+		DSI_ERR("This panel does not support level2 key disable command\n");
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_DISABLE);
+		if (rc) {
+			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_DISABLE commands\n");
+			goto error;
+		}
+	}
+
+	dsi_panel_update_gamma_change_write();
+
+	rc = dsi_panel_dimming_gamma_write(panel);
+	HBM_flag = false;
+	if (rc < 0)
+		DSI_ERR("Failed to write dimming gamma, rc=%d\n", rc);
+
+error:
+	dsi_panel_release_panel_lock(panel);
+	rc = dsi_display_cmd_engine_disable(dsi_display);
+	if (rc)
+		DSI_ERR("cmd engine disable failed");
+	return rc;
+}
+
 int dsi_display_gamma_read(struct dsi_display *dsi_display)
 {
 	int rc = 0;
@@ -9711,7 +9906,10 @@ int dsi_display_gamma_read(struct dsi_display *dsi_display)
 		goto error;
 	}
 
-	dsi_display_get_gamma_para(dsi_display, panel);
+	if (strcmp(dsi_display->panel->name, "samsung dsc cmd mode oneplus dsi panel") == 0)
+		dsi_display_get_gamma_para(dsi_display, panel);
+	else if (strcmp(dsi_display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0)
+		dsi_display_get_dimming_gamma_para(dsi_display, panel);
 
 	rc = dsi_display_clk_ctrl(dsi_display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_OFF);
 	if (rc) {
@@ -9731,12 +9929,15 @@ void dsi_display_gamma_read_work(struct work_struct *work)
 
 	dsi_display = get_main_display();
 
-	if (((dsi_display->panel->panel_production_info & 0x0F) == 0x0C)
-		|| ((dsi_display->panel->panel_production_info & 0x0F) == 0x0E)
-			|| ((dsi_display->panel->panel_production_info & 0x0F) == 0x0D))
+	if (strcmp(dsi_display->panel->name, "samsung dsc cmd mode oneplus dsi panel") == 0) {
+		if (((dsi_display->panel->panel_production_info & 0x0F) == 0x0C)
+			|| ((dsi_display->panel->panel_production_info & 0x0F) == 0x0E)
+				|| ((dsi_display->panel->panel_production_info & 0x0F) == 0x0D))
+			dsi_display_gamma_read(dsi_display);
+		dsi_panel_parse_gamma_cmd_sets();
+	} else if (strcmp(dsi_display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0) {
 		dsi_display_gamma_read(dsi_display);
-
-	dsi_panel_parse_gamma_cmd_sets();
+	}
 }
 
 int dsi_display_update_gamma_para(struct drm_connector *connector)

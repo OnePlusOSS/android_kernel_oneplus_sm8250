@@ -2781,10 +2781,15 @@ void iris_brightness_level_set(u32 *value)
 
 
 	iris_init_ipopt_ip(popt,  IP_OPT_MAX);
-	len = iris_capture_disable_pq(popt, &skiplast);
+    IRIS_LOGE("iris_brightness_level_set skip");
+	//len = iris_capture_disable_pq(popt, &skiplast);
 	len = iris_brightness_para_set(popt, skiplast, value);
-	len = iris_capture_enable_pq(popt, len);
+	//len = iris_capture_enable_pq(popt, len);
 
+    if (!iris_dynamic_power_get() && !iris_skip_dma) {
+        len = iris_init_update_ipopt_t(
+            popt, IP_OPT_MAX, IRIS_IP_DMA, 0xe2, 0xe2, 0);
+    }
 	is_ulps_enable = iris_disable_ulps(path);
 	iris_update_pq_opt(popt, len, path);
 	iris_enable_ulps(path, is_ulps_enable);

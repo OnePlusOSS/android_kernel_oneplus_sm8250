@@ -246,7 +246,7 @@ void dsi_phy_hw_v4_0_enable(struct dsi_phy_hw *phy,
 		vreg_ctrl_0 = less_than_1500_mhz ? 0x53 : 0x52;
 		glbl_rescode_top_ctrl = less_than_1500_mhz ? 0x3d :  0x00;
 		glbl_rescode_bot_ctrl = less_than_1500_mhz ? 0x39 :  0x3c;
-		if (cfg->bit_clk_rate_hz == 1452000000) {
+		if ((cfg->bit_clk_rate_hz == 1452000000) || (cfg->bit_clk_rate_hz == 825600000)) {
 			glbl_str_swi_cal_sel_ctrl = 0x03;
 			glbl_hstx_str_ctrl_0 = 0xee;
 		} else {

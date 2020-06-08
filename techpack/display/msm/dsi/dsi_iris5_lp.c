@@ -59,6 +59,25 @@ void iris_lp_preinit(void)
 	iris_one_wired_cmd_init(pcfg->panel);
 }
 
+/* clear some pmu domains*/
+static void iris_clear_pmu(void)
+{
+	struct iris_update_regval regval;
+	struct iris_cfg *pcfg;
+
+	pcfg =  iris_get_cfg();
+
+	iris_bsram_power = false;
+
+	regval.ip = IRIS_IP_SYS;
+	regval.opt_id = ID_SYS_PMU_CTRL;
+	regval.mask = 0x000000b8; /*clear MIPI2, BSRAM, FRC, DSCU*/
+	regval.value = 0x0;
+
+	iris_update_bitmask_regval_nonread(&regval, true);
+
+}
+
 /* init iris low power */
 void iris_lp_init(void)
 {
@@ -80,6 +99,8 @@ void iris_lp_init(void)
 		IRIS_LOGD(" [%s, %d] close psr_mif osd first address eco.", __func__, __LINE__);
 		iris_psf_mif_dyn_addr_set(false);
 	}
+
+	iris_clear_pmu();
 
 	if (pcfg->lp_ctrl.ulps_lp) {
 		iris_ulps_source_sel(ULPS_MAIN);

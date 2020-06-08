@@ -1086,8 +1086,14 @@ void reg_dmav1_setup_dspp_igcv31(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	if (lut_cfg->flags & IGC_DITHER_ENABLE) {
+	if (op_dither_enable==1){
 		reg = lut_cfg->strength & IGC_DITHER_DATA_MASK;
-		REG_DMA_SETUP_OPS(dma_write_cfg,
+		reg=6;
+	}
+	else{
+          reg =0;
+	}
+          REG_DMA_SETUP_OPS(dma_write_cfg,
 			ctx->cap->sblk->igc.base + IGC_DITHER_OFF,
 			&reg, sizeof(reg), REG_SINGLE_WRITE, 0, 0, 0);
 		rc = dma_ops->setup_payload(&dma_write_cfg);
@@ -1098,10 +1104,10 @@ void reg_dmav1_setup_dspp_igcv31(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	if (op_dither_enable==1){
-		reg = IGC_EN;
+          reg = IGC_EN;
 	}
 	else{
- 		reg = IGC_EN|BIT(1);
+          reg = IGC_EN|BIT(1);
 	}
 
 	REG_DMA_SETUP_OPS(dma_write_cfg,
