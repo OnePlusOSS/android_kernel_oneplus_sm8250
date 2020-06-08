@@ -961,13 +961,16 @@ static int qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 		pon_rt_bit = QPNP_PON_KPDPWR_N_SET;
 		if ((pon_rt_sts & pon_rt_bit) == 0) {
 			pr_info("Power-Key UP\n");
+			set_pwr_status(KEY_RELEASED);
 			schedule_work(&pon->up_work);
 			cancel_delayed_work(&pon->press_work);
+			cancel_delayed_work(&pon->press_pwr);
 			cancel_delayed_work(&pon->press_work_flush);
 			panic_flush_device_cache_circled_off();
 		} else {
 			pr_info("Power-Key DOWN\n");
 			schedule_delayed_work(&pon->press_work, msecs_to_jiffies(4000));
+			schedule_delayed_work(&pon->press_pwr, msecs_to_jiffies(6000));
 			schedule_delayed_work(&pon->press_work_flush, msecs_to_jiffies(7000));
 		}
 		break;
@@ -1235,8 +1238,41 @@ static void press_work_func(struct work_struct *work)
 		if (display_bl == 0 && boot_mode == MSM_BOOT_MODE_NORMAL) {
 			oem_force_minidump_mode();
 			show_state_filter(TASK_UNINTERRUPTIBLE);
+			send_sig_to_get_trace("system_server");
 			panic("power key still pressed\n");
 		}
+	}
+	msleep(20);
+	ksys_sync();
+err_return:
+	return;
+}
+
+static void press_pwr_func(struct work_struct *work)
+{
+	int rc;
+	uint pon_rt_sts = 0;
+	struct qpnp_pon_config *cfg;
+	struct qpnp_pon *pon =
+		container_of(work, struct qpnp_pon, press_pwr.work);
+
+	cfg = qpnp_get_cfg(pon, PON_KPDPWR);
+	if (!cfg) {
+		dev_err(pon->dev, "Invalid config pointer\n");
+		goto err_return;
+	}
+	/* check the RT status to get the current status of the line */
+	rc = regmap_read(pon->regmap, QPNP_PON_RT_STS(pon), &pon_rt_sts);
+	if (rc) {
+		dev_err(pon->dev, "Unable to read PON RT status\n");
+		goto err_return;
+	}
+
+	if ((pon_rt_sts & QPNP_PON_KPDPWR_N_SET) == 1) {
+		qpnp_powerkey_state_check(pon, 1);
+		dev_err(pon->dev, "after 6s Power-Key is still DOWN\n");
+		set_pwr_status(KEY_PRESSED);
+		compound_key_to_get_trace("system_server");
 	}
 	msleep(20);
 	ksys_sync();
@@ -2811,6 +2847,7 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 
 	INIT_DELAYED_WORK(&pon->bark_work, bark_work_func);
 	INIT_DELAYED_WORK(&pon->press_work, press_work_func);
+	INIT_DELAYED_WORK(&pon->press_pwr, press_pwr_func);
 	INIT_DELAYED_WORK(&pon->press_work_flush, press_work_flush_func);
 	INIT_WORK(&pon->up_work, up_work_func);
 

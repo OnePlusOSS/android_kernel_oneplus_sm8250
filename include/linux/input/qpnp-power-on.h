@@ -56,6 +56,7 @@ struct qpnp_pon {
 	struct list_head	list;
 	struct delayed_work	bark_work;
 	struct delayed_work     press_work;
+	struct delayed_work press_pwr;
 	struct delayed_work     press_work_flush;
 	struct work_struct  up_work;
 	atomic_t	   press_count;
