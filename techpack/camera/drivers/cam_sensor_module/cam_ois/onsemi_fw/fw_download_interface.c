@@ -2,6 +2,7 @@
 #include <asm/arch_timer.h>
 #include "fw_download_interface.h"
 #include "LC898124/Ois.h"
+#include "linux/proc_fs.h"
 
 extern unsigned char SelectDownload(uint8_t GyroSelect, uint8_t ActSelect, uint8_t MasterSlave, uint8_t FWType);
 extern uint8_t FlashDownload128( uint8_t ModuleVendor, uint8_t ActVer, uint8_t MasterSlave, uint8_t FWType);
@@ -15,6 +16,7 @@ enum cam_ois_state_vendor ois_state[CAM_OIS_TYPE_MAX] = {0};
 
 #define OIS_REGISTER_SIZE 100
 #define OIS_READ_REGISTER_DELAY 100
+#define COMMAND_SIZE 255
 struct dentry *ois_dentry = NULL;
 bool dump_ois_registers = false;
 uint32_t ois_registers_124[OIS_REGISTER_SIZE][2] = {
@@ -57,6 +59,107 @@ uint32_t ois_registers_128[OIS_REGISTER_SIZE][2] = {
 	{0xF01E, 0x0000},//SPI IF Write access command
 	{0xF100, 0x0000},//OIS status
 	{0x0000, 0x0000},
+};
+
+
+static ssize_t ois_read(struct file *p_file,
+	char __user *puser_buf, size_t count, loff_t *p_offset)
+{
+    return 1;
+}
+
+static ssize_t ois_write(struct file *p_file,
+	const char __user *puser_buf,
+	size_t count, loff_t *p_offset)
+{
+	char data[COMMAND_SIZE] = {0};
+	char* const delim = " ";
+	int iIndex = 0;
+	char *token = NULL, *cur = NULL;
+	uint32_t addr =0, value = 0;
+	int result = 0;
+
+	if(puser_buf) {
+		copy_from_user(&data, puser_buf, count);
+	}
+
+	cur = data;
+	while ((token = strsep(&cur, delim))) {
+		//CAM_ERR(CAM_OIS, "string = %s iIndex = %d, count = %d", token, iIndex, count);
+		if (iIndex  == 0) {
+			kstrtoint(token, 16, &addr);
+		} else if (iIndex == 1) {
+		    kstrtoint(token, 16, &value);
+		}
+		iIndex++;
+	}
+	if (ois_ctrls[CAM_OIS_MASTER] && addr != 0) {
+		result = RamWrite32A_oneplus(ois_ctrls[CAM_OIS_MASTER], addr, value);
+		if (result < 0) {
+			CAM_ERR(CAM_OIS, "write addr = 0x%x, value = 0x%x fail", addr, value);
+		} else {
+			CAM_INFO(CAM_OIS, "write addr = 0x%x, value = 0x%x success", addr, value);
+		}
+	}
+	return count;
+}
+
+static ssize_t ois_read_tele(struct file *p_file,
+	char __user *puser_buf, size_t count, loff_t *p_offset)
+{
+    return 1;
+}
+
+static ssize_t ois_write_tele(struct file *p_file,
+	const char __user *puser_buf,
+	size_t count, loff_t *p_offset)
+{
+	char data[COMMAND_SIZE] = {0};
+	char* const delim = " ";
+	int iIndex = 0;
+	char *token = NULL, *cur = NULL;
+	uint32_t addr =0, value = 0;
+	int result = 0;
+
+	if(puser_buf) {
+		if (copy_from_user(&data, puser_buf, count)) {
+			CAM_ERR(CAM_OIS, "copy from user buffer error");
+			return -EFAULT;
+		}
+	}
+
+	cur = data;
+	while ((token = strsep(&cur, delim))) {
+		//CAM_ERR(CAM_OIS, "string = %s iIndex = %d, count = %d", token, iIndex, count);
+		if (iIndex  == 0) {
+			kstrtouint(token, 16, &addr);
+		} else if (iIndex == 1) {
+		    kstrtouint(token, 16, &value);
+		}
+		iIndex++;
+	}
+	if (ois_ctrls[CAM_OIS_SLAVE] && addr != 0) {
+		result = RamWrite32A_oneplus(ois_ctrls[CAM_OIS_SLAVE], addr, value);
+		if (result < 0) {
+			CAM_ERR(CAM_OIS, "write addr = 0x%x, value = 0x%x fail", addr, value);
+		} else {
+			CAM_INFO(CAM_OIS, "write addr = 0x%x, value = 0x%x success", addr, value);
+		}
+	}
+	return count;
+}
+
+
+
+static const struct file_operations proc_file_fops = {
+	.owner = THIS_MODULE,
+	.read  = ois_read,
+	.write = ois_write,
+};
+static const struct file_operations proc_file_fops_tele = {
+	.owner = THIS_MODULE,
+	.read  = ois_read_tele,
+	.write = ois_write_tele,
 };
 
 int ois_start_read(void *arg, bool start)
@@ -1335,6 +1438,9 @@ void DeinitOIS(struct cam_ois_ctrl_t *o_ctrl)
 
 void InitOISResource(struct cam_ois_ctrl_t *o_ctrl)
 {
+	struct proc_dir_entry *face_common_dir = NULL;
+	struct proc_dir_entry *proc_file_entry = NULL;
+        struct proc_dir_entry *proc_file_entry_tele = NULL;
 	mutex_init(&ois_mutex);
 	if (o_ctrl) {
 		if (o_ctrl->ois_type == CAM_OIS_MASTER) {
@@ -1364,6 +1470,26 @@ void InitOISResource(struct cam_ois_ctrl_t *o_ctrl)
 		}
 	} else {
 		CAM_ERR(CAM_OIS, "o_ctrl is NULL");
+	}
+
+	//Create OIS control node
+	face_common_dir =  proc_mkdir("OIS", NULL);
+	if(!face_common_dir) {
+		CAM_ERR(CAM_OIS, "create dir fail CAM_ERROR API");
+		//return FACE_ERROR_GENERAL;
+	}
+
+	proc_file_entry = proc_create("OISControl", 0777, face_common_dir, &proc_file_fops);
+	if(proc_file_entry == NULL) {
+		CAM_ERR(CAM_OIS, "Create fail");
+	} else {
+		CAM_INFO(CAM_OIS, "Create successs");
+	}
+	proc_file_entry_tele = proc_create("OISControl_tele", 0777, face_common_dir, &proc_file_fops_tele);
+	if(proc_file_entry_tele == NULL) {
+		CAM_ERR(CAM_OIS, "Create fail");
+	} else {
+		CAM_INFO(CAM_OIS, "Create successs");
 	}
 }
 
