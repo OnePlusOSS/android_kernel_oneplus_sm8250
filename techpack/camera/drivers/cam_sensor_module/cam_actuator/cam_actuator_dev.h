@@ -120,6 +120,7 @@ struct cam_actuator_ctrl_t {
 	struct cam_sensor_i2c_reg_array poll_register;
 	enum camera_sensor_i2c_type addr_type;
 	enum camera_sensor_i2c_type data_type;
+        uint16_t actuator_vendor;
 };
 
 #endif /* _CAM_ACTUATOR_DEV_H_ */

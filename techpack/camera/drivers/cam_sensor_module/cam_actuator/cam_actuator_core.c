@@ -10,6 +10,208 @@
 #include "cam_trace.h"
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
+#define AK7377 0x1
+#define AK7377_wide 0x1
+#define AK7377_ultra 0x2
+#define UPDATE_REG_SIZE 26
+bool if_update_actuator_pid_wide = true;
+bool if_update_actuator_pid_ultr_wide = true;
+
+static uint32_t update_reg_arr[26][4] = {
+	{0x10, 0x32, 0x00, 0x0},
+	{0x11, 0x35, 0x00, 0x0},
+	{0x12, 0x8A, 0x00, 0x0},
+	{0x13, 0x21, 0x00, 0x0},
+	{0x14, 0x14, 0x00, 0x0},
+	{0x15, 0x46, 0x00, 0x0},
+	{0x16, 0x64, 0x00, 0x0},
+	{0x17, 0x5A, 0x00, 0x0},
+	{0x18, 0x4B, 0x00, 0x0},
+	{0x1A, 0x00, 0x00, 0x0},
+	{0x1B, 0x1D, 0x00, 0x0},
+	{0x1C, 0xE1, 0x00, 0x0},
+	{0x1D, 0xE0, 0x00, 0x0},
+	{0x1E, 0x4C, 0x00, 0x0},
+	{0x1F, 0x6F, 0x00, 0x0},
+	{0x20, 0x0A, 0x00, 0x0},
+	{0x21, 0x14, 0x00, 0x0},
+	{0x22, 0x28, 0x00, 0x0},
+	{0x23, 0x22, 0x00, 0x0},
+	{0x24, 0x94, 0x00, 0x0},
+	{0x25, 0x12, 0x00, 0x0},
+	{0x26, 0x1D, 0x00, 0x0},
+	{0x31, 0xB0, 0x00, 0x0},
+	{0x33, 0x98, 0x00, 0x0},
+	{0x34, 0x24, 0x00, 0x0},
+	{0x35, 0x46, 0x00, 0x0},
+};
+
+static uint32_t update_reg_arr_utral[26][4] = {
+	{0x10, 0x26, 0x00, 0x0},
+	{0x11, 0x41, 0x00, 0x0},
+	{0x12, 0x8A, 0x00, 0x0},
+	{0x13, 0x1C, 0x00, 0x0},
+	{0x14, 0x24, 0x00, 0x0},
+	{0x15, 0x46, 0x00, 0x0},
+	{0x16, 0x32, 0x00, 0x0},
+	{0x17, 0x7D, 0x00, 0x0},
+	{0x18, 0x4B, 0x00, 0x0},
+	{0x1A, 0x00, 0x00, 0x0},
+	{0x1B, 0x12, 0x00, 0x0},
+	{0x1C, 0xE8, 0x00, 0x0},
+	{0x1D, 0xE7, 0x00, 0x0},
+	{0x1E, 0x5F, 0x00, 0x0},
+	{0x1F, 0x64, 0x00, 0x0},
+	{0x20, 0x03, 0x00, 0x0},
+	{0x21, 0x06, 0x00, 0x0},
+	{0x22, 0x0C, 0x00, 0x0},
+	{0x23, 0x0F, 0x00, 0x0},
+	{0x24, 0x16, 0x00, 0x0},
+	{0x25, 0x2D, 0x00, 0x0},
+	{0x26, 0x17, 0x00, 0x0},
+	{0x31, 0xB0, 0x00, 0x0},
+	{0x33, 0x58, 0x00, 0x0},
+	{0x34, 0x0F, 0x00, 0x0},
+	{0x35, 0x0A, 0x00, 0x0},
+};
+
+
+int RamWritePid(struct cam_actuator_ctrl_t *a_ctrl, uint32_t addr, uint32_t data)
+{
+	int32_t rc = 0;
+	int retry = 3;
+	int i;
+
+	struct cam_sensor_i2c_reg_array i2c_write_setting = {
+		.reg_addr = addr,
+		.reg_data = data,
+		.delay = 0x00,
+		.data_mask = 0x00,
+	};
+	struct cam_sensor_i2c_reg_setting i2c_write = {
+		.reg_setting = &i2c_write_setting,
+		.size = 1,
+		.addr_type = CAMERA_SENSOR_I2C_TYPE_BYTE,
+		.data_type = CAMERA_SENSOR_I2C_TYPE_BYTE,
+		.delay = 0x00,
+	};
+
+	if (a_ctrl == NULL) {
+		CAM_ERR(CAM_ACTUATOR, "Invalid Args");
+		return -EINVAL;
+	}
+
+	for(i = 0; i < retry; i++) {
+		rc = camera_io_dev_write(&(a_ctrl->io_master_info), &i2c_write);
+		if (rc < 0) {
+			CAM_ERR(CAM_ACTUATOR, "write 0x%x data=0x%x failed, retry:%d", addr,data, i+1);
+		} else {
+			return rc;
+		}
+	}
+	return rc;
+}
+
+static int32_t cam_actuator_update_pid(struct cam_actuator_ctrl_t *a_ctrl)
+{
+        int32_t count = 0;
+        int32_t rc = 0;
+        int32_t data=-1;
+        int retry = 3;
+
+        rc=RamWritePid(a_ctrl,0x02,0x40);
+        if(rc<0){
+		CAM_ERR(CAM_ACTUATOR,"write failed rc=%d",rc);
+                return rc;
+        }
+        msleep(1);
+        rc=RamWritePid(a_ctrl,0xAE,0x3B);
+        if(rc<0){
+		CAM_ERR(CAM_ACTUATOR,"write failed rc=%d",rc);
+                return rc;
+        }
+        if((a_ctrl->actuator_vendor & 0xF) == AK7377_wide){
+                CAM_INFO(CAM_ACTUATOR,"wide update pid");
+                for(count=0;count<UPDATE_REG_SIZE;count++){
+                        rc=RamWritePid(a_ctrl,update_reg_arr[count][0],update_reg_arr[count][1]);
+                        if(rc<0){
+                                CAM_ERR(CAM_ACTUATOR,"write failed rc=%d",rc);
+                                return rc;
+                        }
+                }
+        } else if((a_ctrl->actuator_vendor & 0xF) == AK7377_ultra){
+                CAM_INFO(CAM_ACTUATOR,"ultra update pid");
+                for(count=0;count<UPDATE_REG_SIZE;count++){
+                        rc=RamWritePid(a_ctrl,update_reg_arr_utral[count][0],update_reg_arr_utral[count][1]);
+                        if(rc<0){
+                                CAM_ERR(CAM_ACTUATOR,"write failed rc=%d",rc);
+                                return rc;
+                        }
+                }
+
+        }
+        for (count = 0; count < retry; count++){
+                RamWritePid(a_ctrl,0x03,0x02);
+                msleep(250);
+                RamWritePid(a_ctrl,0x03,0x04);
+                msleep(120);
+                camera_io_dev_read(&(a_ctrl->io_master_info),0x4B, (uint32_t *)&data,CAMERA_SENSOR_I2C_TYPE_BYTE, CAMERA_SENSOR_I2C_TYPE_BYTE);
+                if(data == 0){
+                        CAM_INFO(CAM_ACTUATOR,"store pid success ");
+                        break;
+                }
+        }
+        rc=RamWritePid(a_ctrl,0xae,0x00);
+        if(rc<0){
+		CAM_ERR(CAM_ACTUATOR,"write failed rc=%d",rc);
+                return rc;
+        }
+        CAM_INFO(CAM_ACTUATOR,"update pid write done and store end");
+        return rc;
+}
+static int32_t cam_actuator_check_firmware(struct cam_actuator_ctrl_t *a_ctrl)
+{
+        int32_t count = 0;
+        int32_t rc = 0,data=0;
+        CAM_INFO(CAM_ACTUATOR,"check pid success statrt");
+        rc=RamWritePid(a_ctrl,0x02,0x40);
+        if(rc<0){
+		CAM_ERR(CAM_ACTUATOR,"write failed rc=%d",rc);
+                return rc;
+        }
+        msleep(1);
+        if((a_ctrl->actuator_vendor & 0xF) == AK7377_wide){
+                CAM_INFO(CAM_ACTUATOR,"wide check pid");
+                for(count=0;count<UPDATE_REG_SIZE;count++){
+                        rc=camera_io_dev_read(&(a_ctrl->io_master_info),(uint32_t)update_reg_arr[count][0], (uint32_t *)&data,
+                        CAMERA_SENSOR_I2C_TYPE_BYTE, CAMERA_SENSOR_I2C_TYPE_BYTE);
+		        if(rc !=0) {
+			        CAM_ERR(CAM_ACTUATOR,"read failed rc=%d",rc);
+                                return rc;
+		        }else if(update_reg_arr[count][1] != data){
+			        CAM_ERR(CAM_ACTUATOR,"read failed addr=0x%x data=0x%x,readdata=0x%x",update_reg_arr[count][0],update_reg_arr[count][1],data);
+                                return -1;
+                        }
+                }
+                if_update_actuator_pid_wide = false;
+        } else if((a_ctrl->actuator_vendor & 0xF) == AK7377_ultra){
+                CAM_INFO(CAM_ACTUATOR,"ultra check pid");
+                for(count=0;count<UPDATE_REG_SIZE;count++){
+                        rc=camera_io_dev_read(&(a_ctrl->io_master_info),(uint32_t)update_reg_arr_utral[count][0], (uint32_t *)&data,
+                        CAMERA_SENSOR_I2C_TYPE_BYTE, CAMERA_SENSOR_I2C_TYPE_BYTE);
+		        if(rc !=0) {
+			        CAM_ERR(CAM_ACTUATOR,"read failed rc=%d",rc);
+                                return rc;
+		        }else if(update_reg_arr_utral[count][1] != data){
+			        CAM_ERR(CAM_ACTUATOR,"read failed addr=0x%x data=0x%x,readdata=0x%x",update_reg_arr_utral[count][0],update_reg_arr_utral[count][1],data);
+                                return -1;
+                        }
+                }
+                if_update_actuator_pid_ultr_wide = false;
+        }
+        CAM_INFO(CAM_ACTUATOR,"check pid success");
+        return rc;
+}
 
 int32_t cam_actuator_construct_default_power_setting(
 	struct cam_sensor_power_ctrl_t *power_info)
@@ -218,8 +420,9 @@ int32_t cam_actuator_slaveInfo_pkt_parser(struct cam_actuator_ctrl_t *a_ctrl,
 			i2c_info->i2c_freq_mode;
 		a_ctrl->io_master_info.cci_client->sid =
 			i2c_info->slave_addr >> 1;
-		CAM_DBG(CAM_ACTUATOR, "Slave addr: 0x%x Freq Mode: %d",
-			i2c_info->slave_addr, i2c_info->i2c_freq_mode);
+                a_ctrl->actuator_vendor = i2c_info->reserved;
+		CAM_DBG(CAM_ACTUATOR, "Slave addr: 0x%x Freq Mode: %d actuator_vendror=0x%x",
+			i2c_info->slave_addr, i2c_info->i2c_freq_mode,a_ctrl->actuator_vendor);
 	} else if (a_ctrl->io_master_info.master_type == I2C_MASTER) {
 		a_ctrl->io_master_info.client->addr = i2c_info->slave_addr;
 		CAM_DBG(CAM_ACTUATOR, "Slave addr: 0x%x", i2c_info->slave_addr);
@@ -597,7 +800,17 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 				goto end;
 			}
 			a_ctrl->cam_act_state = CAM_ACTUATOR_CONFIG;
-		}
+                        if(if_update_actuator_pid_wide || if_update_actuator_pid_ultr_wide){
+                                if(AK7377 == (a_ctrl->actuator_vendor >> 4)){
+                                        if(cam_actuator_check_firmware(a_ctrl) != 0){
+                                                cam_actuator_update_pid(a_ctrl);
+                                                CAM_INFO(CAM_ACTUATOR, "update pid success");
+                                        }else{
+                                                CAM_INFO(CAM_ACTUATOR, "do not need to update");
+                                        }
+                                }
+                        }
+			}
 
 		{
 			if (!a_ctrl->is_actuator_ready) {
