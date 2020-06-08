@@ -3910,6 +3910,8 @@ static void wlchg_disconnect_func(struct op_chg_chip *chip)
 		vote(normal_charger->chg_disable_votable, WLCH_VOTER, false, 0);
 		vote(normal_charger->usb_icl_votable, WLCH_SKIN_VOTER, false, 0);
 		normal_charger->wireless_present = false;
+		// remove typec related icl vote
+		vote(normal_charger->usb_icl_votable, CHG_TERMINATION_VOTER, false, 0);
 		//wireless_present must before below func call.
 		pmic_high_vol_en(chip, false);
 	}
