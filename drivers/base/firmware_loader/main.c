@@ -329,6 +329,15 @@ fw_get_filesystem_firmware(struct device *device, struct fw_priv *fw_priv)
 			break;
 		}
 
+		// CONFIG_PXLW_IRIS5
+		if (i == 1) {
+			if (!strcmp(fw_priv->fw_name, "iris5_ccf1b.fw"))
+				snprintf(path, PATH_MAX, "%s/%s", "/data/vendor/display", fw_priv->fw_name);
+			if (!strcmp(fw_priv->fw_name, "iris5_ccf2b.fw"))
+				snprintf(path, PATH_MAX, "%s/%s", "/data/vendor/display", fw_priv->fw_name);
+		}
+		// CONFIG_PXLW_IRIS5
+
 		fw_priv->size = 0;
 		rc = kernel_read_file_from_path(path, &fw_priv->data, &size,
 						msize, id);
