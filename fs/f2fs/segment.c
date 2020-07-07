@@ -39,6 +39,8 @@ static struct kmem_cache *discard_cmd_slab;
 static struct kmem_cache *sit_entry_set_slab;
 static struct kmem_cache *inmem_entry_slab;
 
+unsigned int f2fs_dis_cp_ratio = 20;
+
 #ifdef CONFIG_F2FS_OF2FS
 /* [ASTI-147]: add for oDiscard */
 static struct discard_cmd *__create_discard_cmd_of2fs(struct f2fs_sb_info *sbi,
@@ -1029,7 +1031,7 @@ void f2fs_dirty_to_prefree(struct f2fs_sb_info *sbi)
 int f2fs_disable_cp_again(struct f2fs_sb_info *sbi)
 {
 	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
-	block_t ovp = overprovision_segments(sbi) << sbi->log_blocks_per_seg;
+	block_t thresh = (sbi->user_block_count >> 10) * f2fs_dis_cp_ratio;
 	block_t holes[2] = {0, 0};	/* DATA and NODE */
 	struct seg_entry *se;
 	unsigned int segno;
@@ -1044,10 +1046,19 @@ int f2fs_disable_cp_again(struct f2fs_sb_info *sbi)
 			holes[DATA] += sbi->blocks_per_seg - se->valid_blocks;
 	}
 	mutex_unlock(&dirty_i->seglist_lock);
-	f2fs_msg(sbi->sb, KERN_INFO, "Debug:%s:disable cp log_blocks_per_seg %u ovp %u holes_data %u holes_node %u"
-		, __func__, (sbi->log_blocks_per_seg), ovp, holes[DATA], holes[NODE]);
-	if (holes[DATA] > ovp || holes[NODE] > ovp) {
+	f2fs_msg(sbi->sb, KERN_INFO, "Debug:%s:disable cp log_blocks_per_seg %u thresh %u holes_data %u holes_node %u"
+		, __func__, (sbi->log_blocks_per_seg), thresh, holes[DATA], holes[NODE]);
+	if (holes[DATA] > thresh || holes[NODE] > thresh) {
 		f2fs_msg(sbi->sb, KERN_INFO, "Debug:%s: Retry again...", __func__);
+		spin_lock(&cfi_spinlock);
+		cfi.cp_fail_status = true;
+		cfi.disable_cp_quick = false;
+		cfi.holes[DATA] = holes[DATA];
+		cfi.holes[NODE] = holes[NODE];
+		cfi.free_segs = free_segments(sbi);
+		cfi.dirty_segs = dirty_segments(sbi);
+		cfi.ovp_segs = overprovision_segments(sbi);
+		spin_unlock(&cfi_spinlock);
 		return -EAGAIN;
 	}
 	if (is_sbi_flag_set(sbi, SBI_CP_DISABLED_QUICK) &&
@@ -1056,6 +1067,15 @@ int f2fs_disable_cp_again(struct f2fs_sb_info *sbi)
 			, "Debug:%s:Retry again... Disable cp dirty segs %u ovp segs %u is_sbi_flag_set %d"
 			, __func__, dirty_segments(sbi), overprovision_segments(sbi)
 			, is_sbi_flag_set(sbi, SBI_CP_DISABLED_QUICK));
+		spin_lock(&cfi_spinlock);
+		cfi.cp_fail_status = true;
+		cfi.disable_cp_quick = true;
+		cfi.holes[DATA] = holes[DATA];
+		cfi.holes[NODE] = holes[NODE];
+		cfi.free_segs = free_segments(sbi);
+		cfi.dirty_segs = dirty_segments(sbi);
+		cfi.ovp_segs = overprovision_segments(sbi);
+		spin_unlock(&cfi_spinlock);
 		return -EAGAIN;
 	}
 	return 0;

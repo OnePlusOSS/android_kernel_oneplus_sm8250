@@ -49,6 +49,15 @@ static BLOCKING_NOTIFIER_HEAD(f2fs_panel_notifier_list);
 static BLOCKING_NOTIFIER_HEAD(f2fs_battery_notifier_list);
 #endif
 
+static struct proc_dir_entry *cfi_proc_file;
+struct cp_fail_info cfi;
+DEFINE_SPINLOCK(cfi_spinlock);
+static inline void reset_cfi(void)
+{
+	spin_lock(&cfi_spinlock);
+	memset(&cfi, 0, sizeof(cfi));
+	spin_unlock(&cfi_spinlock);
+}
 
 static struct kmem_cache *f2fs_inode_cachep;
 
@@ -3317,6 +3326,7 @@ try_onemore:
 	raw_super = NULL;
 	valid_super_block = -1;
 	recovery = 0;
+	reset_cfi();
 
 	/* allocate memory for f2fs-specific super block info */
 	sbi = kzalloc(sizeof(struct f2fs_sb_info), GFP_KERNEL);
@@ -3838,6 +3848,33 @@ static void destroy_inodecache(void)
 	kmem_cache_destroy(f2fs_inode_cachep);
 }
 
+static int cp_fail_show(struct seq_file *s, void *v)
+{
+	spin_lock(&cfi_spinlock);
+	seq_printf(s, "CP_FAIL:%s\n", cfi.cp_fail_status?"true":"false");
+	seq_printf(s, "CP_QUICK:%s\n", cfi.disable_cp_quick?"true":"false");
+	seq_printf(s, "Holes_data:%u\n", cfi.holes[DATA]);
+	seq_printf(s, "Holes_node:%u\n", cfi.holes[NODE]);
+	seq_printf(s, "Holes_sum:%u\n", cfi.holes[DATA]+cfi.holes[NODE]);
+	seq_printf(s, "Free_segs:%u\n", cfi.free_segs);
+	seq_printf(s, "Dirty_segs:%u\n", cfi.dirty_segs);
+	seq_printf(s, "Ovp_segs:%u\n", cfi.ovp_segs);
+	spin_unlock(&cfi_spinlock);
+	return 0;
+}
+
+static int cp_fail_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, cp_fail_show, NULL);
+}
+
+static const struct file_operations cp_fail_fops = {
+	.open = cp_fail_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
 static int __init init_f2fs_fs(void)
 {
 	int err;
@@ -3896,6 +3933,9 @@ static int __init init_f2fs_fs(void)
 	if (err)
 		pr_err("%s error: register battery notifier failed!\n", __func__);
 #endif
+	cfi_proc_file = proc_create("last_cp_info", S_IFREG | 0400, NULL, &cp_fail_fops);
+	if (!cfi_proc_file)
+		pr_err("%s error: create  failed!\n", __func__);
 
 	return 0;
 
@@ -3945,6 +3985,8 @@ static void __exit exit_f2fs_fs(void)
 	f2fs_destroy_node_manager_caches();
 	destroy_inodecache();
 	f2fs_destroy_trace_ios();
+	if (cfi_proc_file)
+		proc_remove(cfi_proc_file);
 }
 
 module_init(init_f2fs_fs)

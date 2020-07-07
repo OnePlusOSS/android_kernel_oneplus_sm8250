@@ -138,6 +138,15 @@ struct f2fs_mount_info {
 	bool test_dummy_encryption;	/* test dummy encryption */
 };
 
+struct cp_fail_info {
+	bool cp_fail_status;
+	bool disable_cp_quick;
+	block_t holes[2];
+	unsigned int free_segs;
+	unsigned int dirty_segs;
+	unsigned int ovp_segs;
+};
+
 #define F2FS_FEATURE_ENCRYPT		0x0001
 #define F2FS_FEATURE_BLKZONED		0x0002
 #define F2FS_FEATURE_ATOMIC_WRITE	0x0004
@@ -3434,6 +3443,8 @@ int f2fs_build_stats(struct f2fs_sb_info *sbi);
 void f2fs_destroy_stats(struct f2fs_sb_info *sbi);
 void __init f2fs_create_root_stats(void);
 void f2fs_destroy_root_stats(void);
+extern struct cp_fail_info cfi;
+extern spinlock_t cfi_spinlock;
 #else
 #define stat_inc_cp_count(si)				do { } while (0)
 #define stat_inc_bg_cp_count(si)			do { } while (0)
