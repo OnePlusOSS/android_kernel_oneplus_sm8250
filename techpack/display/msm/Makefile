@@ -90,6 +90,10 @@ msm_drm-$(CONFIG_DRM_MSM_DSI) += dsi/dsi_iris5_ioctl.o \
 ccflags-y += -DCONFIG_PXLW_IRIS5
 endif
 
+ifeq ($(PXLW_IRIS_DUAL), 1)
+ccflags-y += -DPXLW_IRIS_DUAL=1
+endif
+
 ifeq ($(CONFIG_PXLW_SOFT_IRIS), y)
 msm_drm-$(CONFIG_DRM_MSM_DSI) += dsi/dsi_irissoft_ioctl.o
 ccflags-y += -DCONFIG_PXLW_SOFT_IRIS

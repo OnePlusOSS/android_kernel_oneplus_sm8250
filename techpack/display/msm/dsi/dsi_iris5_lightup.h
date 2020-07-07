@@ -147,6 +147,9 @@ struct iris_frc_setting {
 	uint32_t memc_hres;
 	uint32_t memc_vres;
 	uint32_t memc_dsc_bpp;
+#if defined(PXLW_IRIS_DUAL)
+	u32 video_baseaddr;
+#endif
 	u32 mv_baseaddr;
 	u8 v2_lut_index;
 	u8 v2_phaselux_idx_max;
@@ -275,6 +278,12 @@ struct iris_cfg {
 
 	/*iris pmic power*/
 	struct dsi_regulator_info iris_power_info;
+#if defined(PXLW_IRIS_DUAL)
+	bool dual_setting;
+	uint32_t dual_test;
+	atomic_t dom_cnt_in_frc;
+	atomic_t dom_cnt_in_ioctl;
+#endif
 };
 
 struct iris_cmd_comp {
@@ -372,4 +381,9 @@ void iris_print_none_lut_cmds_for_lk(struct dsi_cmd_desc *cmds,
 			 int32_t cnt, int32_t wait, int32_t link_state);
 void iris_send_mode_switch_pkt(void);
 /* API for debug end */
+
+#if defined(PXLW_IRIS_DUAL)
+void iris_dual_setting_switch(bool dual);
+void iris_frc_dsc_setting(bool dual);
+#endif
 #endif // _DSI_IRIS5_LIGHTUP_H_

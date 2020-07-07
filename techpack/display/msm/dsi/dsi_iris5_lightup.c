@@ -223,6 +223,10 @@ void iris5_reset(struct dsi_panel *panel)
 	struct dsi_panel_reset_config *r_config = &panel->reset_config;
 	int rc;
 
+	IRIS_LOGW("%s for [%s] %s gcfg = %i is_secondary = %i", __func__, panel->name, panel->type, gcfg_index, panel->is_secondary);
+	if (panel->is_secondary)
+		return;
+
 	IRIS_LOGW("iris5_reset for [%s]", panel->name);
 
 	if (pcfg->ext_clk) {
@@ -1382,13 +1386,13 @@ static int32_t iris_parse_split_pkt_info(
 			&(pcfg->add_on_last_flag));
 	if (rc) {
 		IRIS_LOGE("can not get property:pxlw,last-for-per-pkt");
-		pcfg->add_on_last_flag = DSI_CMD_ONE_LAST_FOR_MULT_IPOPT;
+		pcfg->add_on_last_flag = DSI_CMD_ONE_LAST_FOR_ONE_PKT;
 	}
 	rc = of_property_read_u32(np, "pxlw,pt-last-for-per-pkt",
 			&(pcfg->add_pt_last_flag));
 	if (rc) {
 		IRIS_LOGE("can not get property:pxlw,pt-last-for-per-pkt");
-		pcfg->add_pt_last_flag = DSI_CMD_ONE_LAST_FOR_ONE_PKT;
+		pcfg->add_pt_last_flag = DSI_CMD_ONE_LAST_FOR_MULT_IPOPT;
 	}
 	IRIS_LOGE("pxlw,add-last-for-split-pkt: %d, pxlw,add-pt-last-for-split-pkt: %d",
 		 pcfg->add_on_last_flag, pcfg->add_pt_last_flag);
@@ -2895,15 +2899,15 @@ int iris_init_update_ipopt_t(
 int iris_read_chip_id(void)
 {
 	struct iris_cfg *pcfg  = NULL;
-	uint32_t sys_pll_ro_status = 0xf0000010;
+	//uint32_t sys_pll_ro_status = 0xf0000010;
 
 	pcfg = iris_get_cfg();
 
 	// FIXME: if chip version is set by sw, skip hw read chip id.
-	if (pcfg->chip_ver == IRIS3_CHIP_VERSION)
-		pcfg->chip_id = (iris_ocp_read(sys_pll_ro_status, DSI_CMD_SET_STATE_HS)) & 0xFF;
-	else
-		pcfg->chip_id = 0;
+	//if (pcfg->chip_ver == IRIS3_CHIP_VERSION)
+		//pcfg->chip_id = (iris_ocp_read(sys_pll_ro_status, DSI_CMD_SET_STATE_HS)) & 0xFF;
+	//else
+	pcfg->chip_id = 0;
 
 	IRIS_LOGI("chip ver = %#x", pcfg->chip_ver);
 	IRIS_LOGI("chip id = %#x", pcfg->chip_id);
@@ -2926,8 +2930,14 @@ static void iris_status_clean(void)
 	pcfg->mcu_code_downloaded = false;
 	if (pcfg->tx_mode == 0) // video mode
 		iris_set_frc_var_display(0);
+	pcfg->dynamic_vfr = false;
 	atomic_set(&pcfg->video_update_wo_osd, 0);
+	cancel_work_sync(&pcfg->vfr_update_work);
 	atomic_set(&pcfg->osd_irq_cnt, 0);
+#if defined(PXLW_IRIS_DUAL)
+	atomic_set(&pcfg->dom_cnt_in_frc, 0);
+	atomic_set(&pcfg->dom_cnt_in_ioctl, 0);
+#endif
 }
 
 void iris_free_ipopt_buf(uint32_t ip_type)
@@ -3029,9 +3039,14 @@ static void iris_load_release_mcu(void)
 {
 	struct iris_cfg *pcfg = iris_get_cfg();
 	u32 values[2] = {0xF00000C8, 0x1};
+	struct iris_ctrl_opt ctrl_opt;
+
+	ctrl_opt.ip = APP_CODE_LUT;
+	ctrl_opt.opt_id = 0;
+	ctrl_opt.skip_last = 0;
 
 	IRIS_LOGI("%s,%d: mcu downloading and running", __func__, __LINE__);
-	iris_send_ipopt_cmds(APP_CODE_LUT, 0);
+	iris_send_assembled_pkt(&ctrl_opt, 1);
 	iris_ocp_write3(2, values);
 	pcfg->mcu_code_downloaded = true;
 }
@@ -3154,6 +3169,10 @@ int iris5_lightup(
 		iris_send_lightup_pkt();
 		iris_scaler_filter_ratio_get();
 		iris_check_firmware_update_gamma();
+#if defined(PXLW_IRIS_DUAL)
+		if (!(pcfg->dual_test & 0x20))
+			iris_dual_setting_switch(pcfg->dual_setting);
+#endif
 	}
 
 	iris_load_release_mcu();
@@ -3210,6 +3229,10 @@ int iris_panel_enable(struct dsi_panel *panel, struct dsi_panel_cmd_set *on_cmds
 	int lightup_opt = iris_lightup_opt_get();
 
 	if (panel->is_secondary) {
+		if (panel->reset_config.iris_osd_autorefresh) {
+			IRIS_LOGI("reset iris_osd_autorefresh");
+			iris_osd_autorefresh(0);
+		}
 		return rc;
 	}
 
@@ -3554,6 +3577,10 @@ void iris_framerate_switch(void)
 	iris_send_ipopt_cmds(IRIS_IP_TX, high ? 0x4:0x0);
 	iris_set_out_frame_rate(framerate);
 	iris_send_ipopt_cmds(IRIS_IP_RX, high ? 0xF2:0xF1);
+#if defined(PXLW_IRIS_DUAL)
+	iris_send_ipopt_cmds(IRIS_IP_RX_2, high ? 0xF2:0xF1);
+	iris_send_ipopt_cmds(IRIS_IP_BLEND, high ? 0xF1:0xF0);
+#endif
 	udelay(2000); //delay 2ms
 }
 
@@ -3785,6 +3812,7 @@ int iris5_lightoff(
 	iris_quality_setting_off();
 	iris_lp_setting_off();
 	iris5_aod_state_clear();
+	pcfg->panel_pending = 0;
 	pcfg->iris_initialized = false;
 
 	IRIS_LOGI("%s(%d) ---", __func__, __LINE__);
@@ -4138,6 +4166,26 @@ bool iris_get_dual2single_status(void)
 		return false;
 }
 
+static void iris_update_blending_setting(bool on)
+{
+	static u32 write_data[4];
+	if (on) {
+		write_data[0] = 0xf1540030;
+		write_data[1] = 0x000400f0;
+		write_data[2] = 0xf1540040;
+		write_data[3] = 0x000c00f0;
+		iris_ocp_write3(4, write_data);
+		iris_send_ipopt_cmds(IRIS_IP_DPP, 0x61);
+	} else {
+		write_data[0] = 0xf1540030;
+		write_data[1] = 0x00040100;
+		write_data[2] = 0xf1540040;
+		write_data[3] = 0x000c0100;
+		iris_ocp_write3(4, write_data);
+		iris_send_ipopt_cmds(IRIS_IP_DPP, 0x60);
+	}
+}
+
 int iris_second_channel_power(bool pwr)
 {
 	bool compression_mode;
@@ -4150,6 +4198,9 @@ int iris_second_channel_power(bool pwr)
 		return -EFAULT;
 	}
 
+	iris_set_cfg_index(DSI_PRIMARY);
+	iris_ulps_source_sel(ULPS_NONE);
+
 	if (pwr) {	//on
 		regval.ip = IRIS_IP_SYS;
 		regval.opt_id = 0x06;
@@ -4161,9 +4212,18 @@ int iris_second_channel_power(bool pwr)
 			osd_blending_work.enter_lp_st = MIPI2_LP_FINISH;
 		}
 
+		if (pcfg2->panel->reset_config.iris_osd_autorefresh_enabled) {
+			IRIS_LOGW("osd_autorefresh is not disable before enable osd!");
+		} else {
+			IRIS_LOGI("osd_autorefresh is disable before enable osd!");
+		}
+
 		if (pcfg2->panel->power_info.refcount == 0) {
 				IRIS_LOGW("%s: AP mipi2 tx hasn't been power on.", __func__);
 				pcfg2->osd_switch_on_pending = true;
+//		} else if (!pcfg2->panel->panel_initialized) {
+//				IRIS_LOGW("%s: AP mipi2 tx hasn't been initialized.", __func__);
+//				pcfg2->osd_switch_on_pending = true;
 		} else {
 			if (pcfg->panel->cur_mode && pcfg->panel->cur_mode->priv_info && pcfg->panel->cur_mode->priv_info->dsc_enabled)
 				compression_mode = true;
@@ -4177,9 +4237,8 @@ int iris_second_channel_power(bool pwr)
 			iris_pmu_bsram_set(true);
 			udelay(300);
 
-			iris_set_cfg_index(DSI_PRIMARY);
-			iris_ulps_source_sel(ULPS_NONE);
 			iris_second_channel_pre(compression_mode);
+			iris_update_blending_setting(true);
 
 			IRIS_LOGI("%s, mipi_pwr_st = true", __func__);
 			pcfg2->mipi_pwr_st = true;
@@ -4187,6 +4246,7 @@ int iris_second_channel_power(bool pwr)
 	} else {	//off
 		/* power down mipi2 domain */
 		iris_pmu_mipi2_set(false);
+		iris_update_blending_setting(false);
 		IRIS_LOGI("%s: iris_pmu_mipi2 off.", __func__);
 		pcfg2->mipi_pwr_st = false;
 	}
@@ -4263,6 +4323,24 @@ int iris_osd_blending_switch(u32 val)
 	}
 
 	if (val) {
+		if (pcfg->dual_test & 0x100) {
+			// check MIPI_RX AUX 2b_page register
+			uint32_t *payload;
+			u32 cmd_2b_page;
+			int count = 0;
+			payload = iris_get_ipopt_payload_data(IRIS_IP_RX_2, 0xF0, 2);
+			while(count < 20) {
+				cmd_2b_page = iris_ocp_read(0xf1840304, DSI_CMD_SET_STATE_HS);
+				if (cmd_2b_page != payload[2]) {
+					count ++;
+					IRIS_LOGW("Warning: cmd_2b_page: %x not right, %d!", cmd_2b_page, count);
+					usleep_range(2000, 2100);
+					iris_second_channel_pre(true);
+				} else
+					break;
+			}
+		}
+
 		pcfg->osd_enable = true;
 		if (osd_blending_work.enter_lp_st != MIPI2_LP_FINISH) {
 		//	IRIS_LOGE("osd_disable_work is still in queue entry");
@@ -4674,6 +4752,41 @@ static const struct file_operations iris_loop_back_fops = {
 	.read = iris_dbg_loop_back_test,
 };
 
+static ssize_t iris_list_debug(struct file *file,
+			const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	uint8_t ip;
+	uint8_t opt_id;
+	int32_t pos;
+	uint32_t value;
+	char buf[64];
+	uint32_t *payload = NULL;
+
+	if (count > sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[count] = 0; // end if string
+
+	if (sscanf(buf, "%x %x %x %x", &ip, &opt_id, &pos, &value) != 4)
+		return -EINVAL;
+
+	payload = iris_get_ipopt_payload_data(ip, opt_id, 2);
+
+	IRIS_LOGI("%x %x %x %x->%x", ip, opt_id, pos, payload[pos], value);
+
+	iris_set_ipopt_payload_data(ip, opt_id, pos, value);
+
+	return count;
+}
+
+static const struct file_operations iris_list_debug_fops = {
+	.open = simple_open,
+	.write = iris_list_debug,
+};
+
 static int iris_cont_splash_debugfs_init(struct dsi_display *display)
 {
 	struct iris_cfg *pcfg;
@@ -4735,6 +4848,13 @@ static int iris_cont_splash_debugfs_init(struct dsi_display *display)
 		return -EFAULT;
 	}
 
+	if (debugfs_create_file("iris_list_debug",	0644, pcfg->dbg_root, display,
+				&iris_list_debug_fops) == NULL) {
+		IRIS_LOGE("%s(%d): debugfs_create_file: index fail",
+			__FILE__, __LINE__);
+		return -EFAULT;
+	}
+
 	return 0;
 }
 
@@ -4763,7 +4883,7 @@ void iris5_display_prepare(struct dsi_display *display)
 
 	if (iris_boot[index] == false) {
 		iris_set_cfg_index(index);
-		iris5_parse_lut_cmds();
+		iris5_parse_lut_cmds(1);
 		iris_alloc_seq_space();
 		iris_boot[index] = true;
 	}
@@ -4857,9 +4977,11 @@ bool iris_secondary_display_autorefresh(void *phys_enc)
 	IRIS_LOGV("%s, auto refresh: %s", __func__,
 		display->panel->reset_config.iris_osd_autorefresh ? "true" : "false");
 	if (!display->panel->reset_config.iris_osd_autorefresh) {
+		display->panel->reset_config.iris_osd_autorefresh_enabled = false;
 		return false;
 	}
 
+	display->panel->reset_config.iris_osd_autorefresh_enabled = true;
 	iris_osd_irq_cnt_clean();
 	return true;
 }
@@ -4868,11 +4990,11 @@ static void iris_vfr_update_work(struct work_struct *work)
 {
 	struct iris_cfg *pcfg = container_of(work, struct iris_cfg, vfr_update_work);
 	if (atomic_read(&pcfg->video_update_wo_osd) >= 4) {
-		iris_vfr_update(pcfg, true);
-		IRIS_LOGI("enable vfr");
+		if (iris_vfr_update(pcfg, true))
+			IRIS_LOGI("enable vfr");
 	} else {
-		iris_vfr_update(pcfg, false);
-		IRIS_LOGI("disable vfr");
+		if (iris_vfr_update(pcfg, false))
+			IRIS_LOGI("disable vfr");
 	}
 }
 
@@ -4889,3 +5011,81 @@ void iris_osd_irq_cnt_inc(void)
 	IRIS_LOGD("osd_irq: %d", atomic_read(&pcfg->osd_irq_cnt));
 }
 
+#if defined(PXLW_IRIS_DUAL)
+static void iris_frc_setting_switch(bool dual)
+{
+	uint32_t *payload = NULL;
+	uint32_t process_hres[2];	// 0: single, 1: dual
+	uint32_t process_vres[2];
+	uint32_t mv_buf_number[2];
+	uint32_t video_baseaddr[2];
+	uint8_t opt_id[2] = {0xb0, 0xb1};
+	struct iris_cfg *pcfg = iris_get_cfg_by_index(DSI_PRIMARY);
+	int i;
+	for (i=0; i<2; i++) {
+		payload = iris_get_ipopt_payload_data(IRIS_IP_PWIL, opt_id[i], 2);
+		mv_buf_number[i] = (payload[2] >> 16) & 0x7;
+		video_baseaddr[i] = payload[7];
+		process_hres[i] = payload[10] & 0xffff;
+		process_vres[i] = (payload[10] >> 16) & 0xffff;
+	}
+	i = dual ? 1 : 0;
+	pcfg->frc_setting.memc_hres = process_hres[i];
+	pcfg->frc_setting.memc_vres = process_vres[i];
+	pcfg->frc_setting.mv_buf_num = mv_buf_number[i];
+	pcfg->frc_setting.video_baseaddr = video_baseaddr[i];
+
+	if (process_hres[0] != process_hres[1]) {
+		iris_scaler_filter_ratio_get();
+		IRIS_LOGI("update scaler filter");
+	}
+
+}
+
+void iris_dual_setting_switch(bool dual)
+{
+	struct iris_ctrl_opt arr_single[] = {
+		{0x03, 0xa0, 0x01, 0x00},	// IRIS_IP_PWIL, pwil: ctrl graphic
+		{0x03, 0xb0, 0x01, 0x00},	// IRIS_IP_PWIL, pwil: video
+		{0x03, 0x80, 0x01, 0x00},	// IRIS_IP_PWIL, pwil: update
+		{0x0b, 0xf0, 0x01, 0x00},	// IRIS_IP_SCALER1D, scaler1d
+		{0x0b, 0xa0, 0x01, 0x00},	// IRIS_IP_SCALER1D, scaler1d: gc
+		{0x2f, 0xf0, 0x01, 0x00},	// IRIS_IP_SCALER1D_2, scaler_pp: init
+		{0x2d, 0xf0, 0x01, 0x00},	// IRIS_IP_PSR_MIF, psr_mif: init
+		{0x11, 0xe2, 0x00, 0x00},	// IRIS_IP_DMA
+	};
+	struct iris_ctrl_opt arr_dual[] = {
+		{0x03, 0xa1, 0x01, 0x00},	// IRIS_IP_PWIL, pwil: ctrl graphic
+		{0x03, 0xb1, 0x01, 0x00},	// IRIS_IP_PWIL, pwil: video
+		{0x03, 0x80, 0x01, 0x00},	// IRIS_IP_PWIL, pwil: update
+		{0x0b, 0xf1, 0x01, 0x00},	// IRIS_IP_SCALER1D, scaler1d
+		{0x0b, 0xa0, 0x01, 0x00},	// IRIS_IP_SCALER1D, scaler1d: gc
+		{0x2f, 0xf1, 0x01, 0x00},	// IRIS_IP_SCALER1D_2, scaler_pp: init
+		{0x2d, 0xf1, 0x01, 0x00},	// IRIS_IP_PSR_MIF, psr_mif: init
+		{0x11, 0xe2, 0x00, 0x00},	// IRIS_IP_DMA
+	};
+	struct iris_ctrl_opt *opt_arr = dual ? arr_dual : arr_single;
+	int len = sizeof(arr_single)/sizeof(struct iris_ctrl_opt);
+	iris_send_assembled_pkt(opt_arr, len);
+	IRIS_LOGI("iris_dual_setting_switch, dual: %d, len: %d", dual, len);
+	iris_frc_setting_switch(dual);
+}
+
+void iris_frc_dsc_setting(bool dual)
+{
+	struct iris_ctrl_opt arr_single[] = {
+		{0x25, 0xf1, 0x01, 0x00},	// IRIS_IP_DSC_DEN_2, dsc_encoder_frc: init
+		{0x24, 0xf1, 0x01, 0x00},	// IRIS_IP_DSC_ENC_2, dsc_encoder_frc: init
+		{0x11, 0xe8, 0x00, 0x00},	// IRIS_IP_DMA
+	};
+	struct iris_ctrl_opt arr_dual[] = {
+		{0x25, 0xf2, 0x01, 0x00},	// IRIS_IP_DSC_DEN_2
+		{0x24, 0xf2, 0x01, 0x00},	// IRIS_IP_DSC_ENC_2
+		{0x11, 0xe8, 0x00, 0x00},	// IRIS_IP_DMA
+	};
+	struct iris_ctrl_opt *opt_arr = dual ? arr_dual : arr_single;
+	int len = sizeof(arr_single)/sizeof(struct iris_ctrl_opt);
+	iris_send_assembled_pkt(opt_arr, len);
+	IRIS_LOGI("iris_frc_dsc_setting, dual: %d, len: %d", dual, len);
+}
+#endif

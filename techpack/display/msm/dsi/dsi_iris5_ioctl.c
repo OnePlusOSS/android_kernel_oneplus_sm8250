@@ -103,7 +103,7 @@ static int mdss_mipi_dsi_command(void __user *values)
 			u8 lut_parse = (cmd.iris_ocp_type >> 24) & 0xFF;
 			u32 lut_pkt_index = cmd.iris_ocp_addr;
 			if (lut_parse) // only parse firmware when value is not zero;
-				iris5_parse_lut_cmds();
+				iris5_parse_lut_cmds(0);
 			iris_lut_send(lut_type, lut_index, lut_pkt_index);
 		} else { // test ocp wirte
 			if(pktCnt > DSI_CMD_CNT)
@@ -188,6 +188,7 @@ static bool iris_special_config(u32 type)
 	case USER_DEMO_WND:
 	case IRIS_MEMC_LEVEL:
 	case IRIS_WAIT_VSYNC:
+	case IRIS_FW_UPDATE:
 		return true;
 	}
 
@@ -491,7 +492,7 @@ int iris_configure(u32 display, u32 type, u32 value)
 		break;
 	case IRIS_FW_UPDATE:
 		// Need do multi-thread protection.
-		if (value == 0) {
+		if (value >= 0 && value <= 2) {
 			/* before parsing firmware, free ip & opt buffer which alloc for LUT,
 			 * if loading firmware failed before, need realloc seq space after
 			 * updating firmware
@@ -499,14 +500,16 @@ int iris_configure(u32 display, u32 type, u32 value)
 			u8 firmware_status = iris_get_firmware_status();
 
 			iris_free_ipopt_buf(IRIS_LUT_PIP_IDX);
-			iris5_parse_lut_cmds();
+			iris5_parse_lut_cmds(value);
 			if (firmware_status == FIRMWARE_LOAD_FAIL) {
 				iris_free_seq_space();
 				iris_alloc_seq_space();
 			}
 			if (iris_get_firmware_status() == FIRMWARE_LOAD_SUCCESS) {
-				iris_cm_color_gamut_set(pqlt_cur_setting->pq_setting.cmcolorgamut);
-				iris_scaler_gamma_enable(false, 1);
+				if (pcfg->abypss_ctrl.abypass_mode == PASS_THROUGH_MODE) {
+					iris_cm_color_gamut_set(pqlt_cur_setting->pq_setting.cmcolorgamut);
+					iris_scaler_gamma_enable(false, 1);
+				}
 				iris_set_firmware_status(FIRMWARE_IN_USING);
 			}
 		}
@@ -524,6 +527,12 @@ int iris_configure(u32 display, u32 type, u32 value)
 		iris_set_out_frame_rate(value);
 		break;
 	case IRIS_OSD_ENABLE:
+#if defined(PXLW_IRIS_DUAL)
+		if (pcfg1->iris_initialized == false) {
+			IRIS_LOGI("iris not initialized");
+			break;
+		}
+#endif
 		if ((value == 1) || (value == 0)) {
 			IRIS_LOGI("call iris_osd_blending_switch(%d)", value);
 			iris_osd_blending_switch(value);
@@ -542,6 +551,16 @@ int iris_configure(u32 display, u32 type, u32 value)
 		} else if (value == 0x41) {
 			iris_dom_set(2);
 		}
+#if defined(PXLW_IRIS_DUAL)
+		else if (value == 0x80 || value == 0x81) {
+			pcfg1->dual_setting = value == 0x81;
+			if (pcfg->dual_test & 0x10)
+				pcfg1->dual_setting = true;
+
+			if (!(pcfg->dual_test & 0x4))
+				iris_dual_setting_switch(pcfg1->dual_setting);
+		}
+#endif
 		else
 			IRIS_LOGE("IRIS_OSD_ENABLE, invalid val=%d", value);
 		break;
@@ -923,6 +942,7 @@ int iris_configure_get(u32 display, u32 type, u32 count, u32 *values)
 {
 	struct iris_cfg *pcfg = iris_get_cfg_by_index(display);
 	struct iris_cfg *pcfg1 = iris_get_cfg_by_index(DSI_PRIMARY);
+	struct iris_cfg *pcfg2 = iris_get_cfg_by_index(DSI_SECONDARY);
 	struct iris_setting_info *iris_setting = iris_get_setting();
 	struct quality_setting *pqlt_cur_setting = &iris_setting->quality_cur;
 	u32 reg_addr, reg_val;
@@ -1071,6 +1091,12 @@ int iris_configure_get(u32 display, u32 type, u32 count, u32 *values)
 		*values = pcfg->mipi_pwr_st;
 		break;
 	case IRIS_DUAL2SINGLE_ST:
+#if defined(PXLW_IRIS_DUAL)
+		if (pcfg2->mipi_pwr_st == false) {
+			IRIS_LOGI("mipi2 rx has been power off");
+			*values = 1;
+		} else
+#endif
 		*values = iris_get_dual2single_status();
 		break;
 	case IRIS_WORK_MODE:

@@ -3099,6 +3099,12 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	if (psde->pipe_hw->ops.setup_dgm_csc)
 		psde->pipe_hw->ops.setup_dgm_csc(psde->pipe_hw,
 			pstate->multirect_index, psde->csc_usr_ptr);
+#if defined(PXLW_IRIS_DUAL)
+	if ( psde->pipe_hw->ops.setup_csc_v2)
+		psde->pipe_hw->ops.setup_csc_v2(psde->pipe_hw,
+		fmt, psde->csc_usr_ptr);
+#endif
+
 }
 
 static void _sde_plane_update_sharpening(struct sde_plane *psde)

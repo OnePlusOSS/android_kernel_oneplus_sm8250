@@ -1185,6 +1185,68 @@ static void sde_hw_sspp_setup_dgm_csc(struct sde_hw_pipe *ctx,
 
 	SDE_REG_WRITE(&ctx->hw, offset, op_mode);
 }
+#if defined(PXLW_IRIS_DUAL)
+static void sde_hw_sspp_setup_csc_v2(struct sde_hw_pipe *ctx,
+				const struct sde_format *fmt,
+				struct sde_csc_cfg *data)
+{
+	u32 idx = 0;
+	u32 op_mode = 0;
+	u32 clamp_shift = 0;
+	u32 val;
+	u32 op_mode_off = 0;
+	bool csc10 = false;
+	const struct sde_sspp_sub_blks *sblk;
+
+	if (!ctx || !ctx->cap || !ctx->cap->sblk)
+		return;
+	if (SDE_FORMAT_IS_YUV(fmt))
+		return;
+
+	sblk = ctx->cap->sblk;
+	if (_sspp_subblk_offset(ctx, SDE_SSPP_CSC_10BIT, &idx))
+		return;
+	op_mode_off = idx;
+	if (test_bit(SDE_SSPP_CSC_10BIT, &ctx->cap->features)) {
+		idx += CSC_10BIT_OFFSET;
+		csc10 = true;
+	}
+	clamp_shift = csc10 ? 16 : 8;
+	if (data && !SDE_FORMAT_IS_YUV(fmt)) {
+		op_mode |= BIT(0);
+		sde_hw_csc_matrix_coeff_setup(&ctx->hw,
+			idx, data, DGM_CSC_MATRIX_SHIFT);
+		/* Pre clamp */
+		val = (data->csc_pre_lv[0] << clamp_shift) | data->csc_pre_lv[1];
+		SDE_REG_WRITE(&ctx->hw, idx + 0x14, val);
+		val = (data->csc_pre_lv[2] << clamp_shift) | data->csc_pre_lv[3];
+		SDE_REG_WRITE(&ctx->hw, idx + 0x18, val);
+		val = (data->csc_pre_lv[4] << clamp_shift) | data->csc_pre_lv[5];
+		SDE_REG_WRITE(&ctx->hw, idx + 0x1c, val);
+
+		/* Post clamp */
+		val = (data->csc_post_lv[0] << clamp_shift) | data->csc_post_lv[1];
+		SDE_REG_WRITE(&ctx->hw, idx + 0x20, val);
+		val = (data->csc_post_lv[2] << clamp_shift) | data->csc_post_lv[3];
+		SDE_REG_WRITE(&ctx->hw, idx + 0x24, val);
+		val = (data->csc_post_lv[4] << clamp_shift) | data->csc_post_lv[5];
+		SDE_REG_WRITE(&ctx->hw, idx + 0x28, val);
+
+		/* Pre-Bias */
+		SDE_REG_WRITE(&ctx->hw, idx + 0x2c, data->csc_pre_bv[0]);
+		SDE_REG_WRITE(&ctx->hw, idx + 0x30, data->csc_pre_bv[1]);
+		SDE_REG_WRITE(&ctx->hw, idx + 0x34, data->csc_pre_bv[2]);
+
+		/* Post-Bias */
+		SDE_REG_WRITE(&ctx->hw, idx + 0x38, data->csc_post_bv[0]);
+		SDE_REG_WRITE(&ctx->hw, idx + 0x3c, data->csc_post_bv[1]);
+		SDE_REG_WRITE(&ctx->hw, idx + 0x40, data->csc_post_bv[2]);
+	}
+	SDE_REG_WRITE(&ctx->hw, op_mode_off, op_mode);
+	// Multiple plane share csc_v2 config
+	wmb();
+}
+#endif
 
 static void _setup_layer_ops(struct sde_hw_pipe *c,
 		unsigned long features, unsigned long perf_features,
@@ -1217,8 +1279,12 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 		c->ops.setup_ts_prefill = sde_hw_sspp_setup_ts_prefill;
 
 	if (test_bit(SDE_SSPP_CSC, &features) ||
-		test_bit(SDE_SSPP_CSC_10BIT, &features))
+		test_bit(SDE_SSPP_CSC_10BIT, &features)) {
 		c->ops.setup_csc = sde_hw_sspp_setup_csc;
+#if defined(PXLW_IRIS_DUAL)
+		c->ops.setup_csc_v2 = sde_hw_sspp_setup_csc_v2;
+#endif
+		}
 
 	if (test_bit(SDE_SSPP_DGM_CSC, &features))
 		c->ops.setup_dgm_csc = sde_hw_sspp_setup_dgm_csc;

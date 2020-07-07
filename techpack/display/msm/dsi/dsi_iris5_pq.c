@@ -2363,6 +2363,9 @@ void iris_psf_mif_efifo_set(u8 mode, bool osd_enable)
 	int len;
 	bool is_ulps_enable = 0;
 	uint8_t path = iris_pq_update_path;
+#if defined(PXLW_IRIS_DUAL)
+	struct iris_cfg *pcfg = iris_get_cfg_by_index(DSI_PRIMARY);
+#endif
 
 	iris_init_ipopt_ip(popt,  IP_OPT_MAX);
 	if (!iris_dynamic_power_get())
@@ -2372,6 +2375,9 @@ void iris_psf_mif_efifo_set(u8 mode, bool osd_enable)
 
 	regval.ip = IRIS_IP_PSR_MIF;
 	regval.opt_id = 0xfd;
+#if defined(PXLW_IRIS_DUAL)
+	regval.opt_id = pcfg->dual_setting ? 0xfe : 0xfd;
+#endif
 	regval.mask = 0x1000;
 	regval.value = ((enable == true) ? 0 : 0x1000);
 	iris_update_bitmask_regval_nonread(&regval, false);
@@ -2394,11 +2400,17 @@ void iris_psf_mif_dyn_addr_set(bool dyn_addr_enable)
 	int len;
 	bool is_ulps_enable = 0;
 	uint8_t path = iris_pq_update_path;
+#if defined(PXLW_IRIS_DUAL)
+	struct iris_cfg *pcfg = iris_get_cfg_by_index(DSI_PRIMARY);
+#endif
 
 	iris_init_ipopt_ip(popt,  IP_OPT_MAX);
 
 	regval.ip = IRIS_IP_PSR_MIF;
 	regval.opt_id = 0xfd;
+#if defined(PXLW_IRIS_DUAL)
+	regval.opt_id = pcfg->dual_setting ? 0xfe : 0xfd;
+#endif
 	regval.mask = 0x2000;
 	regval.value = ((dyn_addr_enable == false) ? 0 : 0x2000);
 	iris_update_bitmask_regval_nonread(&regval, false);
@@ -2463,6 +2475,11 @@ void iris_ms_pwil_dma_update(struct iris_mspwil_parameter *par)
 	if (par->frc_pt_switch_on != -1) {
 		payload = iris_get_ipopt_payload_data(IRIS_IP_PWIL, 0xF1, 2);
 		pwil_datapath = (payload[2] & (~0x80000000)) | pwil_datapath;
+#if defined(PXLW_IRIS_DUAL)
+		pwil_datapath &= ~0x00800000;		// blending before scale(PP)
+		if (pcfg->dual_setting && par->frc_pt_switch_on == 0)
+			pwil_datapath |= 0x00800000;	// blending after scale(PP)
+#endif
 		iris_set_ipopt_payload_data(IRIS_IP_PWIL, 0xF1, 4, pwil_datapath);
 //		len = iris_update_ip_opt(popt, IP_OPT_MAX, IRIS_IP_PWIL, 0xF1, 0x01);
 	}
@@ -2490,10 +2507,20 @@ void iris_ms_pwil_dma_update(struct iris_mspwil_parameter *par)
 	}
 
 	if (par->mvc_01phase_update) {
+#if defined(PXLW_IRIS_DUAL)
+		int pwil_video_opt = 0xB0;
+		if (pcfg->dual_setting)
+			pwil_video_opt = 0xB1;
+		payload = iris_get_ipopt_payload_data(IRIS_IP_PWIL, pwil_video_opt, 2);
+		temp = (payload[2] & (~0x80000000)) | (par->mvc_01phase<<31);
+		iris_set_ipopt_payload_data(IRIS_IP_PWIL, pwil_video_opt, 4, temp);
+		iris_update_ip_opt(popt, IP_OPT_MAX, IRIS_IP_PWIL, pwil_video_opt, 0x01);
+#else
 		payload = iris_get_ipopt_payload_data(IRIS_IP_PWIL, 0xB0, 2);
 		temp = (payload[2] & (~0x80000000)) | (par->mvc_01phase<<31);
 		iris_set_ipopt_payload_data(IRIS_IP_PWIL, 0xb0, 4, temp);
 		iris_update_ip_opt(popt, IP_OPT_MAX, IRIS_IP_PWIL, 0xB0, 0x01);
+#endif
 	}
 
 	len = iris_capture_enable_pq(popt, len);
@@ -2702,6 +2729,7 @@ void iris_pwil_sdr2hdr_resolution_set(bool enter_frc_mode) {
 
 void iris_dom_set(int mode)
 {
+	struct iris_cfg *pcfg = iris_get_cfg_by_index(DSI_PRIMARY);
 	struct iris_update_ipopt popt[IP_OPT_MAX];
 	bool skiplast = 0;
 	int len;
@@ -2709,6 +2737,17 @@ void iris_dom_set(int mode)
 	uint32_t  *payload = NULL;
 	uint8_t path = iris_pq_update_path;
 	uint32_t dport_ctrl0;
+
+#if defined(PXLW_IRIS_DUAL)
+	IRIS_LOGD("%s, mode: %d, DOM cnt: %d-%d", __func__, mode, pcfg->dom_cnt_in_ioctl, pcfg->dom_cnt_in_frc);
+	if (mode != 0) {
+		if (atomic_read(&pcfg->dom_cnt_in_ioctl) && atomic_read(&pcfg->dom_cnt_in_frc)) {
+			IRIS_LOGI("%s, both set dom in ioctl and frc", __func__);
+			atomic_set(&pcfg->dom_cnt_in_frc, 0);
+			return;
+		}
+	}
+#endif
 
 	iris_init_ipopt_ip(popt,  IP_OPT_MAX);
 	len = iris_capture_disable_pq(popt, &skiplast);
@@ -2725,6 +2764,12 @@ void iris_dom_set(int mode)
 	is_ulps_enable = iris_disable_ulps(path);
 	iris_update_pq_opt(popt, len, path);
 	iris_enable_ulps(path, is_ulps_enable);
+#if defined(PXLW_IRIS_DUAL)
+	if (mode == 0)
+		atomic_set(&pcfg->dom_cnt_in_ioctl, 1);
+	else
+		atomic_set(&pcfg->dom_cnt_in_ioctl, 0);
+#endif
 }
 
 static int iris_brightness_para_set(struct iris_update_ipopt *popt, uint8_t skip_last, uint32_t *value)
@@ -2766,8 +2811,8 @@ static int iris_brightness_para_set(struct iris_update_ipopt *popt, uint8_t skip
 	val &= 0x00007fff;
 	data[7] = val;
 
-	iris_send_ipopt_cmds(ip, opt_id);
-
+	//iris_send_ipopt_cmds(ip, opt_id);
+    len = iris_update_ip_opt(popt, IP_OPT_MAX, ip, opt_id, skip_last);
 	return len;
 }
 

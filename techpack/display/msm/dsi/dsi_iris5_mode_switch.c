@@ -53,6 +53,11 @@ static int iris_frcpt_switch_th = 0x3564;
 static int iris_te_dly_frc = -1;
 static int iris_display_vtotal = -1;
 static u32 iris_val_frcc_reg8;
+#if defined(PXLW_IRIS_DUAL)
+static int iris_frc_var_disp_dbg = 0;
+static int iris_frc_var_disp_dual = 2;
+static int iris_frc_pt_switch_on_dbg = 1;
+#endif
 
 static void iris_frc_cmd_payload_init(void) {
 	iris_frc_cmd_payload_count = 0;
@@ -269,6 +274,16 @@ void iris_frc_mif_reg_set(void)
 	mv_hres = CEILING(frc_setting->memc_hres, 16);
 	mv_vres = CEILING(frc_setting->memc_vres, 16);
 
+#if defined(PXLW_IRIS_DUAL)
+	if (!(pcfg->dual_test & 0x2))
+		frc_setting->mv_baseaddr = 0x300000 - (4+frc_setting->mv_buf_num) * fmif_mv_frm_offset;
+	IRIS_LOGI("mv_baseaddr: %x, offset: %x", frc_setting->mv_baseaddr, fmif_mv_frm_offset);
+	if ((frc_setting->video_baseaddr + 3 * fmif_vd_offset) > frc_setting->mv_baseaddr) {
+		IRIS_LOGE("buffer check failed!");
+		IRIS_LOGE("video_baseaddr: %x, offset: %x", frc_setting->video_baseaddr, fmif_vd_offset);
+		IRIS_LOGE("mv_baseaddr: %x, offset: %x", frc_setting->mv_baseaddr, fmif_mv_frm_offset);
+	}
+#endif
 	if (frc_setting->disp_hres != frc_setting->memc_hres)
 		start_line = 5;
 	else
@@ -1026,9 +1041,22 @@ static bool iris_mcu_is_stop(void)
 }
 
 static void iris_blending_timeout_set(int frc) {
+#if defined(PXLW_IRIS_DUAL)
+	struct iris_cfg *pcfg = iris_get_cfg();
+	bool high;
+	u32 framerate = pcfg->panel->cur_mode->timing.refresh_rate;
+	if ((framerate == HIGH_FREQ) && (pcfg->panel->cur_mode->timing.v_active == FHD_H))
+		high = true;
+	else
+		high = false;
+	if (frc) {
+		iris_send_ipopt_cmds(IRIS_IP_BLEND, high? 0x31 : 0x11);	// blending: frc ocp
+		iris_send_ipopt_cmds(IRIS_IP_BLEND, high? 0x30 : 0x10);	// blending: frc
+#else
 	if (frc) {
 		iris_send_ipopt_cmds(IRIS_IP_BLEND, 0x11);	// blending: frc ocp
 		iris_send_ipopt_cmds(IRIS_IP_BLEND, 0x10);	// blending: frc
+#endif
 	} else {
 		iris_send_ipopt_cmds(IRIS_IP_BLEND, 0x21);	// blending: pt ocp
 		iris_send_ipopt_cmds(IRIS_IP_BLEND, 0x20);	// blending: pt
@@ -1037,10 +1065,21 @@ static void iris_blending_timeout_set(int frc) {
 
 static void iris_dport_output_mode(int mode)
 {
-	struct iris_cfg *pcfg = iris_get_cfg();
+	struct iris_cfg *pcfg = iris_get_cfg_by_index(DSI_PRIMARY);
 	uint32_t *payload = NULL;
 	uint32_t dport_ctrl0;
 	static u32 write_data[4];
+
+#if defined(PXLW_IRIS_DUAL)
+	IRIS_LOGD("%s, mode: %d, DOM cnt: %d-%d", __func__, mode, pcfg->dom_cnt_in_ioctl, pcfg->dom_cnt_in_frc);
+	if (mode != 0) {
+		if (atomic_read(&pcfg->dom_cnt_in_ioctl) && atomic_read(&pcfg->dom_cnt_in_frc)) {
+			IRIS_LOGI("%s, both set dom in ioctl and frc", __func__);
+			atomic_set(&pcfg->dom_cnt_in_ioctl, 0);
+			 return;
+		}
+	}
+#endif
 
 	payload = iris_get_ipopt_payload_data(IRIS_IP_DPORT, 0xF0, 2);
 	dport_ctrl0 = payload[0];
@@ -1053,6 +1092,12 @@ static void iris_dport_output_mode(int mode)
 	write_data[3] = 0x1;
 	iris_ocp_write3(4, write_data);
 	pcfg->dport_output_mode = mode;
+#if defined(PXLW_IRIS_DUAL)
+	if (mode == 0)
+		atomic_set(&pcfg->dom_cnt_in_ioctl, 1);
+	else
+		atomic_set(&pcfg->dom_cnt_in_ioctl, 0);
+#endif
 }
 
 static void iris_mspwil_par_clean(void) {
@@ -1075,6 +1120,15 @@ void iris_mode_switch_proc(u32 mode)
 	iris_mspwil_par_clean();
 
 	if (mode == IRIS_MODE_FRC_PREPARE) {
+#if defined(PXLW_IRIS_DUAL)
+		if(pcfg->dual_setting) {
+			iris_frc_var_disp = iris_frc_var_disp_dual;		// enable vfr in dual case by default
+			iris_frc_pt_switch_on = 0;	// disable frc+pt in dual case
+		} else {
+			iris_frc_var_disp = iris_frc_var_disp_dbg;
+			iris_frc_pt_switch_on = iris_frc_pt_switch_on_dbg;
+		}
+#endif
 		iris_ulps_source_sel(ULPS_NONE);
 		/*Power up FRC domain*/
 		iris_pmu_frc_set(true);
@@ -1087,8 +1141,15 @@ void iris_mode_switch_proc(u32 mode)
 		if (pcfg->pwil_mode == PT_MODE) {
 			/* power up DSC_UNIT */
 			iris_pmu_dscu_set(true);
+#if defined(PXLW_IRIS_DUAL)
+			if (!(pcfg->dual_test & 0x1))
+				iris_frc_dsc_setting(pcfg->dual_setting);
+			else
+				iris_send_ipopt_cmds(IRIS_IP_DMA, 0xe8);
+#else
 			/*dma trigger dsc_unit*/
 			iris_send_ipopt_cmds(IRIS_IP_DMA, 0xe8);
+#endif
 		}
 		mspwil_par.frc_var_disp = iris_frc_var_disp == 1;
 		mspwil_par.frc_pt_switch_on = iris_frc_pt_switch_on;
@@ -1107,6 +1168,7 @@ void iris_mode_switch_proc(u32 mode)
 		if (iris_frc_fallback_disable) {	// disable mcu during mcu
 			iris_mcu_sw_reset(1);
 		}
+		iris_blending_timeout_set(1);
 	} else if (mode == IRIS_MODE_FRC2RFB) {
 		iris_rfb_mode_enter();
 		iris_pwil_sdr2hdr_resolution_set(false);
@@ -1139,7 +1201,6 @@ void iris_mode_switch_proc(u32 mode)
 		if (pcfg->osd_enable) {
 			iris_psf_mif_efifo_set(pcfg->pwil_mode, pcfg->osd_enable);
 		}
-		iris_blending_timeout_set(1);
 		if (iris_mcu_enable) {
 			iris_mcu_sw_reset(0);
 		}
@@ -1500,23 +1561,37 @@ void iris_set_ap_te(u8 ap_te)
 	}
 }
 
-void iris_vfr_update(struct iris_cfg *pcfg, bool enable) {
+bool iris_vfr_update(struct iris_cfg *pcfg, bool enable) {
 	u32 frcc_pref_ctrl = pcfg->frc_setting.frcc_pref_ctrl;
 	static u32 write_data[2];
+
+	if (!mutex_trylock(&pcfg->lock_send_pkt)) {
+		IRIS_LOGI("%s:%d lock_send_pkt is locked!", __func__, __LINE__);
+		mutex_lock(&pcfg->lock_send_pkt);
+	}
+
+	if (!pcfg->dynamic_vfr) {
+		mutex_unlock(&pcfg->lock_send_pkt);
+		IRIS_LOGI("dynamic_vfr is disable, return");
+		return false;
+	}
 	if (iris_frc_var_disp) {
 		if (enable)
 			frcc_pref_ctrl |= 0x2;
 		else
 			frcc_pref_ctrl &= ~0x2;
 		if (frcc_pref_ctrl == pcfg->frc_setting.frcc_pref_ctrl) {
+			mutex_unlock(&pcfg->lock_send_pkt);
 			IRIS_LOGI("same frcc_pref_ctrl value, return");
-			return;
+			return false;
 		}
 		pcfg->frc_setting.frcc_pref_ctrl = frcc_pref_ctrl;
 		write_data[0] = IRIS_FRC_MIF_ADDR + FRCC_PERF_CTRL;
 		write_data[1] = frcc_pref_ctrl;
 		iris_ocp_write3(2, write_data);
 	}
+	mutex_unlock(&pcfg->lock_send_pkt);
+	return true;
 }
 
 int iris_ms_debugfs_init(struct dsi_display *display)
@@ -1536,14 +1611,26 @@ int iris_ms_debugfs_init(struct dsi_display *display)
 
 	debugfs_create_u32("frc_label", 0644, pcfg->dbg_root,
 		(u32 *)&iris_frc_label);
+#if defined(PXLW_IRIS_DUAL)
+	debugfs_create_u32("frc_var_disp_dual", 0644, pcfg->dbg_root,
+		(u32 *)&iris_frc_var_disp_dual);
+	debugfs_create_u32("frc_var_disp", 0644, pcfg->dbg_root,
+		(u32 *)&iris_frc_var_disp_dbg);
+#else
 	debugfs_create_u32("frc_var_disp", 0644, pcfg->dbg_root,
 		(u32 *)&iris_frc_var_disp);
+#endif
 	debugfs_create_u32("frc_mnt_level", 0644, pcfg->dbg_root,
 		(u32 *)&iris_frc_mnt_level);
 	debugfs_create_u32("frc_dynamic_off", 0644, pcfg->dbg_root,
 		(u32 *)&iris_frc_dynamic_off);
+#if defined(PXLW_IRIS_DUAL)
+	debugfs_create_u32("frc_pt_switch_on", 0644, pcfg->dbg_root,
+		(u32 *)&iris_frc_pt_switch_on_dbg);
+#else
 	debugfs_create_u32("frc_pt_switch_on", 0644, pcfg->dbg_root,
 		(u32 *)&iris_frc_pt_switch_on);
+#endif
 	debugfs_create_u32("mcu_enable", 0644, pcfg->dbg_root,
 		(u32 *)&iris_mcu_enable);
 	debugfs_create_u32("mcu_stop_check", 0644, pcfg->dbg_root,

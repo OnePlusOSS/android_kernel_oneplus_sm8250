@@ -6,7 +6,7 @@
  * conditions of a Master Software License Agreement and its applicable schedules.
  */
 
-int iris5_parse_lut_cmds(void);
+int iris5_parse_lut_cmds(u8 flag);
 int iris_lut_send(u8 lut_type, u8 lut_table_index, u32 lut_abtable_index);
 void iris_ambient_lut_update(enum LUT_TYPE lutType, u32 lutPos);
 void iris_maxcll_lut_update(enum LUT_TYPE lutType, u32 lutpos);

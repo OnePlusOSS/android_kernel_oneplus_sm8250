@@ -26,7 +26,7 @@
 #include "sde_crtc.h"
 #include "sde_rm.h"
 #include "sde_trace.h"
-#if defined(CONFIG_PXLW_IRIS5)
+#if defined(CONFIG_PXLW_IRIS5) || defined(CONFIG_PXLW_SOFT_IRIS)
 #include "dsi_iris5_api.h"
 #endif
 #include <linux/pm_wakeup.h>
@@ -94,7 +94,11 @@ static char dsi_dsc_rc_range_max_qp_1_1[][15] = {
 	{4, 4, 5, 6, 7, 7, 7, 8, 9, 10, 11, 12, 13, 13, 15},
 	{4, 8, 9, 10, 11, 11, 11, 12, 13, 14, 15, 16, 17, 17, 19},
 	{12, 12, 13, 14, 15, 15, 15, 16, 17, 18, 19, 20, 21, 21, 23},
+#if defined(CONFIG_PXLW_IRIS5)
+	{8, 8, 9, 10, 11, 11, 11, 12, 13, 13, 14, 14, 15, 15, 16},
+#else
 	{7, 8, 9, 10, 11, 11, 11, 12, 13, 13, 14, 14, 15, 15, 16},
+#endif
 	};
 
 /*
@@ -589,6 +593,12 @@ static int dsi_panel_reset(struct dsi_panel *panel)
 	int i;
 
 #if defined(CONFIG_PXLW_IRIS5)
+#if defined(PXLW_IRIS_DUAL)
+	if (panel->is_secondary) {
+		DSI_WARN("no need dsi_panel_reset in secondary panel\n");
+		return rc;
+	}
+#endif
 	iris5_reset(panel);
 #endif
 
@@ -3023,6 +3033,10 @@ int dsi_dsc_populate_static_param(struct msm_display_dsc_info *dsc)
 
 	if (dsc->version == 0x11 && dsc->scr_rev == 0x1)
 		dsc->first_line_bpg_offset = 15;
+#if defined(CONFIG_PXLW_IRIS5)
+	else if (dsc->bpc == 10 && dsc->bpp == 10)
+		dsc->first_line_bpg_offset = 9;
+#endif
 	else
 		dsc->first_line_bpg_offset = 12;
 
@@ -5135,6 +5149,14 @@ int dsi_panel_switch(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+#if defined(PXLW_IRIS_DUAL)
+	if (panel->is_secondary) {
+		DSI_WARN("no need dsi_panel_switch in secondary panel\n");
+		panel->panel_switch_status = false;
+		return rc;
+	}
+#endif
+
 	if (cur_h_active != panel->cur_mode->timing.h_active) {
 		udelay(2000); //Add delay for resolution switch garbage issue
 		cur_h_active = panel->cur_mode->timing.h_active;
@@ -5186,6 +5208,13 @@ int dsi_panel_post_switch(struct dsi_panel *panel)
 		DSI_ERR("Invalid params\n");
 		return -EINVAL;
 	}
+
+#if defined(PXLW_IRIS_DUAL)
+	if (panel->is_secondary) {
+		DSI_WARN("no need dsi_panel_post_switch in secondary panel\n");
+		return rc;
+	}
+#endif
 
 	panel->panel_switch_status = true;
 	mutex_lock(&panel->panel_lock);
@@ -5384,6 +5413,9 @@ int dsi_panel_disable(struct dsi_panel *panel)
 			dsi_pwr_panel_regulator_mode_set(&panel->power_info,
 				"ibb", REGULATOR_MODE_STANDBY);
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_OFF);
+#endif
+#if defined(CONFIG_PXLW_SOFT_IRIS)
+		iris5_lightoff(panel, NULL);
 #endif
 		if (rc) {
 			/*

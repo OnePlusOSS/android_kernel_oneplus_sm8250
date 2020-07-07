@@ -294,7 +294,7 @@ void iris_set_frc_var_display(int var_disp);
 int iris_mode_switch_update(void);
 int iris_ms_debugfs_init(struct dsi_display *display);
 void iris_set_ap_te(u8 ap_te);
-void iris_vfr_update(struct iris_cfg *pcfg, bool enable);
+bool iris_vfr_update(struct iris_cfg *pcfg, bool enable);
 int32_t iris_fi_osd_protect_window(u32 Top_left_position, u32 bottom_right_position, u32 osd_window_ctrl, u32 Enable, u32 DynCompensate);
 void iris_fi_demo_window(u32 DemoWinMode);
 void iris_fi_demo_window_cal(void);

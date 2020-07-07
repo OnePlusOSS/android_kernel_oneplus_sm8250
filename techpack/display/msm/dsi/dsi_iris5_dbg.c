@@ -227,6 +227,15 @@ void iris_display_mode_name_update(void)
 	if (ANALOG_BYPASS_MODE == pcfg->abypss_ctrl.abypass_mode) {
 		strncpy(pcfg->display_mode_name, "ABYPASS", sizeof(pcfg->display_mode_name));
 	} else {
+#if defined(PXLW_IRIS_DUAL)
+		if (pcfg->osd_enable) {
+			if (pcfg->pwil_mode == FRC_MODE)
+				strncpy(pcfg->display_mode_name, "DUAL-MEMC", sizeof(pcfg->display_mode_name));
+			else
+				strncpy(pcfg->display_mode_name, "DUAL-PT", sizeof(pcfg->display_mode_name));
+			return;
+		}
+#endif
 		strncpy(pcfg->display_mode_name, "PT", sizeof(pcfg->display_mode_name));
 		if (pcfg->pwil_mode == FRC_MODE) {
 			strncpy(pcfg->display_mode_name, "MEMC", sizeof(pcfg->display_mode_name));

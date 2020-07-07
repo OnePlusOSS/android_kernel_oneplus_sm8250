@@ -95,6 +95,18 @@ int iris5_sync_panel_brightness(int32_t step, void *phys_enc)
 	return rc;
 }
 
+int iris5_lightoff(
+		struct dsi_panel *panel,
+		struct dsi_panel_cmd_set *off_cmds)
+{
+	struct iris_cfg *pcfg;
+
+	pcfg = &gcfg[gcfg_index];
+	pcfg->panel_pending = 0;
+
+	return 0;
+}
+
 int iris_configure(u32 display, u32 type, u32 value)
 {
 	if (type >= IRIS_CONFIG_TYPE_MAX)

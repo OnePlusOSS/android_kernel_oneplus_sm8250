@@ -11,6 +11,8 @@
 #define IRIS_FIRMWARE_NAME	"iris5.fw"
 #define IRIS_CCF1_FIRMWARE_NAME "iris5_ccf1.fw"
 #define IRIS_CCF2_FIRMWARE_NAME "iris5_ccf2.fw"
+#define IRIS_CCF1_CALIBRATED_FIRMWARE_NAME "iris5_ccf1b.fw"
+#define IRIS_CCF2_CALIBRATED_FIRMWARE_NAME "iris5_ccf2b.fw"
 #define IRIS3_CHIP_VERSION	0x6933
 #define IRIS5_CHIP_VERSION	0x6935
 
