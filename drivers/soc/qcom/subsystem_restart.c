@@ -38,6 +38,8 @@
 #include <linux/proc_fs.h>
 #include <linux/esoc_client.h>
 #include <linux/oem/boot_mode.h>
+#include <linux/seq_file.h>
+#include <linux/proc_fs.h>
 
 #define DISABLE_SSR 0x9889deed
 /* If set to 0x9889deed, call to subsystem_restart_dev() returns immediately */
@@ -1366,6 +1368,72 @@ static void device_restart_work_hdlr(struct work_struct *work)
 							dev->desc->name);
 }
 
+int oem_restart_modem(struct subsys_device *subsys)
+{
+	int restart_level;
+
+	if (!subsys)
+		return -ENODEV;
+
+	pr_err("%s\n", __func__);
+
+	restart_level = subsys->restart_level;
+	subsys->restart_level = RESET_SUBSYS_COUPLED;
+
+	if (subsys->desc->force_reset)
+		subsys->desc->force_reset(subsys->desc);
+
+	subsys->restart_level = restart_level;
+
+	return 0;
+}
+EXPORT_SYMBOL(oem_restart_modem);
+
+static ssize_t force_rst_write(struct file *file,
+				const char __user *buf,
+				size_t count,
+				loff_t *lo)
+{
+	char read_buf[4] = {0};
+	struct subsys_device *subsys = find_subsys_device("esoc0");
+
+	if (!subsys)
+		return 0;
+
+	if (copy_from_user(read_buf, buf, 1)) {
+		pr_err("%s: failed to copy from user.\n", __func__);
+		return count;
+	}
+
+	pr_info("%s: %s\n", __func__, read_buf);
+
+	if (!strncmp(read_buf, "2", 1))
+		panic("force esoc crash");
+
+	if (!strncmp(read_buf, "1", 1)) {
+		pr_err("force to reset modem\n");
+		oem_restart_modem(subsys);
+	}
+
+	return count;
+}
+
+static ssize_t force_rst_read(struct file *file,
+				char __user *buf,
+				size_t count,
+				loff_t *ppos)
+{
+	return count;
+}
+
+static const struct file_operations esoc_force_rst_fops = {
+	.write = force_rst_write,
+	.read  = force_rst_read,
+	.open  = simple_open,
+	.owner = THIS_MODULE,
+};
+
+
 int subsystem_restart_dev(struct subsys_device *dev)
 {
 	const char *name;
@@ -2144,6 +2212,7 @@ static struct notifier_block panic_nb = {
 static int __init subsys_restart_init(void)
 {
 	int ret;
+	struct proc_dir_entry *d_entry = NULL;
 
 	ssr_wq = alloc_workqueue("ssr_wq",
 		WQ_UNBOUND | WQ_HIGHPRI | WQ_CPU_INTENSIVE, 0);
@@ -2166,6 +2235,11 @@ static int __init subsys_restart_init(void)
 		goto err_soc;
 
 	init_restart_level_all_node();
+
+	d_entry = proc_create_data("force_reset", 0664, NULL, &esoc_force_rst_fops, NULL);
+	if (!d_entry)
+		goto err_soc;
+
 	return 0;
 
 err_soc:

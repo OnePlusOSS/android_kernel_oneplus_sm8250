@@ -572,6 +572,21 @@ static int mdm_subsys_ramdumps(int want_dumps,
 	return 0;
 }
 
+static void mdm_force_reset(const struct subsys_desc *mdm_subsys)
+{
+	struct esoc_clink *esoc_clink =
+				container_of(mdm_subsys,
+						struct esoc_clink,
+							subsys);
+	struct mdm_ctrl *mdm = get_esoc_clink_data(esoc_clink);
+
+	esoc_mdm_log("[OEM] MDM force reset\n");
+
+	if (mdm->pon_ops->soft_reset)
+		mdm->pon_ops->soft_reset(mdm, true);
+}
+
+
 static int mdm_register_ssr(struct esoc_clink *esoc_clink)
 {
 	struct subsys_desc *subsys = &esoc_clink->subsys;
@@ -579,6 +594,7 @@ static int mdm_register_ssr(struct esoc_clink *esoc_clink)
 	subsys->shutdown = mdm_subsys_shutdown;
 	subsys->ramdump = mdm_subsys_ramdumps;
 	subsys->powerup = mdm_subsys_powerup;
+	subsys->force_reset = mdm_force_reset;
 	subsys->crash_shutdown = mdm_crash_shutdown;
 	return esoc_clink_register_ssr(esoc_clink);
 }
