@@ -1611,19 +1611,19 @@ static void aw8697_update_rtp_data(struct aw8697 *aw8697, const struct firmware 
 	size_t data_location = 0;
 	unsigned char *temp_rtp_data = NULL;
 
-	temp_rtp_data = (unsigned char *)kzalloc(aw8697_rtp->len, GFP_KERNEL);
+	temp_rtp_data = vmalloc(aw8697_rtp->len);
 	if (temp_rtp_data == NULL ) {
-		pr_err("%s: kzalloc memory fail\n", __func__);
+		pr_err("%s: vmalloc memory fail\n", __func__);
 		return;
 	}
+	memset(temp_rtp_data, 0x00, aw8697_rtp->len);
 	// start signal data
 	memcpy(temp_rtp_data, rtp_file->data, RTP_500MS_FIRST_SINE_PLACE);
 	data_location += RTP_500MS_FIRST_SINE_PLACE;
-	
 	// add sin_num sine data
 	for (i = 1; i <= aw8697->sin_num; i++) {
-		data_location += ONE_SINE_DATA_LENGHT;
 		memcpy(temp_rtp_data + data_location, one_sine_data, ONE_SINE_DATA_LENGHT);
+		data_location += ONE_SINE_DATA_LENGHT;
 	}
 
 	// other rtp data
@@ -1632,7 +1632,7 @@ static void aw8697_update_rtp_data(struct aw8697 *aw8697, const struct firmware 
 	// cp to aw8697_rtp
 	memcpy(aw8697_rtp->data, temp_rtp_data, aw8697_rtp->len);
 
-	kfree(temp_rtp_data);
+	vfree(temp_rtp_data);
 }
 
 
