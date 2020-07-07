@@ -5116,8 +5116,6 @@ int smblib_set_prop_pd_active(struct smb_charger *chg,
 		vote(chg->fcc_votable, FCC_STEPPER_VOTER, false, 0);
 		vote(chg->fcc_votable, HW_LIMIT_VOTER, false, 0);
 		vote(chg->usb_icl_votable, DCP_VOTER, false, 0);
-		vote(chg->fcc_votable, DEFAULT_VOTER,
-						true, PD_PANELOFF_CURRENT_UA);
 
 		/* @bsp, add to set allow read extern fg IIC */
 		set_property_on_fg(chg,
@@ -5576,7 +5574,7 @@ static void smblib_eval_chg_termination(struct smb_charger *chg, u8 batt_status)
 	 * battery. Trigger the charge termination WA once charging is completed
 	 * to prevent overcharing.
 	 */
-	if ((batt_status == TERMINATE_CHARGE) && (pval.intval == 100)) {
+	if ((batt_status == TERMINATE_CHARGE) && (pval.intval == 100) && (!chg->is_aging_test)) {
 		chg->cc_soc_ref = 0;
 		chg->last_cc_soc = 0;
 		alarm_start_relative(&chg->chg_termination_alarm,
@@ -8073,6 +8071,7 @@ static void op_handle_usb_removal(struct smb_charger *chg)
 	chg->count_run = 0;
 	chg->chg_disabled = 0;
 	chg->fastchg_present_wait_count = 0;
+	chg->check_high_vbat_chg_count = 0;
 	vote(chg->fcc_votable,
 		DEFAULT_VOTER, true, SDP_CURRENT_UA);
 	vote(chg->chg_disable_votable,
@@ -8622,6 +8621,68 @@ static void op_check_slow_charge_work(struct work_struct *work)
 	} else {
 		chg->slow_chg_count++;
 		schedule_delayed_work(&chg->slow_chg_check_work,
+				msecs_to_jiffies(400));
+	}
+}
+
+static void op_check_high_vbat_chg_work(struct work_struct *work)
+{
+	struct smb_charger *chg = container_of(work,
+			struct smb_charger,
+			op_check_high_vbat_chg_work.work);
+	union power_supply_propval vbus_val;
+	int rc, temp_region, soc, ibat;
+	const struct apsd_result *apsd_result;
+
+	pr_info("chg->check_high_vbat_chg_count=%d\n", chg->check_high_vbat_chg_count);
+	soc = get_prop_batt_capacity(chg);
+	if (chg->wireless_present
+		|| chg->usb_enum_status
+		|| chg->chg_done
+		|| chg->chg_disabled) {
+		chg->check_high_vbat_chg_count = 0;
+		return;
+	}
+	temp_region = op_battery_temp_region_get(chg);
+	if (temp_region == BATT_TEMP_COLD
+		&& temp_region == BATT_TEMP_HOT) {
+		chg->check_high_vbat_chg_count = 0;
+		return;
+	}
+	apsd_result = smblib_update_usb_type(chg);
+	if (apsd_result->bit == SDP_CHARGER_BIT
+			|| apsd_result->bit == CDP_CHARGER_BIT) {
+		chg->check_high_vbat_chg_count = 0;
+		return;
+	}
+	rc = smblib_get_prop_usb_voltage_now(chg, &vbus_val);
+	if (rc < 0) {
+		chg->check_high_vbat_chg_count = 0;
+		pr_info("failed to read usb_voltage rc=%d\n", rc);
+		return;
+	}
+	if (vbus_val.intval < 2500) {
+		pr_info("vbus less 2.5v\n");
+		chg->check_high_vbat_chg_count = 0;
+		return;
+	}
+	ibat = get_prop_batt_current_now(chg);
+	if (ibat < 0) {
+		chg->check_high_vbat_chg_count = 0;
+		pr_info("Ibat is %d\n", ibat);
+		return;
+	}
+	if (chg->check_high_vbat_chg_count > 100) {
+		pr_info("recovery  charge\n");
+		chg->check_high_vbat_chg_count = 0;
+		smblib_set_usb_suspend(chg, true);
+		op_charging_en(chg, false);
+		msleep(1000);
+		smblib_set_usb_suspend(chg, false);
+		op_charging_en(chg, true);
+	} else {
+		chg->check_high_vbat_chg_count++;
+		schedule_delayed_work(&chg->op_check_high_vbat_chg_work,
 				msecs_to_jiffies(400));
 	}
 }
@@ -10214,6 +10275,11 @@ bool check_skin_thermal_high(void)
 	if (g_chg->pd_active && !g_chg->enable_pd_current_adjust)
 		return false;
 
+	if (!g_chg->oem_lcd_is_on) {
+		pr_info("lcd is off, skip.");
+		return false;
+	}
+
 	thermal_temp = op_get_skin_thermal_temp(g_chg);
 	if (thermal_temp >= 0)
 		return g_chg->is_skin_thermal_high;
@@ -10232,7 +10298,7 @@ bool check_skin_thermal_medium(void)
 		return false;
 
 	thermal_temp = op_get_skin_thermal_temp(g_chg);
-	if (thermal_temp >= 0)
+	if (thermal_temp >= 0 && g_chg->oem_lcd_is_on)
 		return g_chg->is_skin_thermal_medium;
 	else
 		return false;
@@ -10543,6 +10609,8 @@ static void op_heartbeat_work(struct work_struct *work)
 				chg->disable_normal_chg_for_dash = false;
 				op_charging_en(chg, true);
 				chg->fastchg_present_wait_count = 0;
+				schedule_delayed_work(&chg->op_check_high_vbat_chg_work,
+								msecs_to_jiffies(TIME_1000MS));
 			}
 		}
 		schedule_delayed_work(&chg->check_switch_dash_work,
@@ -11437,6 +11505,7 @@ static void smblib_chg_termination_work(struct work_struct *work)
 		delay = CHG_TERM_WA_ENTRY_DELAY_MS;
 	} else if (pval.intval > DIV_ROUND_CLOSEST(chg->cc_soc_ref * 10075,
 								10000)) {
+		pr_err("Disable usb input to prevent overcharge, input_present=%d\n", input_present);
 		if (input_present & INPUT_PRESENT_USB)
 			vote(chg->usb_icl_votable, CHG_TERMINATION_VOTER,
 					true, 0);
@@ -11939,6 +12008,7 @@ int smblib_init(struct smb_charger *chg)
 	INIT_DELAYED_WORK(&chg->slow_chg_check_work, op_check_slow_charge_work);
 	INIT_DELAYED_WORK(&chg->recovery_suspend_work,
 		op_recovery_usb_suspend_work);
+	INIT_DELAYED_WORK(&chg->op_check_high_vbat_chg_work, op_check_high_vbat_chg_work);
 	INIT_DELAYED_WORK(&chg->check_switch_dash_work,
 			op_check_allow_switch_dash_work);
 	INIT_DELAYED_WORK(&chg->heartbeat_work,

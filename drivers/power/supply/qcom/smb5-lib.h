@@ -126,7 +126,7 @@ enum print_reason {
 #define BOOST_BACK_STORM_COUNT	3
 #define WEAK_CHG_STORM_COUNT	8
 
-#define FULL_DELAY_COUNT 3
+#define FULL_DELAY_COUNT 10
 
 
 #define VBAT_TO_VRAW_ADC(v)		div_u64((u64)v * 1000000UL, 194637UL)
@@ -527,6 +527,7 @@ struct smb_charger {
 	/* @bsp, 2019/10/22 Add for PD charging */
 	struct delayed_work panel_register_work;
 	struct delayed_work rechk_sw_dsh_work;
+	struct delayed_work	op_check_high_vbat_chg_work;
 	struct delayed_work	re_kick_work;
 	struct delayed_work	unplug_check_work;
 	struct delayed_work	recovery_suspend_work;
@@ -611,6 +612,7 @@ struct smb_charger {
 	int				slow_chg_count;
 	int				ck_dash_count;
 	int				ck_unplug_count;
+	int				check_high_vbat_chg_count;
 	int				recovery_boost_count;
 	int				op_icl_val;
 	int				plug_irq;
