@@ -69,7 +69,7 @@ static int download_mode = 1;
 static struct kobject dload_kobj;
 
 static int in_panic;
-static int dload_type = SCM_DLOAD_FULLDUMP;
+static int dload_type = SCM_DLOAD_MINIDUMP;
 static int oem_modemdump_type = OEM_FUSION_MODEMDUMP;
 static void *dload_mode_addr;
 static bool dload_mode_enabled;
