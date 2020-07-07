@@ -4123,6 +4123,86 @@ static const struct file_operations proc_ship_mode_operations = {
 };
 #endif
 
+/* @bsp, 2020/06/05 Battery & Charging add for skin_thermal online config */
+static ssize_t proc_skin_threld_read(struct file *file, char __user *buf,
+					    size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	char page[64];
+	int len = 64;
+	struct smb_charger *chg = g_chip;
+
+	if (chg == NULL) {
+		pr_err("smb driver is not ready");
+		return -ENODEV;
+	}
+
+	memset(page, 0, len);
+	len = snprintf(page, len, "Hi:%d,pre-Hi:%d,Med:%d,Nor:%d\n",
+		chg->skin_thermal_high_threshold,
+		chg->skin_thermal_pre_high_threshold,
+		chg->skin_thermal_medium_threshold,
+		chg->skin_thermal_normal_threshold);
+	ret = simple_read_from_buffer(buf, count, ppos, page, len);
+
+	return ret;
+}
+
+static ssize_t proc_skin_threld_write(struct file *file, const char __user *buf,
+				      size_t count, loff_t *lo)
+{
+	char buffer[32] = { 0 };
+	struct smb_charger *chg = g_chip;
+	int hi_val, pre_hi_val, med_val, nor_val;
+	int ret = 0;
+
+	if (chg == NULL) {
+		pr_err("smb driver is not ready");
+		return -ENODEV;
+	}
+
+	if (count > 32) {
+		pr_err("input too many words.");
+		return -EFAULT;
+	}
+
+	if (copy_from_user(buffer, buf, count)) {
+		pr_err("copy parameter from user error.\n");
+		return -EFAULT;
+	}
+
+	pr_info("buffer=%s", buffer);
+	ret = sscanf(buffer, "%d %d %d %d", &hi_val, &pre_hi_val, &med_val, &nor_val);
+	pr_err("hi_val=%d, pre_hi_val=%d, med_val=%d, nor_val=%d",
+		hi_val, pre_hi_val, med_val, nor_val);
+
+	if (ret == 4) {
+		if ((hi_val > pre_hi_val)
+			&& (pre_hi_val > med_val)
+			&& (med_val > nor_val)) {
+			chg->skin_thermal_high_threshold = hi_val;
+			chg->skin_thermal_pre_high_threshold = pre_hi_val;
+			chg->skin_thermal_medium_threshold = med_val;
+			chg->skin_thermal_normal_threshold = nor_val;
+		} else {
+			pr_err("val not bigger one by one.");
+			return -EINVAL;
+		}
+	} else {
+		pr_err("need four decimal number.");
+		return -EINVAL;
+	}
+
+	return count;
+}
+
+static const struct file_operations proc_skin_threld_ops = {
+	.read = proc_skin_threld_read,
+	.write = proc_skin_threld_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+};
+
 /* @bsp, 2018/07/26 Enable external stm6620 ship mode*/
 static int op_ship_mode_gpio_request(struct smb_charger *chip)
 {
@@ -4517,6 +4597,9 @@ static int smb5_probe(struct platform_device *pdev)
 	if (!proc_create("ship_mode", 0644, NULL, &proc_ship_mode_operations))
 		pr_err("Failed to register proc interface\n");
 #endif
+	if (!proc_create("chg_skin_thermal_thd", 0644, NULL, &proc_skin_threld_ops))
+		pr_err("Failed to register chg_skin_thermal_thd proc interface\n");
+
 	rc = smblib_get_prop_usb_present(chg, &val);
 	if (rc < 0) {
 		pr_err("Couldn't get usb present rc=%d\n", rc);
