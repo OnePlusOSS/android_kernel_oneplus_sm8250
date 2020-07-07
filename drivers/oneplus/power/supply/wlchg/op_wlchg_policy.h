@@ -298,6 +298,7 @@ struct wpc_data {
 	bool fastchg_display_delay;
 	bool cep_timeout_adjusted;
 	bool fastchg_restart;
+	bool startup_fod_parm;
 };
 
 struct op_range_data {
@@ -361,6 +362,7 @@ struct charge_param {
 	bool fastchg_fod_enable;
 	unsigned char fastchg_match_q;
 	unsigned char fastchg_fod_parm[FOD_PARM_LENGTH];
+	unsigned char fastchg_fod_parm_startup[FOD_PARM_LENGTH];
 	struct op_fastchg_ffc_step ffc_chg;
 };
 

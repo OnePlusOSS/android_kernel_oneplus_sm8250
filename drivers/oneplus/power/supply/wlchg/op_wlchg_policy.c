@@ -537,6 +537,15 @@ static int wireless_chg_init(struct op_chg_chip *chip)
 			chg_param->fastchg_fod_enable = false;
 			pr_err("Read op,fastchg-fod-parm failed, rc=%d\n", rc);
 		}
+
+		rc = of_property_read_u8_array(node, "op,fastchg-fod-parm-startup",
+			(u8 *)&chg_param->fastchg_fod_parm_startup, FOD_PARM_LENGTH);
+		if (rc < 0) {
+			pr_err("Read op,fastchg-fod-parm failed, rc=%d\n", rc);
+			for (i = 0; i < FOD_PARM_LENGTH; i++)
+				chg_param->fastchg_fod_parm_startup[i] =
+					chg_param->fastchg_fod_parm[i];
+		}
 	}
 
 	rc = read_range_data_from_node(node, "op,fastchg-ffc_step",
@@ -784,6 +793,7 @@ static void wlchg_reset_variables(struct op_chg_chip *chip)
 	chg_status->fastchg_disable = false;
 	chg_status->cep_timeout_adjusted = false;
 	chg_status->fastchg_restart = false;
+	chg_status->startup_fod_parm = false;
 	chg_status->adapter_type = ADAPTER_TYPE_UNKNOWN;
 	chg_status->charge_type = WPC_CHARGE_TYPE_DEFAULT;
 	chg_status->send_msg_timer = jiffies;
@@ -1620,6 +1630,7 @@ static long wlchg_dev_ioctl(struct file *filp, unsigned int cmd,
 		if (chip->chg_param.fastchg_fod_enable &&
 		    chg_status->charge_type == WPC_CHARGE_TYPE_FAST) {
 			wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+			chg_status->startup_fod_parm = false;
 			chg_info("write fastchg fod parm\n");
 		}
 		break;
@@ -2942,6 +2953,11 @@ static int fastchg_startup_process(struct op_chg_chip *chip)
 			if (exchgpump_bq != NULL)
 				bq2597x_check_charge_enabled(exchgpump_bq, &cp2_is_enabled);
 			if (cp2_is_enabled) {
+				if (chip->chg_param.fastchg_fod_enable) {
+					wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+					chg_status->startup_fod_parm = false;
+					chg_info("write fastchg fod parm\n");
+				}
 				chg_status->charge_status = WPC_CHG_STATUS_FAST_CHARGING_FROM_CHGPUMP;
 				chip->wireless_type = POWER_SUPPLY_WIRELESS_TYPE_FAST;
 				if (chip->soc < chg_param->fastchg_soc_mid) {
@@ -3117,6 +3133,11 @@ static int wlchg_charge_status_process(struct op_chg_chip *chip)
 				     chg_status->adapter_type == ADAPTER_TYPE_FASTCHAGE_WARP) &&
 				    (chg_status->charge_type == WPC_CHARGE_TYPE_FAST) &&
 				    chg_status->deviation_check_done) {
+					if (chip->chg_param.fastchg_fod_enable && chg_status->startup_fod_parm) {
+						wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+						chg_status->startup_fod_parm = false;
+						chg_info("write fastchg fod parm\n");
+					}
 					pmic_high_vol_en(chip, true);
 					wlchg_set_rx_target_voltage(chip, WPC_CHARGE_VOLTAGE_STOP_CHG);
 					wlchg_set_rx_charge_current(chip, WPC_CHARGE_CURRENT_STOP_CHG);
@@ -3437,6 +3458,11 @@ freq_check_done:
 				    (chip->soc <= chg_param->fastchg_soc_max)) {
 					chg_status->fastchg_startup_step = FASTCHG_EN_CHGPUMP1_STEP;
 					chg_status->charge_status = WPC_CHG_STATUS_INCREASE_VOLTAGE;
+					if (chip->chg_param.fastchg_fod_enable) {
+						wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm_startup);
+						chg_status->startup_fod_parm = true;
+						chg_info("write fastchg startup fod parm\n");
+					}
 				} else {
 					if (chip->batt_volt >= chg_param->fastchg_vol_entry_max)
 						vote(chip->fastchg_disable_votable, BATT_VOL_VOTER, true, 0);
@@ -3507,6 +3533,12 @@ freq_check_done:
 
 	case WPC_CHG_STATUS_FAST_CHARGING_EXIT:
 		chg_err("<~WPC~> ..........WPC_CHG_STATUS_FAST_CHARGING_EXIT..........\n");
+		if (chip->chg_param.fastchg_fod_enable && chg_status->startup_fod_parm &&
+		    chg_status->charge_type == WPC_CHARGE_TYPE_FAST) {
+			wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+			chg_status->startup_fod_parm = false;
+			chg_info("write fastchg fod parm\n");
+		}
 		pmic_high_vol_en(chip, true);
 		wlchg_set_rx_target_voltage(chip, WPC_CHARGE_VOLTAGE_EPP);
 		wlchg_set_rx_charge_current(chip, WPC_CHARGE_CURRENT_CHGPUMP_TO_CHARGER);
@@ -5601,6 +5633,78 @@ static const struct file_operations proc_wireless_rx_ops = {
 	.owner = THIS_MODULE,
 };
 
+static ssize_t proc_fast_skin_threld_read(struct file *file, char __user *buf,
+					    size_t count, loff_t *ppos)
+{
+	uint8_t ret = 0;
+	char page[16];
+	int len = 16;
+
+	if (g_op_chip == NULL) {
+		chg_err("<~WPC~> g_rx_chip is NULL!\n");
+		return -ENODEV;
+	}
+
+
+	memset(page, 0, len);
+	len = snprintf(page, len, "Hi:%d,Lo:%d\n",
+		g_op_chip->chg_param.fastchg_skin_temp_max,
+		g_op_chip->chg_param.fastchg_skin_temp_min);
+	ret = simple_read_from_buffer(buf, count, ppos, page, len);
+
+	return ret;
+}
+
+static ssize_t proc_fast_skin_threld_write(struct file *file, const char __user *buf,
+				      size_t count, loff_t *lo)
+{
+	char buffer[16] = { 0 };
+	struct op_chg_chip *chip = g_op_chip;
+	int hi_val, lo_val;
+	int ret = 0;
+
+	if (chip == NULL) {
+		chg_err("%s: wlchg driver is not ready\n", __func__);
+		return -ENODEV;
+	}
+
+	if (count > 16) {
+		chg_err("input too many words.");
+		return -EFAULT;
+	}
+
+	if (copy_from_user(buffer, buf, count)) {
+		chg_err("%s: error.\n", __func__);
+		return -EFAULT;
+	}
+
+	chg_err("buffer=%s", buffer);
+	ret = sscanf(buffer, "%d %d", &hi_val, &lo_val);
+	chg_err("hi_val=%d, lo_val=%d", hi_val, lo_val);
+
+	if (ret == 2) {
+		if (hi_val > lo_val) {
+			chip->chg_param.fastchg_skin_temp_max = hi_val;
+			chip->chg_param.fastchg_skin_temp_min = lo_val;
+		} else {
+			chg_err("hi_val not bigger than lo_val");
+			return -EINVAL;
+		}
+	} else {
+		chg_err("need two decimal number.");
+		return -EINVAL;
+	}
+
+	return count;
+}
+
+static const struct file_operations proc_fast_skin_threld_ops = {
+	.read = proc_fast_skin_threld_read,
+	.write = proc_fast_skin_threld_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+};
+
 #ifdef OP_DEBUG
 static ssize_t proc_wireless_rx_freq_read(struct file *file,
 					  char __user *buf, size_t count,
@@ -5861,6 +5965,15 @@ static int init_wireless_charge_proc(struct op_chg_chip *chip)
 		ret = -ENOMEM;
 		chg_err("%s: Couldn't create proc entry, %d\n", __func__,
 			  __LINE__);
+		goto fail;
+	}
+
+	prEntry_tmp = proc_create_data("fast_skin_threld", 0664, prEntry_da,
+					   &proc_fast_skin_threld_ops, chip);
+	if (prEntry_tmp == NULL) {
+		ret = -ENOMEM;
+		chg_err("%s: Couldn't create proc fast_skin_threld, %d\n",
+				__func__, __LINE__);
 		goto fail;
 	}
 
