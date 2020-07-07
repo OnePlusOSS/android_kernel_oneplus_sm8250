@@ -1955,9 +1955,14 @@ static void vconn_swap(struct usbpd *pd)
 
 		pd->vconn_enabled = true;
 
+		/* add for pd+swarp adapter compatibility */
+		pd_phy_update_frame_filter(FRAME_FILTER_EN_SOP |
+					   FRAME_FILTER_EN_HARD_RESET);
+		/*
 		pd_phy_update_frame_filter(FRAME_FILTER_EN_SOP |
 					   FRAME_FILTER_EN_SOPI |
 					   FRAME_FILTER_EN_HARD_RESET);
+		*/
 
 		/*
 		 * Small delay to ensure Vconn has ramped up. This is well
@@ -2149,8 +2154,11 @@ static int usbpd_startup_common(struct usbpd *pd,
 		phy_params->data_role = pd->current_dr;
 		phy_params->power_role = pd->current_pr;
 
+		/* add for pd+swarp adapter compatibility. */
+		/*
 		if (pd->vconn_enabled)
 			phy_params->frame_filter_val |= FRAME_FILTER_EN_SOPI;
+		*/
 
 		ret = pd_phy_open(phy_params);
 		if (ret) {
