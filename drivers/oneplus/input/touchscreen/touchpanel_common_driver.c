@@ -1508,9 +1508,24 @@ static ssize_t proc_dead_zone_write(struct file *file, const char __user *buffer
 
 	return count;
 }
+static ssize_t proc_dead_zone_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	char page[9] = {0};
+	struct touchpanel_data *ts = PDE_DATA(file_inode(file));
+
+	if (!ts) {
+		sprintf(page, "%d\n", -1);//no support
+	} else {
+		sprintf(page, "%d,%d\n", ts->dead_zone_l, ts->dead_zone_p);//support
+	}
+	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
+	return ret;
+}
 
 static const struct file_operations proc_tp_dead_zone_fops = {
 	.write = proc_dead_zone_write,
+	.read = proc_dead_zone_read,
 	.open  = simple_open,
 	.owner = THIS_MODULE,
 };

@@ -1222,6 +1222,9 @@ static u8 sec_trigger_reason(void *chip_data, int gesture_enable, int is_suspend
 		}
 		if ((p_event_status->stype == TYPE_STATUS_EVENT_VENDOR_INFO) && (p_event_status->status_id == SEC_TS_VENDOR_ACK_NOISE_STATUS_NOTI)) {
 			chip_info->touch_noise_status = !!p_event_status->status_data_1;
+			TPD_INFO("first event: 0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x\n", \
+			chip_info->first_event[0], chip_info->first_event[1], chip_info->first_event[2], chip_info->first_event[3],\
+			chip_info->first_event[4], chip_info->first_event[5], chip_info->first_event[6], chip_info->first_event[7]);
 			TPD_INFO("%s: TSP NOISE MODE %s[%d]\n",
 					__func__,chip_info->touch_noise_status == 0 ? "OFF" : "ON",
 					p_event_status->status_data_1);
