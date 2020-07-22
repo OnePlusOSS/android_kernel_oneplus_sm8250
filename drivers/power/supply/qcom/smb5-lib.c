@@ -8639,7 +8639,9 @@ static void op_check_high_vbat_chg_work(struct work_struct *work)
 	if (chg->wireless_present
 		|| chg->usb_enum_status
 		|| chg->chg_done
-		|| chg->chg_disabled) {
+		|| chg->chg_disabled
+		|| !chg->chg_enabled
+		|| chg->is_aging_test) {
 		chg->check_high_vbat_chg_count = 0;
 		return;
 	}
@@ -8675,10 +8677,12 @@ static void op_check_high_vbat_chg_work(struct work_struct *work)
 	if (chg->check_high_vbat_chg_count > 100) {
 		pr_info("recovery  charge\n");
 		chg->check_high_vbat_chg_count = 0;
-		smblib_set_usb_suspend(chg, true);
+		vote(chg->usb_icl_votable, CHG_RECOVERY_VOTER,
+				true, 0);
 		op_charging_en(chg, false);
 		msleep(1000);
-		smblib_set_usb_suspend(chg, false);
+		vote(chg->usb_icl_votable, CHG_RECOVERY_VOTER,
+				false, 0);
 		op_charging_en(chg, true);
 	} else {
 		chg->check_high_vbat_chg_count++;
@@ -10275,11 +10279,6 @@ bool check_skin_thermal_high(void)
 	if (g_chg->pd_active && !g_chg->enable_pd_current_adjust)
 		return false;
 
-	if (!g_chg->oem_lcd_is_on) {
-		pr_info("lcd is off, skip.");
-		return false;
-	}
-
 	thermal_temp = op_get_skin_thermal_temp(g_chg);
 	if (thermal_temp >= 0)
 		return g_chg->is_skin_thermal_high;
@@ -10298,7 +10297,7 @@ bool check_skin_thermal_medium(void)
 		return false;
 
 	thermal_temp = op_get_skin_thermal_temp(g_chg);
-	if (thermal_temp >= 0 && g_chg->oem_lcd_is_on)
+	if (thermal_temp >= 0)
 		return g_chg->is_skin_thermal_medium;
 	else
 		return false;
