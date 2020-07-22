@@ -255,8 +255,10 @@ static void _sspp_setup_csc10_opmode(struct sde_hw_pipe *ctx,
 	opmode = SDE_REG_READ(&ctx->hw, SSPP_VIG_CSC_10_OP_MODE + idx);
 	if (en)
 		opmode |= mask;
+#if !defined(PXLW_IRIS_DUAL)
 	else
 		opmode &= ~mask;
+#endif
 
 	SDE_REG_WRITE(&ctx->hw, SSPP_VIG_CSC_10_OP_MODE + idx, opmode);
 }
@@ -1282,7 +1284,8 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 		test_bit(SDE_SSPP_CSC_10BIT, &features)) {
 		c->ops.setup_csc = sde_hw_sspp_setup_csc;
 #if defined(PXLW_IRIS_DUAL)
-		c->ops.setup_csc_v2 = sde_hw_sspp_setup_csc_v2;
+		if (!is_virtual_pipe)
+			c->ops.setup_csc_v2 = sde_hw_sspp_setup_csc_v2;
 #endif
 		}
 
