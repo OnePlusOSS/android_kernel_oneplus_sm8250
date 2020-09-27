@@ -36,6 +36,7 @@
 #define BT_PWR_INFO(fmt, arg...) pr_info("%s: " fmt "\n", __func__, ## arg)
 #define BT_PWR_ERR(fmt, arg...)  pr_err("%s: " fmt "\n", __func__, ## arg)
 
+#define SW_CTRL_GPIO_MAX_RETRY_TIMES 5
 
 static const struct of_device_id bt_power_match_table[] = {
 	{	.compatible = "qca,ar3002" },
@@ -53,6 +54,7 @@ static int pwr_state;
 struct class *bt_class;
 static int bt_major;
 static int soc_id;
+static int sw_ctl_pin_rety_cnt;
 
 static int bt_vreg_init(struct bt_power_vreg_data *vreg)
 {
@@ -319,6 +321,40 @@ static int bt_configure_gpios(int on)
 					bt_sw_ctrl_gpio,
 					gpio_get_value(bt_sw_ctrl_gpio));
 		}
+
+		while ((gpio_get_value(bt_sw_ctrl_gpio) == 0) && (sw_ctl_pin_rety_cnt > 0)) {
+			sw_ctl_pin_rety_cnt--;
+			BT_PWR_INFO("BTON:bt-sw-ctrol-gpio is 0, retry %d",
+					SW_CTRL_GPIO_MAX_RETRY_TIMES - sw_ctl_pin_rety_cnt);
+
+			rc = gpio_direction_output(bt_reset_gpio, 0);
+			if (rc) {
+				BT_PWR_ERR("Unable to set direction to 0\n");
+				return rc;
+			}
+			msleep(50);
+			BT_PWR_INFO("BTON:Switch reset pin to low, bt-reset-gpio(%d) value(%d)\n",
+					bt_reset_gpio, gpio_get_value(bt_reset_gpio));
+			if (bt_sw_ctrl_gpio >= 0) {
+				BT_PWR_INFO("State: bt-sw-ctrl-gpio(%d) value(%d)",
+						bt_sw_ctrl_gpio,
+						gpio_get_value(bt_sw_ctrl_gpio));
+			}
+
+			rc = gpio_direction_output(bt_reset_gpio, 1);
+			if (rc) {
+				BT_PWR_ERR("Unable to set direction to 1\n");
+				return rc;
+			}
+			msleep(50);
+			BT_PWR_INFO("BTON:Switch reset pin to hight, bt-reset-gpio(%d) value(%d)\n",
+					bt_reset_gpio, gpio_get_value(bt_reset_gpio));
+			if (bt_sw_ctrl_gpio >= 0) {
+				BT_PWR_INFO("State: bt-sw-ctrl-gpio(%d) value(%d)",
+						bt_sw_ctrl_gpio,
+						gpio_get_value(bt_sw_ctrl_gpio));
+			}
+		}
 	} else {
 		gpio_set_value(bt_reset_gpio, 0);
 		if  (bt_debug_gpio  >=  0)
@@ -434,6 +470,7 @@ static int bluetooth_power(int on)
 			}
 		}
 		if (bt_power_pdata->bt_gpio_sys_rst > 0) {
+			sw_ctl_pin_rety_cnt = SW_CTRL_GPIO_MAX_RETRY_TIMES;
 			rc = bt_configure_gpios(on);
 			if (rc < 0) {
 				BT_PWR_ERR("bt_power gpio config failed");

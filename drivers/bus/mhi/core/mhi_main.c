@@ -805,6 +805,7 @@ void mhi_create_devices(struct mhi_controller *mhi_cntrl)
 	struct mhi_device *mhi_dev;
 	int ret;
 
+	MHI_ERR(":%s\n", __func__);
 	mhi_chan = mhi_cntrl->mhi_chan;
 	for (i = 0; i < mhi_cntrl->max_chan; i++, mhi_chan++) {
 		if (!mhi_chan->configured || mhi_chan->mhi_dev ||

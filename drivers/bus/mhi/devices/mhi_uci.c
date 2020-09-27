@@ -537,7 +537,7 @@ static void mhi_uci_remove(struct mhi_device *mhi_dev)
 {
 	struct uci_dev *uci_dev = mhi_device_get_devdata(mhi_dev);
 
-	MSG_LOG("Enter\n");
+	MSG_ERR("Enter\n");
 
 
 	mutex_lock(&mhi_uci_drv.lock);
@@ -632,7 +632,7 @@ static int mhi_uci_probe(struct mhi_device *mhi_dev,
 	mutex_unlock(&mhi_uci_drv.lock);
 	mutex_unlock(&uci_dev->mutex);
 
-	MSG_LOG("channel:%s successfully probed\n", mhi_dev->chan_name);
+	MSG_ERR("channel:%s %s %s successfully probed\n", mhi_dev->chan_name, __func__, node_name);
 
 	return 0;
 };

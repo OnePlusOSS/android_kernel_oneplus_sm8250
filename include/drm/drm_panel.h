@@ -39,6 +39,19 @@ enum {
 	DRM_PANEL_BLANK_UNBLANK,
 	/* panel: power off */
 	DRM_PANEL_BLANK_POWERDOWN,
+	/* panel power on for tp */
+	DRM_PANEL_BLANK_UNBLANK_CUST,
+	/* panel:lcd doze mode */
+	DRM_PANEL_BLANK_NORMAL,
+	/* panel power off */
+	DRM_PANEL_BLANK_POWERDOWN_CUST,
+	DRM_PANEL_ONSCREENFINGERPRINT_EVENT,
+	DRM_PANEL_BLANK_UNBLANK_CHARGE,
+	DRM_PANEL_BLANK_POWERDOWN_CHARGE,
+	/*panel 60HZ */
+	DRM_PANEL_DYNAMICFPS_60 = 60,
+	/*panel 90HZ */
+	DRM_PANEL_DYNAMICFPS_90 = 90,
 	/* panel: low power mode */
 	DRM_PANEL_BLANK_LP,
 	/* fps change */

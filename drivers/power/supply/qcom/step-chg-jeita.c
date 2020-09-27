@@ -403,7 +403,7 @@ reschedule:
 
 }
 
-static int get_val(struct range_data *range, int hysteresis, int current_index,
+int get_val(struct range_data *range, int hysteresis, int current_index,
 		int threshold,
 		int *new_index, int *val)
 {

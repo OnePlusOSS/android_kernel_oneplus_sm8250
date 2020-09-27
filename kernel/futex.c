@@ -72,6 +72,9 @@
 #include <asm/futex.h>
 
 #include "locking/rtmutex_common.h"
+#ifdef CONFIG_UXCHAIN
+#include <linux/sched.h>
+#endif
 
 /*
  * READ this before attempting to hack on futexes!
@@ -1613,6 +1616,15 @@ futex_wake(u32 __user *uaddr, unsigned int flags, int nr_wake, u32 bitset)
 	if (!hb_waiters_pending(hb))
 		goto out_put_key;
 
+#ifdef CONFIG_UXCHAIN
+	if (sysctl_uxchain_enabled && current->dynamic_ux) {
+		if (current->saved_flag) {
+			set_user_nice(current, PRIO_TO_NICE(current->prio_saved));
+			current->saved_flag = 0;
+		}
+		uxchain_dynamic_ux_reset(current);
+	}
+#endif
 	spin_lock(&hb->lock);
 
 	plist_for_each_entry_safe(this, next, &hb->chain, list) {
@@ -2597,8 +2609,14 @@ out:
  * @q:		the futex_q to queue up on
  * @timeout:	the prepared hrtimer_sleeper, or null for no timeout
  */
+#ifdef CONFIG_UXCHAIN
+static void futex_wait_queue_me(struct futex_hash_bucket *hb, struct futex_q *q,
+				struct hrtimer_sleeper *timeout, struct task_struct *wait_for)
+
+#else
 static void futex_wait_queue_me(struct futex_hash_bucket *hb, struct futex_q *q,
 				struct hrtimer_sleeper *timeout)
+#endif
 {
 	/*
 	 * The task state is guaranteed to be set before another task can
@@ -2623,9 +2641,39 @@ static void futex_wait_queue_me(struct futex_hash_bucket *hb, struct futex_q *q,
 		 * flagged for rescheduling. Only call schedule if there
 		 * is no timeout, or if it has yet to expire.
 		 */
+#ifdef CONFIG_UXCHAIN
+		if (!timeout || timeout->task) {
+			if (sysctl_uxchain_enabled) {
+				uxchain_dynamic_ux_boost(wait_for, current);
+				if (wait_for && current->normal_prio < wait_for->normal_prio) {
+					wait_for->saved_flag = 1;
+					wait_for->prio_saved = wait_for->normal_prio;
+					set_user_nice(wait_for, PRIO_TO_NICE(current->normal_prio));
+				}
+				if (wait_for) {
+					put_task_struct(wait_for);
+					wait_for = NULL;
+				}
+			}
+			freezable_schedule();
+		}
+#elif defined(CONFIG_ONEPLUS_HEALTHINFO)
+		if (!timeout || timeout->task) {
+			current->in_futex = 1;
+			freezable_schedule();
+			current->in_futex = 0;
+		}
+#else/*CONFIG_ONEPLUS_HEALTHINFO*/
 		if (!timeout || timeout->task)
 			freezable_schedule();
+#endif
 	}
+#ifdef CONFIG_UXCHAIN
+	if (wait_for) {
+		put_task_struct(wait_for);
+		wait_for = NULL;
+	}
+#endif
 	__set_current_state(TASK_RUNNING);
 }
 
@@ -2705,18 +2753,32 @@ out:
 	return ret;
 }
 
+#ifdef CONFIG_UXCHAIN
+static int futex_wait(u32 __user *uaddr, unsigned int flags, u32 val,
+			ktime_t *abs_time, u32 __user *uaddr2, u32 bitset)
+#else
 static int futex_wait(u32 __user *uaddr, unsigned int flags, u32 val,
 		      ktime_t *abs_time, u32 bitset)
+#endif
 {
 	struct hrtimer_sleeper timeout, *to = NULL;
 	struct restart_block *restart;
 	struct futex_hash_bucket *hb;
 	struct futex_q q = futex_q_init;
+#ifdef CONFIG_UXCHAIN
+	struct task_struct *wait_for = NULL;
+#endif
 	int ret;
 
 	if (!bitset)
 		return -EINVAL;
 	q.bitset = bitset;
+
+#ifdef CONFIG_UXCHAIN
+	if (sysctl_uxchain_enabled && q.bitset == FUTEX_BITSET_MATCH_ANY &&
+		current->static_ux && !abs_time)
+		wait_for = get_futex_owner(uaddr2);
+#endif
 
 	if (abs_time) {
 		to = &timeout;
@@ -2735,11 +2797,28 @@ retry:
 	 * q.key refs.
 	 */
 	ret = futex_wait_setup(uaddr, val, flags, &q, &hb);
+#ifdef CONFIG_UXCHAIN
+	if (ret) {
+		if (wait_for) {
+			put_task_struct(wait_for);
+			wait_for = NULL;
+		}
+		goto out;
+	}
+#else
 	if (ret)
 		goto out;
+#endif
 
 	/* queue_me and wait for wakeup, timeout, or a signal. */
+#ifdef CONFIG_UXCHAIN
+	futex_wait_queue_me(hb, &q, to, wait_for);
+#else
 	futex_wait_queue_me(hb, &q, to);
+#endif
+#ifdef CONFIG_UXCHAIN
+	wait_for = NULL;
+#endif
 
 	/* If we were woken (and unqueued), we succeeded, whatever. */
 	ret = 0;
@@ -2768,6 +2847,9 @@ retry:
 	restart->futex.time = *abs_time;
 	restart->futex.bitset = bitset;
 	restart->futex.flags = flags | FLAGS_HAS_TIMEOUT;
+#ifdef CONFIG_UXCHAIN
+	restart->futex.uaddr2 = uaddr2;
+#endif
 
 	ret = -ERESTART_RESTARTBLOCK;
 
@@ -2791,8 +2873,13 @@ static long futex_wait_restart(struct restart_block *restart)
 	}
 	restart->fn = do_no_restart_syscall;
 
+#ifdef CONFIG_UXCHAIN
+	return (long)futex_wait(uaddr, restart->futex.flags,
+				restart->futex.val, tp, restart->futex.uaddr2, restart->futex.bitset);
+#else
 	return (long)futex_wait(uaddr, restart->futex.flags,
 				restart->futex.val, tp, restart->futex.bitset);
+#endif
 }
 
 
@@ -3284,7 +3371,11 @@ static int futex_wait_requeue_pi(u32 __user *uaddr, unsigned int flags,
 	}
 
 	/* Queue the futex_q, drop the hb lock, wait for wakeup. */
+#ifdef CONFIG_UXCHAIN
+	futex_wait_queue_me(hb, &q, to, NULL);
+#else
 	futex_wait_queue_me(hb, &q, to);
+#endif
 
 	spin_lock(&hb->lock);
 	ret = handle_early_requeue_pi_wakeup(hb, &q, &key2, to);
@@ -3706,7 +3797,11 @@ long do_futex(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
 		val3 = FUTEX_BITSET_MATCH_ANY;
 		/* fall through */
 	case FUTEX_WAIT_BITSET:
+#ifdef CONFIG_UXCHAIN
+		return futex_wait(uaddr, flags, val, timeout, uaddr2, val3);
+#else
 		return futex_wait(uaddr, flags, val, timeout, val3);
+#endif
 	case FUTEX_WAKE:
 		val3 = FUTEX_BITSET_MATCH_ANY;
 		/* fall through */

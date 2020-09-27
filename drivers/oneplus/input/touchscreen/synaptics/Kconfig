@@ -1,0 +1,2 @@
+
+source "drivers/oneplus/input/touchscreen/synaptics/syna_tcm_oncell/Kconfig"

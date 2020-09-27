@@ -102,6 +102,10 @@ struct scan_control {
 
 	/* One of the zones is ready for compaction */
 	unsigned int compaction_ready:1;
+	#ifdef CONFIG_MEMPLUS
+	/* 1: swap to zram, 0: swap to file */
+	unsigned int swp_bdv_type:1;
+	#endif
 
 	/* Allocation order */
 	s8 order;
@@ -173,10 +177,16 @@ int kswapd_threads_current = DEF_KSWAPD_THREADS_PER_NODE;
 #define prefetchw_prev_lru_page(_page, _base, _field) do { } while (0)
 #endif
 
+/* set direct swapiness rate ,higher means more swap */
+#ifdef CONFIG_DIRECT_SWAPPINESS
+int vm_swappiness = 100;
+int vm_direct_swapiness = 60;
+#else
 /*
  * From 0 .. 100.  Higher means more swappy.
  */
 int vm_swappiness = 60;
+#endif
 /*
  * The total number of pages which are beyond the high watermark within all
  * zones.
@@ -1318,6 +1328,8 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 								    page_list))
 						goto activate_locked;
 				}
+				memplus_set_private(page, sc->swp_bdv_type);
+				/* add end */
 				if (!add_to_swap(page)) {
 					if (!PageTransHuge(page))
 						goto activate_locked;
@@ -1568,6 +1580,77 @@ unsigned long reclaim_clean_pages_from_list(struct zone *zone,
 	return ret;
 }
 
+#ifdef CONFIG_MEMPLUS
+unsigned long coretech_reclaim_pagelist(struct list_head *page_list,
+	struct vm_area_struct *vma, void *sc)
+{
+	struct scan_control sc_t = {
+		.gfp_mask = GFP_KERNEL,
+		.priority = DEF_PRIORITY,
+		.may_writepage = 1,
+		.may_unmap = 1,
+		.may_swap = 1,
+		.target_vma = vma,
+	};
+
+	unsigned long nr_reclaimed;
+	struct page *page;
+
+	if (!sc)
+		sc = &sc_t;
+
+	list_for_each_entry(page, page_list, lru) {
+		ClearPageActive(page);
+	}
+
+	nr_reclaimed = shrink_page_list(page_list, NULL,
+		(struct scan_control *)sc,
+		TTU_IGNORE_ACCESS, NULL, true);
+
+	while (!list_empty(page_list)) {
+		page = lru_to_page(page_list);
+		list_del(&page->lru);
+		dec_node_page_state(page, NR_ISOLATED_ANON +
+			page_is_file_cache(page));
+		putback_lru_page(page);
+	}
+
+	return nr_reclaimed;
+}
+
+unsigned long swapout_to_zram(struct list_head *page_list,
+	struct vm_area_struct *vma)
+{
+	struct scan_control sc = {
+		.gfp_mask = GFP_KERNEL,
+		.priority = DEF_PRIORITY,
+		.may_writepage = 1,
+		.may_unmap = 1,
+		.may_swap = 1,
+		.target_vma = vma,
+		.swp_bdv_type = 1,
+	};
+
+	return coretech_reclaim_pagelist(page_list, vma, &sc);
+}
+
+unsigned long swapout_to_disk(struct list_head *page_list,
+	struct vm_area_struct *vma)
+{
+	struct scan_control sc = {
+		.gfp_mask = GFP_KERNEL,
+		.priority = DEF_PRIORITY,
+		.may_writepage = 1,
+		.may_unmap = 1,
+		.may_swap = 1,
+		.target_vma = vma,
+		.swp_bdv_type = 0,
+	};
+
+	return coretech_reclaim_pagelist(page_list, vma, &sc);
+}
+#endif
+
 #ifdef CONFIG_PROCESS_RECLAIM
 unsigned long reclaim_pages_from_list(struct list_head *page_list,
 					struct vm_area_struct *vma)
@@ -1758,6 +1841,14 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 		 * pages, triggering a premature OOM.
 		 */
 		scan++;
+
+		if (memplus_check_isolate_page(page) &&
+				(BIT(lru) & LRU_ALL_ANON)) {
+			list_move(&page->lru, src);
+			continue;
+		}
+		/* add end */
+
 		switch (__isolate_lru_page(page, mode)) {
 		case 0:
 			nr_pages = hpage_nr_pages(page);
@@ -2107,6 +2198,7 @@ static unsigned move_active_pages_to_lru(struct lruvec *lruvec,
 		page = lru_to_page(list);
 		lruvec = mem_cgroup_page_lruvec(page, pgdat);
 
+		memplus_page_to_lru(lru, page);
 		VM_BUG_ON_PAGE(PageLRU(page), page);
 		SetPageLRU(page);
 
@@ -2287,6 +2379,12 @@ static bool inactive_list_is_low(struct lruvec *lruvec, bool file,
 	if (!file && !total_swap_pages)
 		return false;
 
+	if (!file) {
+		inactive_lru = MEMPLUS_PAGE_LRU;
+		active_lru = MEMPLUS_PAGE_LRU + LRU_ACTIVE;
+	}
+	/* add end */
+
 	inactive = lruvec_lru_size(lruvec, inactive_lru, sc->reclaim_idx);
 	active = lruvec_lru_size(lruvec, active_lru, sc->reclaim_idx);
 
@@ -2357,6 +2455,16 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 	unsigned long anon, file;
 	unsigned long ap, fp;
 	enum lru_list lru;
+
+#ifdef CONFIG_DIRECT_SWAPPINESS
+	if (!current_is_kswapd())
+		swappiness = vm_direct_swapiness;
+#endif
+
+	if (memplus_enabled()) {
+		scan_balance = SCAN_EQUAL;
+		goto out;
+	}
 
 	/* If we have no swap space, do not bother scanning anon pages. */
 	if (!sc->may_swap || mem_cgroup_get_nr_swap_pages(memcg) <= 0) {
@@ -2512,6 +2620,12 @@ out:
 		if (!scan && !mem_cgroup_online(memcg))
 			scan = min(size, SWAP_CLUSTER_MAX);
 
+		if (memplus_enabled() &&
+			(lru == LRU_INACTIVE_ANON || lru == LRU_ACTIVE_ANON)) {
+			size = 0;
+			scan = 0;
+		}
+
 		switch (scan_balance) {
 		case SCAN_EQUAL:
 			/* Scan lists relative to size */
@@ -2583,8 +2697,8 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 			 sc->priority == DEF_PRIORITY);
 
 	blk_start_plug(&plug);
-	while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] ||
-					nr[LRU_INACTIVE_FILE]) {
+	while (nr[MEMPLUS_PAGE_LRU] || nr[LRU_ACTIVE_FILE] ||
+			nr[LRU_INACTIVE_FILE]) {
 		unsigned long nr_anon, nr_file, percentage;
 		unsigned long nr_scanned;
 
@@ -2611,7 +2725,8 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 		 * proportional to the original scan target.
 		 */
 		nr_file = nr[LRU_INACTIVE_FILE] + nr[LRU_ACTIVE_FILE];
-		nr_anon = nr[LRU_INACTIVE_ANON] + nr[LRU_ACTIVE_ANON];
+		lru = MEMPLUS_PAGE_LRU;
+		nr_anon = nr[lru] + nr[lru + LRU_ACTIVE];
 
 		/*
 		 * It's just vindictive to attack the larger once the smaller
@@ -2642,7 +2757,8 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 		 * Recalculate the other LRU scan count based on its original
 		 * scan target and the percentage scanning already complete
 		 */
-		lru = (lru == LRU_FILE) ? LRU_BASE : LRU_FILE;
+
+		lru = (lru == LRU_FILE) ? MEMPLUS_PAGE_LRU : LRU_FILE;
 		nr_scanned = targets[lru] - nr[lru];
 		nr[lru] = targets[lru] * (100 - percentage) / 100;
 		nr[lru] -= min(nr[lru], nr_scanned);
@@ -2663,7 +2779,7 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 	 */
 	if (inactive_list_is_low(lruvec, false, sc, true))
 		shrink_active_list(SWAP_CLUSTER_MAX, lruvec,
-				   sc, LRU_ACTIVE_ANON);
+			sc, MEMPLUS_PAGE_LRU + LRU_ACTIVE);
 }
 
 /* Use reclaim/compaction for costly allocs or under memory pressure */
@@ -3434,7 +3550,7 @@ static void age_active_anon(struct pglist_data *pgdat,
 
 		if (inactive_list_is_low(lruvec, false, sc, true))
 			shrink_active_list(SWAP_CLUSTER_MAX, lruvec,
-					   sc, LRU_ACTIVE_ANON);
+				sc, MEMPLUS_PAGE_LRU + LRU_ACTIVE);
 
 		memcg = mem_cgroup_iter(NULL, memcg, NULL);
 	} while (memcg);

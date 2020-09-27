@@ -1,0 +1,53 @@
+/* Copyright (c) 2020, Pixelworks
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "dsi-panel-samsung_ana6706_dsc_2nd.dtsi"
+
+&dsi_samsung_sofef00_m_video {
+	pxlw,iris-chip-enable;
+	pxlw,soft-iris-enable;
+	qcom,iris-supply-entries = <&dsi_iris_pwr_supply>;
+	qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0","pw_bb_clk2";
+};
+
+&dsi_samsung_ana6706_dsc_cmd {
+	pxlw,iris-chip-enable;
+	pxlw,soft-iris-enable;
+	qcom,iris-supply-entries = <&dsi_iris_pwr_supply>;
+	qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0","pw_bb_clk2";
+};
+
+
+&dsi_samsung_ana6706_dsc_cmd_2nd {
+	qcom,dsi-sec-ctrl-num = <1>;
+	qcom,dsi-sec-phy-num = <1>;
+	qcom,panel-sec-supply-entries = <&dsi_panel_pwr_supply>;
+	qcom,mdss-dsi-sec-bl-pmic-control-type = "bl_ctrl_external";
+	qcom,platform-te-gpio = <&tlmm 67 0>;
+};
+
+&dsi_samsung_ana6705_dsc_cmd {
+	pxlw,soft-iris-enable;
+};
+
+&dsi_samsung_amb655x_dsc_cmd {
+	pxlw,soft-iris-enable;
+};
+
+&dsi_samsung_dd305_dsc_cmd {
+	pxlw,soft-iris-enable;
+};
+
+&mdss_mdp {
+	pxlw,dsi-display-primary-active = "qcom,mdss_dsi_samsung_ana6706_dsc_cmd";
+	pxlw,dsi-display-secondary-active = "qcom,mdss_dsi_samsung_ana6706_dsc_cmd_2nd";
+};

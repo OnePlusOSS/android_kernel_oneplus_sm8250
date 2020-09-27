@@ -156,6 +156,13 @@ struct request {
 	unsigned int cmd_flags;		/* op and common flags */
 	req_flags_t rq_flags;
 
+#ifdef CONFIG_ONEPLUS_HEALTHINFO
+/* Add some info in each request */
+	ktime_t block_io_start;  //save block io start ktime
+	ktime_t ufs_io_start; //save ufs io start ktime
+	u64 flash_io_latency; //save mmc host command latency
+#endif
+
 	int internal_tag;
 
 	/* the following two fields are internal, NEVER access directly */
@@ -646,8 +653,10 @@ struct request_queue {
 	int			bypass_depth;
 	atomic_t		mq_freeze_depth;
 
+#if defined(CONFIG_BLK_DEV_BSG)
 	bsg_job_fn		*bsg_job_fn;
 	struct bsg_class_device bsg_dev;
+#endif
 
 #ifdef CONFIG_BLK_DEV_THROTTLING
 	/* Throttle data */
@@ -676,6 +685,12 @@ struct request_queue {
 
 #define BLK_MAX_WRITE_HINTS	5
 	u64			write_hints[BLK_MAX_WRITE_HINTS];
+
+#ifdef CONFIG_UFSTW
+#if defined(UFS3V0)
+	bool			turbo_write_dev;
+#endif
+#endif
 };
 
 #define QUEUE_FLAG_QUEUED	0	/* uses generic tag queueing */

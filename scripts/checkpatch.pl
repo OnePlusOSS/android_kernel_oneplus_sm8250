@@ -20,7 +20,7 @@ use constant IN_SHORTTEXT_BLANKLINE => 1;
 use constant IN_SHORTTEXT => 2;
 use constant AFTER_SHORTTEXT => 3;
 use constant CHECK_NEXT_SHORTTEXT => 4;
-use constant SHORTTEXT_LIMIT => 75;
+use constant SHORTTEXT_LIMIT => 120;
 
 my $P = $0;
 my $D = dirname(abs_path($P));
@@ -58,7 +58,7 @@ my %ignore_type = ();
 my @ignore = ();
 my $help = 0;
 my $configuration_file = ".checkpatch.conf";
-my $max_line_length = 80;
+my $max_line_length = 120;
 my $ignore_perl_version = 0;
 my $minimum_perl_version = 5.10.0;
 my $min_conf_desc_length = 4;
@@ -2799,10 +2799,10 @@ sub process {
 		}
 
 # Check for unwanted Gerrit info
-		if ($in_commit_log && $line =~ /^\s*change-id:/i) {
-			ERROR("GERRIT_CHANGE_ID",
-			      "Remove Gerrit Change-Id's before submitting upstream.\n" . $herecurr);
-		}
+#		if ($in_commit_log && $line =~ /^\s*change-id:/i) {
+#			ERROR("GERRIT_CHANGE_ID",
+#			      "Remove Gerrit Change-Id's before submitting upstream.\n" . $herecurr);
+#		}
 
 # Check if the commit log is in a possible stack dump
 		if ($in_commit_log && !$commit_log_possible_stack_dump &&
@@ -2814,10 +2814,10 @@ sub process {
 			$commit_log_possible_stack_dump = 1;
 		}
 
-# Check for line lengths > 75 in commit log, warn once
+# Check for line lengths > 120 in commit log, warn once
 		if ($in_commit_log && !$commit_log_long_line &&
-		    length($line) > 75 &&
-		    !($line =~ /^\s*[a-zA-Z0-9_\/\.\-\,]+\s+\|\s+\d+/ ||
+		    length($line) > 120 &&
+		    !($line =~ /^\s*[a-zA-Z0-9_\/\.\-]+\s+\|\s+\d+/ ||
 					# file delta changes
 		      $line =~ /^\s*(?:[\w\.\-]+\/)++[\w\.\-]+:/ ||
 					# filename then :
@@ -2825,7 +2825,7 @@ sub process {
 					# A Fixes: or Link: line
 		      $commit_log_possible_stack_dump)) {
 			WARN("COMMIT_LOG_LONG_LINE",
-			     "Possible unwrapped commit description (prefer a maximum 75 chars per line)\n" . $herecurr);
+			     "Possible unwrapped commit description (prefer a maximum 120 chars per line)\n" . $herecurr);
 			$commit_log_long_line = 1;
 		}
 
@@ -2887,24 +2887,24 @@ sub process {
 			($id, $description) = git_commit_info($orig_commit,
 							      $id, $orig_desc);
 
-			if (defined($id) &&
-			   ($short || $long || $space || $case || ($orig_desc ne $description) || !$hasparens)) {
-				ERROR("GIT_COMMIT_ID",
-				      "Please use git commit description style 'commit <12+ chars of sha1> (\"<title line>\")' - ie: '${init_char}ommit $id (\"$description\")'\n" . $herecurr);
-			}
+#			if (defined($id) &&
+#			   ($short || $long || $space || $case || ($orig_desc ne $description) || !$hasparens)) {
+#				ERROR("GIT_COMMIT_ID",
+#				      "Please use git commit description style 'commit <12+ chars of sha1> (\"<title line>\")' - ie: '${init_char}ommit $id (\"$description\")'\n" . $herecurr);
+#			}
 		}
 
 # Check for added, moved or deleted files
-		if (!$reported_maintainer_file && !$in_commit_log &&
-		    ($line =~ /^(?:new|deleted) file mode\s*\d+\s*$/ ||
-		     $line =~ /^rename (?:from|to) [\w\/\.\-]+\s*$/ ||
-		     ($line =~ /\{\s*([\w\/\.\-]*)\s*\=\>\s*([\w\/\.\-]*)\s*\}/ &&
-		      (defined($1) || defined($2))))) {
-			$is_patch = 1;
-			$reported_maintainer_file = 1;
-			WARN("FILE_PATH_CHANGES",
-			     "added, moved or deleted file(s), does MAINTAINERS need updating?\n" . $herecurr);
-		}
+#		if (!$reported_maintainer_file && !$in_commit_log &&
+#		    ($line =~ /^(?:new|deleted) file mode\s*\d+\s*$/ ||
+#		     $line =~ /^rename (?:from|to) [\w\/\.\-]+\s*$/ ||
+#		     ($line =~ /\{\s*([\w\/\.\-]*)\s*\=\>\s*([\w\/\.\-]*)\s*\}/ &&
+#		      (defined($1) || defined($2))))) {
+#			$is_patch = 1;
+#			$reported_maintainer_file = 1;
+#			WARN("FILE_PATH_CHANGES",
+#			     "added, moved or deleted file(s), does MAINTAINERS need updating?\n" . $herecurr);
+#		}
 
 # Check for wrappage within a valid hunk of the file
 		if ($realcnt != 0 && $line !~ m{^(?:\+|-| |\\ No newline|$)}) {
@@ -3880,6 +3880,12 @@ sub process {
 			}
 		}
 
+# avoid VENDOR_EDIT
+		if ($rawline =~ /\bVENDOR_EDIT\b/) {
+			WARN("VENDOR_EDIT",
+			     "Please remove VENDOR_EDIT before you commit it\n" . $herecurr);
+		}
+
 #
 # Checks which are anchored on the added line.
 #
@@ -4126,18 +4132,18 @@ sub process {
 		}
 
 # avoid BUG() or BUG_ON()
-		if ($line =~ /\b(?:BUG|BUG_ON)\b/) {
-			my $msg_level = \&WARN;
-			$msg_level = \&CHK if ($file);
-			&{$msg_level}("AVOID_BUG",
-				      "Avoid crashing the kernel - try using WARN_ON & recovery code rather than BUG() or BUG_ON()\n" . $herecurr);
-		}
+#		if ($line =~ /\b(?:BUG|BUG_ON)\b/) {
+#			my $msg_level = \&WARN;
+#			$msg_level = \&CHK if ($file);
+#			&{$msg_level}("AVOID_BUG",
+#				      "Avoid crashing the kernel - try using WARN_ON & recovery code rather than BUG() or BUG_ON()\n" . $herecurr);
+#		}
 
 # avoid LINUX_VERSION_CODE
-		if ($line =~ /\bLINUX_VERSION_CODE\b/) {
-			WARN("LINUX_VERSION_CODE",
-			     "LINUX_VERSION_CODE should be avoided, code should be for the version to which it is merged\n" . $herecurr);
-		}
+#if ($line =~ /\bLINUX_VERSION_CODE\b/) {
+#			WARN("LINUX_VERSION_CODE",
+#			     "LINUX_VERSION_CODE should be avoided, code should be for the version to which it is merged\n" . $herecurr);
+#		}
 
 # check for uses of printk_ratelimit
 		if ($line =~ /\bprintk_ratelimit\s*\(/) {

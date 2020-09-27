@@ -389,6 +389,9 @@ struct cnss_plat_data {
 	u8 set_wlaon_pwr_ctrl;
 };
 
+int get_wifi_chain_mode(void);
+void cnss_set_bdf_name(u32 version, u32 ext);
+
 #ifdef CONFIG_ARCH_QCOM
 static inline u64 cnss_get_host_timestamp(struct cnss_plat_data *plat_priv)
 {

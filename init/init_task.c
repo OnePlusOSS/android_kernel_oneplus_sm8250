@@ -42,6 +42,7 @@ static struct signal_struct init_signals = {
 		[PIDTYPE_SID]	= &init_struct_pid,
 	},
 	INIT_PREV_CPUTIME(init_signals)
+	INIT_RECLAIM_STATE
 };
 
 static struct sighand_struct init_sighand = {

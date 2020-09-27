@@ -46,6 +46,56 @@ enum pon_power_off_type {
 	PON_POWER_OFF_MAX_TYPE		= 0x10,
 };
 
+/* @bsp, 20190705 Battery & Charging porting */
+struct qpnp_pon {
+	struct device		*dev;
+	struct regmap		*regmap;
+	struct input_dev	*pon_input;
+	struct qpnp_pon_config	*pon_cfg;
+	struct pon_regulator	*pon_reg_cfg;
+	struct list_head	list;
+	struct delayed_work	bark_work;
+	struct delayed_work     press_work;
+	struct delayed_work press_pwr;
+#ifdef CONFIG_KEY_FLUSH
+	struct delayed_work     press_work_flush;
+#endif
+	struct work_struct  up_work;
+	atomic_t	   press_count;
+	struct dentry		*debugfs;
+	struct device_node      *pbs_dev_node;
+	int			pon_trigger_reason;
+	int			pon_power_off_reason;
+	int			num_pon_reg;
+	int			num_pon_config;
+	u32			dbc_time_us;
+	u32			uvlo;
+	int			warm_reset_poff_type;
+	int			hard_reset_poff_type;
+	int			shutdown_poff_type;
+	int			resin_warm_reset_type;
+	int			resin_hard_reset_type;
+	int			resin_shutdown_type;
+	u16			base;
+	u8			subtype;
+	u8			pon_ver;
+	u8			warm_reset_reason1;
+	u8			warm_reset_reason2;
+	u8                      twm_state;
+	bool			is_spon;
+	bool			store_hard_reset_reason;
+	bool			resin_hard_reset_disable;
+	bool			resin_shutdown_disable;
+	bool			ps_hold_hard_reset_disable;
+	bool			ps_hold_shutdown_disable;
+	bool			kpdpwr_dbc_enable;
+	bool                    support_twm_config;
+	bool			resin_pon_reset;
+	ktime_t			kpdpwr_last_release_time;
+	struct notifier_block   pon_nb;
+	bool			legacy_hard_reset_offset;
+};
+
 enum pon_restart_reason {
 	PON_RESTART_REASON_UNKNOWN		= 0x00,
 	PON_RESTART_REASON_RECOVERY		= 0x01,
@@ -54,7 +104,16 @@ enum pon_restart_reason {
 	PON_RESTART_REASON_DMVERITY_CORRUPTED	= 0x04,
 	PON_RESTART_REASON_DMVERITY_ENFORCE	= 0x05,
 	PON_RESTART_REASON_KEYS_CLEAR		= 0x06,
+	PON_RESTART_REASON_FACTORY		= 0x21,
+	PON_RESTART_REASON_RF			= 0x22,
+	PON_RESTART_BOOTLOADER_RECOVERY = 0X23,
+	PON_RESTART_REASON_SBL_DDRTEST	= 0x24,
+	PON_RESTART_REASON_SBL_DDR_CUS	= 0x25,
+	PON_RESTART_REASON_MEM_AGING	= 0x26,
 };
+
+#define FACTORY_MODE    0x77665504
+#define RF_MODE         0x77665506
 
 #ifdef CONFIG_INPUT_QPNP_POWER_ON
 int qpnp_pon_system_pwr_off(enum pon_power_off_type type);
@@ -64,6 +123,12 @@ int qpnp_pon_wd_config(bool enable);
 int qpnp_pon_set_restart_reason(enum pon_restart_reason reason);
 bool qpnp_pon_check_hard_reset_stored(void);
 int qpnp_pon_modem_pwr_off(enum pon_power_off_type type);
+
+#ifdef CONFIG_KEY_FLUSH
+extern int panic_flush_device_cache(int timeout);
+extern void panic_flush_device_cache_circled_on(void);
+extern void panic_flush_device_cache_circled_off(void);
+#endif
 
 #else
 

@@ -8,6 +8,7 @@
 #include <linux/device.h>
 #include <linux/esoc_ctrl.h>
 #include <linux/notifier.h>
+#include <linux/oem/oem_force_dump.h>
 
 /* Flag values used with the power_on and power_off hooks */
 #define ESOC_HOOK_MDM_CRASH	0x0001 /* In crash handling path */
@@ -71,4 +72,12 @@ static inline int esoc_unregister_client_hook(struct esoc_desc *desc,
 	return -EIO;
 }
 #endif
+
+int ap_mdm_dump_once(void);
+int set_esoc_ssr_state(int state);
+int get_esoc_ssr_state(void);
+int get_mdm_umount_state(void);
+extern int oem_get_modemdump_mode(void);
+extern bool oem_get_twice_modemdump_state(void);
+
 #endif

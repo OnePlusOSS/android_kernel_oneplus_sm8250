@@ -1,0 +1,5 @@
+config ONEPLUS_FG_OPT
+	bool "Enable /proc/fg_info/ if EXPERT"
+	default y
+	help
+	  Add foreground process optimize support to promote performance .

@@ -1085,6 +1085,10 @@ struct device {
 	bool			offline:1;
 	bool			of_node_reused:1;
 	bool			state_synced:1;
+
+#ifdef CONFIG_CONTROL_CENTER
+	bool cc_marked;
+#endif
 };
 
 static inline struct device *kobj_to_dev(struct kobject *kobj)

@@ -52,6 +52,9 @@
 #include <linux/bug.h>
 #include <linux/delay.h>
 
+#ifdef CONFIG_IM
+#include <linux/oem/im.h>
+#endif
 #include "workqueue_internal.h"
 
 enum {
@@ -1856,6 +1859,11 @@ static struct worker *create_worker(struct worker_pool *pool)
 					      "kworker/%s", id_buf);
 	if (IS_ERR(worker->task))
 		goto fail;
+
+#ifdef CONFIG_IM
+	/* set kworker flags */
+	im_set_flag(worker->task, IM_KWORKER);
+#endif
 
 	set_user_nice(worker->task, pool->attrs->nice);
 	kthread_bind_mask(worker->task, pool->attrs->cpumask);

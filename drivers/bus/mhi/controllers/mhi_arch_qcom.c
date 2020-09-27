@@ -49,8 +49,8 @@ enum MHI_DEBUG_LEVEL  mhi_ipc_log_lvl = MHI_MSG_LVL_VERBOSE;
 
 #else
 
-#define MHI_IPC_LOG_PAGES (10)
-#define MHI_CNTRL_LOG_PAGES (5)
+#define MHI_IPC_LOG_PAGES (100)
+#define MHI_CNTRL_LOG_PAGES (25)
 enum MHI_DEBUG_LEVEL  mhi_ipc_log_lvl = MHI_MSG_LVL_ERROR;
 
 #endif
@@ -399,7 +399,7 @@ static int mhi_bl_probe(struct mhi_device *mhi_device,
 	snprintf(node_name, sizeof(node_name), "mhi_bl_%04x_%02u.%02u.%02u",
 		 mhi_device->dev_id, mhi_device->domain, mhi_device->bus,
 		 mhi_device->slot);
-
+	MHI_ERR("mhi_ipc %s", node_name);
 	arch_info->boot_dev = mhi_device;
 	arch_info->boot_ipc_log = ipc_log_context_create(MHI_CNTRL_LOG_PAGES,
 							 node_name, 0);
@@ -453,7 +453,7 @@ int mhi_arch_pcie_init(struct mhi_controller *mhi_cntrl)
 			 mhi_cntrl->slot);
 		mhi_cntrl->log_buf = ipc_log_context_create(MHI_IPC_LOG_PAGES,
 							    node, 0);
-		mhi_cntrl->log_lvl = mhi_ipc_log_lvl;
+		mhi_cntrl->log_lvl = MHI_MSG_LVL_VERBOSE;
 
 		snprintf(node, sizeof(node), "mhi_cntrl_%04x_%02u.%02u.%02u",
 			 mhi_cntrl->dev_id, mhi_cntrl->domain, mhi_cntrl->bus,

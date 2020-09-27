@@ -611,6 +611,9 @@ extern struct hd_struct * __must_check add_partition(struct gendisk *disk,
 extern void __delete_partition(struct percpu_ref *);
 extern void delete_partition(struct gendisk *, int);
 extern void printk_all_partitions(void);
+#ifdef CONFIG_WB_KERNEL_LOG
+extern struct block_device *find_reserve_partition(void);
+#endif
 
 extern struct gendisk *__alloc_disk_node(int minors, int node_id);
 extern struct kobject *get_disk_and_module(struct gendisk *disk);

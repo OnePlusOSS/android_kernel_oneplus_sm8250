@@ -173,6 +173,18 @@ config INPUT_QPNP_POWER_ON
 	  reporting the change in status of the KPDPWR_N line (connected to the
 	  power-key) as well as reset features.
 
+config KEY_FLUSH
+	bool "Key trigger flush"
+	depends on PANIC_FLUSH
+	default y
+	help
+	  This option enables device driver support for flush blk devices using
+	  panic_flush module triggered by qpnp power key.
+
+	  panic_flush.o must be compiled.
+
+	  If unsure, say Y.
+
 config INPUT_QTI_HAPTICS
 	tristate "Haptics support for QTI PMIC"
 	depends on MFD_SPMI_PMIC

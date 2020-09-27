@@ -556,6 +556,10 @@ int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask,
 	if (!q->make_request_fn)
 		return -ENXIO;
 
+#ifdef CONFIG_PANIC_FLUSH
+	sysctl_blkdev_issue_flush_count++;
+#endif
+
 	bio = bio_alloc(gfp_mask, 0);
 	bio_set_dev(bio, bdev);
 	bio->bi_opf = REQ_OP_WRITE | REQ_PREFLUSH;

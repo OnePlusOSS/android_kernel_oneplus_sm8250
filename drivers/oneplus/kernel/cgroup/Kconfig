@@ -1,0 +1,7 @@
+config CGROUP_IOLIMIT
+	bool "limit controller"
+	default n
+	help
+	  This feature lets vfs recognize task groups and control IO
+	  bandwidth allocation to such task groups. It uses cgroups to group
+	  tasks.

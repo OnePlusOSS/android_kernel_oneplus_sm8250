@@ -1,0 +1,39 @@
+/*this is for one project different hw version */
+&op_wlchg {
+	qcom,dcdc_en-gpio = <&pm8150b_gpios 5 0x00>;
+	pinctrl-names = "wrx_en_active", "wrx_en_sleep", "wrx_en_default",
+			"wrx_otg_active", "wrx_otg_sleep",
+			"usbin_int_active", "usbin_int_sleep", "usbin_int_default",
+			"dcdc_en_active", "dcdc_en_sleep", "dcdc_en_default";
+	pinctrl-8 = <&dcdc_en_active>;
+	pinctrl-9 = <&dcdc_en_sleep>;
+	pinctrl-10 = <&dcdc_en_default>;
+	op-ap_control_dcdc;
+};
+
+&pm8150b_gpios {
+	dcdc_en_active: dcdc_en_active {
+		pins = "gpio5"; /* GPIO 5 */
+		function = "normal"; /* normal */
+		bias-disable; //No Pull
+		power-source = <1>;//VIN1 1.8
+		output-high; //digital output, no invert
+		qcom,drive-strength = <3>; //LOW strength
+	};
+	dcdc_en_sleep: dcdc_en_sleep {
+		pins = "gpio5"; /* GPIO 5 */
+		function = "normal"; /* normal */
+		bias-disable; //No Pull
+		power-source = <1>;//VIN1 1.8
+		output-low; //digital output, no invert
+		qcom,drive-strength = <3>; //LOW strength
+	};
+	dcdc_en_default: dcdc_en_default {
+		pins = "gpio5"; /* GPIO 5 */
+		function = "normal"; /* normal */
+		bias-disable; //No Pull
+		power-source = <1>;//VIN1 1.8
+		output-low; //digital output, no invert
+		qcom,drive-strength = <3>; //LOW strength
+	};
+};

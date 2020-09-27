@@ -14,6 +14,10 @@
 
 #include <trace/events/sched.h>
 
+#ifdef CONFIG_IM
+#include <linux/oem/im.h>
+#endif
+
 const char *task_event_names[] = {"PUT_PREV_TASK", "PICK_NEXT_TASK",
 				  "TASK_WAKE", "TASK_MIGRATE", "TASK_UPDATE",
 				"IRQ_UPDATE"};
@@ -2325,7 +2329,13 @@ static struct sched_cluster *alloc_new_cluster(const struct cpumask *cpus)
 	raw_spin_lock_init(&cluster->load_lock);
 	cluster->cpus = *cpus;
 	cluster->efficiency = topology_get_cpu_scale(NULL, cpumask_first(cpus));
-
+#ifdef CONFIG_ONEPLUS_HEALTHINFO
+	cluster->overload = kzalloc(sizeof(struct sched_stat_para), GFP_ATOMIC);
+	cluster->overload->low_thresh_ms = 100;
+	cluster->overload->high_thresh_ms = 500;
+	if (!cluster->overload)
+		return NULL;
+#endif
 	if (cluster->efficiency > max_possible_efficiency)
 		max_possible_efficiency = cluster->efficiency;
 	if (cluster->efficiency < min_possible_efficiency)
@@ -2660,6 +2670,7 @@ static void transfer_busy_time(struct rq *rq, struct related_thread_group *grp,
  * The children inherits the group id from the parent.
  */
 unsigned int __read_mostly sysctl_sched_coloc_downmigrate_ns;
+unsigned int __read_mostly sysctl_sched_enable_thread_grouping;
 
 struct related_thread_group *related_thread_groups[MAX_NUM_CGROUP_COLOC_ID];
 static LIST_HEAD(active_related_thread_groups);
@@ -2806,7 +2817,7 @@ int update_preferred_cluster(struct related_thread_group *grp,
 {
 	u32 new_load = task_load(p);
 
-	if (!grp)
+	if (!grp || !p->grp)
 		return 0;
 
 	if (unlikely(from_tick && is_suh_max()))
@@ -2930,6 +2941,20 @@ void add_new_task_to_grp(struct task_struct *new)
 {
 	unsigned long flags;
 	struct related_thread_group *grp;
+	struct task_struct *leader = new->group_leader;
+	unsigned int leader_grp_id = sched_get_group_id(leader);
+
+#ifdef CONFIG_IM
+	if (im_sf(new)) {
+		// add child of sf into rdg
+		if (!im_render_grouping_enable())
+			im_list_add_task(new);
+	}
+#endif
+
+	if (!sysctl_sched_enable_thread_grouping &&
+	    leader_grp_id != DEFAULT_CGROUP_COLOC_ID)
+		return;
 
 	/*
 	 * If the task does not belong to colocated schedtune
@@ -3679,6 +3704,62 @@ unlock:
 	return ret;
 }
 
+#ifdef CONFIG_IM
+int group_show(struct seq_file *m, void *v)
+{
+	struct related_thread_group *grp;
+	unsigned long flags;
+	struct task_struct *p;
+	u64 total_demand = 0;
+	u64 render_demand = 0;
+
+	if (!im_render_grouping_enable())
+		return 0;
+
+	grp = lookup_related_thread_group(DEFAULT_CGROUP_COLOC_ID);
+
+	raw_spin_lock_irqsave(&grp->lock, flags);
+	if (list_empty(&grp->tasks)) {
+		raw_spin_unlock_irqrestore(&grp->lock, flags);
+		return 0;
+	}
+
+	list_for_each_entry(p, &grp->tasks, grp_list) {
+
+		total_demand += p->ravg.demand_scaled;
+
+		if (!im_rendering(p))
+			continue;
+
+		seq_printf(m, "%u, %lu, %d\n", p->pid, p->ravg.demand_scaled, p->cpu);
+		render_demand += p->ravg.demand_scaled;
+	}
+
+	seq_printf(m, "total: %u / render: %u\n", total_demand, render_demand);
+
+	raw_spin_unlock_irqrestore(&grp->lock, flags);
+	return 0;
+}
+
+void group_remove(void)
+{
+	struct related_thread_group *grp;
+	struct task_struct *p, *next;
+
+	if (!im_render_grouping_enable())
+		return;
+
+	grp = lookup_related_thread_group(DEFAULT_CGROUP_COLOC_ID);
+
+	if (list_empty(&grp->tasks))
+		return;
+
+	list_for_each_entry_safe(p, next, &grp->tasks, grp_list) {
+		if (im_sf(p))
+			sched_set_group_id(p, 0);
+	}
+}
+#endif
 static inline void sched_window_nr_ticks_change(void)
 {
 	int new_ticks;

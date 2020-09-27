@@ -26,6 +26,7 @@
 #include <soc/qcom/restart.h>
 #include <soc/qcom/watchdog.h>
 #include <soc/qcom/minidump.h>
+#include <soc/qcom/msm-poweroff.h>
 
 #define EMERGENCY_DLOAD_MAGIC1    0x322A4F99
 #define EMERGENCY_DLOAD_MAGIC2    0xC67E4350
@@ -40,6 +41,8 @@
 #define SCM_DLOAD_CMD			0x10
 #define SCM_DLOAD_MINIDUMP		0X20
 #define SCM_DLOAD_BOTHDUMPS	(SCM_DLOAD_MINIDUMP | SCM_DLOAD_FULLDUMP)
+#define OEM_FUSION_MODEMDUMP		0
+#define OEM_TWICE_MODEMDUMP		1
 
 #define DL_MODE_PROP "qcom,msm-imem-download_mode"
 #define EDL_MODE_PROP "qcom,msm-imem-emergency_download_mode"
@@ -67,6 +70,7 @@ static struct kobject dload_kobj;
 
 static int in_panic;
 static int dload_type = SCM_DLOAD_FULLDUMP;
+static int oem_modemdump_type = OEM_FUSION_MODEMDUMP;
 static void *dload_mode_addr;
 static bool dload_mode_enabled;
 static void *emergency_dload_mode_addr;
@@ -103,11 +107,18 @@ static size_t store_dload_mode(struct kobject *kobj, struct attribute *attr,
 RESET_ATTR(dload_mode, 0644, show_dload_mode, store_dload_mode);
 #endif /* CONFIG_QCOM_MINIDUMP */
 
+static ssize_t show_oem_modemdump(struct kobject *kobj, struct attribute *attr,
+			       char *buf);
+static size_t store_oem_modemdump(struct kobject *kobj, struct attribute *attr,
+			       const char *buf, size_t count);
+RESET_ATTR(oem_modemdump, 0644, show_oem_modemdump, store_oem_modemdump);
+
 static struct attribute *reset_attrs[] = {
 	&reset_attr_emmc_dload.attr,
 #ifdef CONFIG_QCOM_MINIDUMP
 	&reset_attr_dload_mode.attr,
 #endif
+	&reset_attr_oem_modemdump.attr,
 	NULL
 };
 
@@ -131,6 +142,18 @@ static const struct sysfs_ops reset_sysfs_ops = {
 static struct kobj_type reset_ktype = {
 	.sysfs_ops	= &reset_sysfs_ops,
 };
+
+int oem_get_download_mode(void)
+{
+	return download_mode && (dload_type & SCM_DLOAD_FULLDUMP);
+}
+EXPORT_SYMBOL(oem_get_download_mode);
+
+int oem_get_modemdump_mode(void)
+{
+	return oem_modemdump_type;
+}
+EXPORT_SYMBOL(oem_get_modemdump_mode);
 
 static int panic_prep_restart(struct notifier_block *this,
 			      unsigned long event, void *ptr)
@@ -165,8 +188,16 @@ int scm_set_dload_mode(int arg1, int arg2)
 static void set_dload_mode(int on)
 {
 	int ret;
-
-	if (dload_mode_addr) {
+	u64 read_ret;
+	/* OEM : Set dload_mode to cust value when twice modemdump is triggered */
+	pr_err("[MDM] twice modemdump state [%d]\n", oem_get_twice_modemdump_state());
+	if (dload_mode_addr && oem_get_twice_modemdump_state()) {
+		__raw_writel(on ? 0xABCDABCD : 0, dload_mode_addr);
+		/* Make sure the download cookie is updated */
+		mb();
+		read_ret = __raw_readl(dload_mode_addr);
+		pr_err("[MDM] dload_mode value [0x%X]\n", read_ret);
+	} else if (dload_mode_addr) {
 		__raw_writel(on ? 0xE47B337D : 0, dload_mode_addr);
 		__raw_writel(on ? 0xCE14091A : 0,
 		       dload_mode_addr + sizeof(unsigned int));
@@ -184,6 +215,16 @@ static void set_dload_mode(int on)
 static bool get_dload_mode(void)
 {
 	return dload_mode_enabled;
+}
+
+void oem_force_minidump_mode(void)
+{
+	if (dload_type == SCM_DLOAD_FULLDUMP) {
+		pr_err("force minidump mode\n");
+		dload_type = SCM_DLOAD_MINIDUMP;
+		set_dload_mode(dload_type);
+		__raw_writel(EMMC_DLOAD_TYPE, dload_type_addr);
+	}
 }
 
 static void enable_emergency_dload_mode(void)
@@ -422,6 +463,29 @@ static size_t store_dload_mode(struct kobject *kobj, struct attribute *attr,
 }
 #endif /* CONFIG_QCOM_MINIDUMP */
 
+static ssize_t show_oem_modemdump(struct kobject *kobj, struct attribute *attr,
+				char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "oem modemdump: %s\n",
+		(oem_modemdump_type == OEM_TWICE_MODEMDUMP) ? "twice" : "fusion");
+}
+
+static size_t store_oem_modemdump(struct kobject *kobj, struct attribute *attr,
+				const char *buf, size_t count)
+{
+	if (sysfs_streq(buf, "twice")) {
+		oem_modemdump_type = OEM_TWICE_MODEMDUMP;
+		pr_err("[MDM] Modemdump : twice\n");
+	} else if (sysfs_streq(buf, "fusion")) {
+		oem_modemdump_type = OEM_FUSION_MODEMDUMP;
+		pr_err("[MDM] Modemdump : fusion\n");
+	} else {
+		pr_err("[MDM] Invalid modemdump setup request..\n");
+		return -EINVAL;
+	}
+	return count;
+}
+
 static void scm_disable_sdi(void)
 {
 	int ret;
@@ -520,6 +584,30 @@ static void msm_restart_prepare(const char *cmd)
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_KEYS_CLEAR);
 			__raw_writel(0x7766550a, restart_reason);
+		} else if (!strcmp(cmd, "sbllowmemtest")) {
+			pr_info("[op aging mem test] lunch ddr sbllowmemtest!!comm: %s, pid: %d\n"
+				, current->comm, current->pid);
+			qpnp_pon_set_restart_reason(
+					PON_RESTART_REASON_SBL_DDR_CUS);
+			__raw_writel(0x7766550b, restart_reason);
+		} else if (!strcmp(cmd, "sblmemtest")) {//op factory aging test
+			pr_info("[op aging mem test] lunch ddr sblmemtest!!comm: %s, pid: %d\n"
+				, current->comm, current->pid);
+			qpnp_pon_set_restart_reason(
+					PON_RESTART_REASON_SBL_DDRTEST);
+		__raw_writel(0x7766550b, restart_reason);
+		} else if (!strcmp(cmd, "usermemaging")) {
+			pr_info("[op aging mem test] lunch ddr usermemaging!!comm: %s, pid: %d\n"
+				, current->comm, current->pid);
+			qpnp_pon_set_restart_reason(
+					PON_RESTART_REASON_MEM_AGING);
+			__raw_writel(0x7766550b, restart_reason);
+		} else if (!strncmp(cmd, "rf", 2)) {
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_RF);
+			__raw_writel(RF_MODE, restart_reason);
+		} else if (!strncmp(cmd, "ftm", 3)) {
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_FACTORY);
+			__raw_writel(FACTORY_MODE, restart_reason);
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			int ret;

@@ -50,6 +50,18 @@
 struct dentry *blk_debugfs_root;
 #endif
 
+/* io information */
+#ifdef CONFIG_ONEPLUS_HEALTHINFO
+extern void ohm_iolatency_record(struct request *req, unsigned int nr_bytes, int fg, u64 delta_us);
+static u64 latency_count;
+static u32 io_print_count;
+bool       io_print_flag;
+static int io_print_on;
+#define PRINT_LATENCY 500000 /* 500*1000 */
+#define COUNT_TIME 86400000 /* 24*60*60*1000 */
+#endif
+
+
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_complete);
@@ -2921,6 +2933,12 @@ struct request *blk_peek_request(struct request_queue *q)
 			 * not be passed by new incoming requests
 			 */
 			rq->rq_flags |= RQF_STARTED;
+
+			/* request start ktime */
+#ifdef CONFIG_ONEPLUS_HEALTHINFO
+			rq->block_io_start = ktime_get();
+#endif
+
 			trace_block_rq_issue(q, rq);
 		}
 
@@ -3110,7 +3128,47 @@ bool blk_update_request(struct request *req, blk_status_t error,
 {
 	int total_bytes;
 
+#ifdef CONFIG_ONEPLUS_HEALTHINFO
+	/*request complete ktime*/
+	ktime_t now;
+	u64 delta_us;
+	char rwbs[RWBS_LEN];
+#endif
+
 	trace_block_rq_complete(req, blk_status_to_errno(error), nr_bytes);
+
+/*request complete ktime*/
+#ifdef CONFIG_ONEPLUS_HEALTHINFO
+	if (req->tag >= 0 && req->block_io_start > 0) {
+		io_print_flag = false;
+		now = ktime_get();
+		delta_us = ktime_us_delta(now, req->block_io_start);
+		ohm_iolatency_record(req, nr_bytes, current_is_fg(), ktime_us_delta(now, req->block_io_start));
+		trace_block_time(req->q, req, delta_us, nr_bytes);
+
+		if (delta_us > PRINT_LATENCY && io_print_on) {
+			if ((ktime_to_ms(now)) < COUNT_TIME)
+				latency_count++;
+			else
+				latency_count = 0;
+
+			io_print_flag = true;
+			blk_fill_rwbs(rwbs, req->cmd_flags, nr_bytes);
+
+			/*if log is continuous, printk the first log.*/
+			if (!io_print_count)
+				pr_info("[IO Latency]UID:%u,slot:%d,outstanding=0x%lx,IO_Type:%s,Block IO/Flash Latency:(%llu/%llu)LBA:%llu,length:%d size:%d,count=%lld\n",
+						(from_kuid_munged(current_user_ns(), current_uid())),
+						req->tag, ufs_outstanding, rwbs, delta_us, req->flash_io_latency,
+						(unsigned long long)blk_rq_pos(req),
+						nr_bytes >> 9, blk_rq_bytes(req), latency_count);
+			io_print_count++;
+		}
+
+		if (!io_print_flag && io_print_count)
+			io_print_count = 0;
+	}
+#endif
 
 	if (!req->bio)
 		return false;

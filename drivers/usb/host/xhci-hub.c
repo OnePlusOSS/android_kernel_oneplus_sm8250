@@ -11,6 +11,7 @@
 #include <linux/gfp.h>
 #include <linux/slab.h>
 #include <asm/unaligned.h>
+#include <linux/usb/phy.h>
 
 #include "xhci.h"
 #include "xhci-trace.h"
@@ -942,6 +943,7 @@ static u32 xhci_get_port_status(struct usb_hcd *hcd,
 			spin_lock_irqsave(&xhci->lock, *flags);
 
 			if (time_left) {
+				usb_phy_powerdown(hcd->usb3_phy);
 				slot_id = xhci_find_slot_id_by_port(hcd,
 						xhci, wIndex + 1);
 				if (!slot_id) {
@@ -1289,6 +1291,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 				/* Resume the port to U0 first */
 				xhci_set_link_state(xhci, ports[wIndex],
 							XDEV_U0);
+				usb_phy_powerdown(hcd->usb3_phy);
 				spin_unlock_irqrestore(&xhci->lock, flags);
 				msleep(10);
 				spin_lock_irqsave(&xhci->lock, flags);
@@ -1313,6 +1316,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			/* unlock to execute stop endpoint commands */
 			spin_unlock_irqrestore(&xhci->lock, flags);
 			xhci_stop_device(xhci, slot_id, 1);
+			usb_phy_powerup(hcd->usb3_phy);
 			spin_lock_irqsave(&xhci->lock, flags);
 
 			xhci_set_link_state(xhci, ports[wIndex], XDEV_U3);

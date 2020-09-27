@@ -15,6 +15,10 @@
 #include <linux/of.h>
 #include <linux/uaccess.h>
 #include <asm/arch_timer.h>
+#include <linux/debugfs.h>
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
+#include "rpmh_master_stat.h"
 
 #define RPM_STATS_NUM_REC	2
 #define MSM_ARCH_TIMER_FREQ	19200000
@@ -56,6 +60,8 @@ struct msm_rpm_stats_data {
 
 };
 
+struct dentry *debugfs_root;
+
 struct msm_rpmstats_kobj_attr {
 	struct kobject *kobj;
 	struct kobj_attribute ka;
@@ -75,6 +81,96 @@ static inline u64 get_time_in_msec(u64 counter)
 	counter *= MSEC_PER_SEC;
 
 	return counter;
+}
+
+static inline u32 msm_rpmstats_read_long_register(void __iomem *regbase,
+		int index, int offset)
+{
+	return readl_relaxed(regbase + offset +
+			index * sizeof(struct msm_rpm_stats_data));
+}
+
+static inline u64 msm_rpmstats_read_quad_register(void __iomem *regbase,
+		int index, int offset)
+{
+	u64 dst;
+
+	memcpy_fromio(&dst,
+		regbase + offset + index * sizeof(struct msm_rpm_stats_data),
+		8);
+	return dst;
+}
+
+#define TIMEOUT_FOR_DUMP (2*60*60)
+#define SUBSYSTEM_COUNT 9
+static struct msm_rpmstats_platform_data *pdata;
+void rpmhstats_statistics(void)
+{
+	void __iomem *reg;
+	static struct msm_rpm_stats_data data[RPM_STATS_NUM_REC];
+	int i;
+	u32 new_count;
+	u64 time_since_last_mode;
+	static u64 time;
+	u64 time_in_last_mode;
+	u64 actual_last_sleep;
+
+	reg = ioremap_nocache(pdata->phys_addr_base,
+				pdata->phys_size);
+	if (!reg) {
+		pr_err("%s: ERROR could not ioremap start=%pa, len=%u\n",
+				__func__, &pdata->phys_addr_base,
+				pdata->phys_size);
+		return;
+	}
+
+	for (i = 0; i < pdata->num_records; i++) {
+		if (time != 0) {
+			new_count = msm_rpmstats_read_long_register(reg, i,
+				offsetof(struct msm_rpm_stats_data, count));
+			if (new_count == data[i].count) {
+				time_since_last_mode = arch_counter_get_cntvct() - data->last_exited_at;
+				time_since_last_mode = get_time_in_sec(time_since_last_mode);
+				if (time_since_last_mode > TIMEOUT_FOR_DUMP) {
+					time_in_last_mode = data->last_exited_at - data->last_entered_at;
+					time_in_last_mode = get_time_in_msec(time_in_last_mode);
+					actual_last_sleep = get_time_in_msec(data->accumulated);
+					pr_err("Count:%d\n\ttime in last mode(msec):%llu\n"
+						"time since last mode(sec):%llu\nactual last sleep(msec):%llu\n\n",
+						data->count, time_in_last_mode,
+						time_since_last_mode, actual_last_sleep);
+					//get subsystem stats
+					if (get_apps_stats(false) == false) {
+						pr_err("The issue is because APPS");
+						continue;
+					} else {
+						get_subsystem_stats(false);
+						panic("Because AOP without entering PC");
+					}
+				} else if (get_time_in_sec(arch_counter_get_cntvct()) - time > TIMEOUT_FOR_DUMP)
+					time = 0;
+			} else if (get_time_in_sec(arch_counter_get_cntvct()) - time > TIMEOUT_FOR_DUMP)
+				time = 0;
+		} else {
+			time = get_time_in_sec(arch_counter_get_cntvct());
+			data[i].stat_type = msm_rpmstats_read_long_register(reg, i,
+					offsetof(struct msm_rpm_stats_data,
+					stat_type));
+			data[i].count = msm_rpmstats_read_long_register(reg, i,
+					offsetof(struct msm_rpm_stats_data, count));
+			data[i].last_entered_at = msm_rpmstats_read_quad_register(reg,
+					i, offsetof(struct msm_rpm_stats_data,
+					last_entered_at));
+			data[i].last_exited_at = msm_rpmstats_read_quad_register(reg,
+					i, offsetof(struct msm_rpm_stats_data,
+					last_exited_at));
+			data[i].accumulated = msm_rpmstats_read_quad_register(reg,
+					i, offsetof(struct msm_rpm_stats_data,
+					accumulated));
+			get_apps_stats(true);
+			get_subsystem_stats(true);
+		}
+	}
 }
 
 static inline int msm_rpmstats_append_data_to_buf(char *buf,
@@ -109,24 +205,6 @@ static inline int msm_rpmstats_append_data_to_buf(char *buf,
 		stat_type, data->count, time_in_last_mode,
 		time_since_last_mode, actual_last_sleep);
 #endif
-}
-
-static inline u32 msm_rpmstats_read_long_register(void __iomem *regbase,
-		int index, int offset)
-{
-	return readl_relaxed(regbase + offset +
-			index * sizeof(struct msm_rpm_stats_data));
-}
-
-static inline u64 msm_rpmstats_read_quad_register(void __iomem *regbase,
-		int index, int offset)
-{
-	u64 dst;
-
-	memcpy_fromio(&dst,
-		regbase + offset + index * sizeof(struct msm_rpm_stats_data),
-		8);
-	return dst;
 }
 
 static inline int msm_rpmstats_copy_stats(
@@ -167,79 +245,110 @@ static inline int msm_rpmstats_copy_stats(
 	return length;
 }
 
-static ssize_t rpmstats_show(struct kobject *kobj,
-			struct kobj_attribute *attr, char *buf)
+#ifdef CONFIG_DEBUG_FS
+static int rpmh_stats_show(struct seq_file *s, void *data)
 {
+
 	struct msm_rpmstats_private_data prvdata;
 	struct msm_rpmstats_platform_data *pdata = NULL;
-	ssize_t length;
 
-	pdata = GET_PDATA_OF_ATTR(attr);
+	pdata = s->private;
 
 	prvdata.reg_base = ioremap_nocache(pdata->phys_addr_base,
 					pdata->phys_size);
 	if (!prvdata.reg_base) {
-		pr_err("ERROR could not ioremap start=%pa, len=%u\n",
-				&pdata->phys_addr_base, pdata->phys_size);
+		pr_err("%s: ERROR could not ioremap start=%pa, len=%u\n",
+			__func__, &pdata->phys_addr_base,
+			pdata->phys_size);
 		return -EBUSY;
 	}
 
 	prvdata.read_idx = prvdata.len = 0;
 	prvdata.platform_data = pdata;
-	prvdata.num_records = pdata->num_records;
+	prvdata.num_records = RPM_STATS_NUM_REC;
 
 	if (prvdata.read_idx < prvdata.num_records)
 		prvdata.len = msm_rpmstats_copy_stats(&prvdata);
 
-	length = scnprintf(buf, prvdata.len, "%s", prvdata.buf);
-	iounmap(prvdata.reg_base);
-	return length;
+	seq_printf(s, "%s", prvdata.buf);
+	return 0;
 }
 
-static int msm_rpmstats_create_sysfs(struct platform_device *pdev,
-				struct msm_rpmstats_platform_data *pd)
+static int rpmh_stats_open(struct inode *inode, struct file *file)
 {
-	struct kobject *rpmstats_kobj = NULL;
-	struct msm_rpmstats_kobj_attr *rpms_ka = NULL;
-	int ret = 0;
-
-	rpmstats_kobj = kobject_create_and_add("system_sleep", power_kobj);
-	if (!rpmstats_kobj) {
-		pr_err("Cannot create rpmstats kobject\n");
-		ret = -ENOMEM;
-		goto fail;
-	}
-
-	rpms_ka = kzalloc(sizeof(*rpms_ka), GFP_KERNEL);
-	if (!rpms_ka) {
-		kobject_put(rpmstats_kobj);
-		ret = -ENOMEM;
-		goto fail;
-	}
-
-	rpms_ka->kobj = rpmstats_kobj;
-
-	sysfs_attr_init(&rpms_ka->ka.attr);
-	rpms_ka->pd = pd;
-	rpms_ka->ka.attr.mode = 0444;
-	rpms_ka->ka.attr.name = "stats";
-	rpms_ka->ka.show = rpmstats_show;
-	rpms_ka->ka.store = NULL;
-
-	ret = sysfs_create_file(rpmstats_kobj, &rpms_ka->ka.attr);
-	platform_set_drvdata(pdev, rpms_ka);
-
-fail:
-	return ret;
+	return single_open(file, rpmh_stats_show, inode->i_private);
 }
+
+#endif
+
+static const struct file_operations rpmh_stats_fops = {
+#ifdef CONFIG_DEBUG_FS
+	.open		= rpmh_stats_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+#endif
+};
+
+static const struct file_operations rpmh_master_stats_fops = {
+#ifdef CONFIG_DEBUG_FS
+	.open	   = rpmh_master_stats_open,
+	.read	   = seq_read,
+	.llseek	 = seq_lseek,
+	.release	= single_release,
+#endif
+};
+
+static ssize_t stats_show(struct kobject *kobj,
+				      struct kobj_attribute *attr, char *buf)
+{
+	struct msm_rpmstats_private_data prvdata;
+
+	prvdata.reg_base = ioremap_nocache(pdata->phys_addr_base,
+					pdata->phys_size);
+
+	if (!prvdata.reg_base) {
+		pr_err("%s: ERROR could not ioremap start=%pa, len=%u\n",
+			__func__, &pdata->phys_addr_base,
+			pdata->phys_size);
+		return -EBUSY;
+	}
+
+	prvdata.read_idx = prvdata.len = 0;
+	prvdata.platform_data = pdata;
+	prvdata.num_records = RPM_STATS_NUM_REC;
+
+	if (prvdata.read_idx < prvdata.num_records)
+		prvdata.len = msm_rpmstats_copy_stats(&prvdata);
+
+	return snprintf(buf, 480, "%s", prvdata.buf);
+}
+
+static struct kobj_attribute stats_attribute =
+__ATTR_RO(stats);
+
+static struct kobj_attribute master_stats_attribute =
+__ATTR_RO(master_stats);
+
+static struct attribute *rpmh_attrs[] = {
+	 &stats_attribute.attr,
+	 &master_stats_attribute.attr,
+	 NULL,
+};
+
+static struct attribute_group rpmh_attr_group = {
+	.name = "rpmh",
+	.attrs = rpmh_attrs,
+};
 
 static int msm_rpmstats_probe(struct platform_device *pdev)
 {
-	struct msm_rpmstats_platform_data *pdata;
+	//struct msm_rpmstats_platform_data *pdata;
 	struct resource *res = NULL, *offset = NULL;
 	u32 offset_addr = 0;
 	void __iomem *phys_ptr = NULL;
 	char *key;
+	int ret;
 
 	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata)
@@ -270,7 +379,19 @@ static int msm_rpmstats_probe(struct platform_device *pdev)
 	if (of_property_read_u32(pdev->dev.of_node, key, &pdata->num_records))
 		pdata->num_records = RPM_STATS_NUM_REC;
 
-	msm_rpmstats_create_sysfs(pdev, pdata);
+	debugfs_root = debugfs_create_dir("rpmh", NULL);
+	if (!debugfs_root) {
+		pr_err("%s: Cannot create rpmh dir\n", __func__);
+		return -ENOMEM;
+	}
+
+	debugfs_create_file("stats", 0444, debugfs_root, pdata,
+			    &rpmh_stats_fops);
+
+	debugfs_create_file("master_stats", 0444, debugfs_root, NULL,
+		&rpmh_master_stats_fops);
+
+	ret = sysfs_create_group(power_kobj, &rpmh_attr_group);
 
 	return 0;
 }

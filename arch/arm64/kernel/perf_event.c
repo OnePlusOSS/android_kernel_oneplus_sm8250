@@ -1145,7 +1145,7 @@ static void armv8pmu_idle_update(struct arm_pmu *cpu_pmu)
 	struct perf_event *event;
 	int idx;
 
-	if (!cpu_pmu)
+	if (!cpu_pmu || !(cpu_pmu->hw_events))
 		return;
 
 	if (__this_cpu_read(perf_event_is_hotplugging))

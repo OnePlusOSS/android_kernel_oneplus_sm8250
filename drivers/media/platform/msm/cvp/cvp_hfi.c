@@ -350,32 +350,6 @@ int get_pkt_index(struct cvp_hal_session_cmd_pkt *hdr)
 	return -EINVAL;
 }
 
-int set_feature_bitmask(int pkt_idx, unsigned long *bitmask)
-{
-	if (!bitmask) {
-		dprintk(CVP_ERR, "%s: invalid bitmask\n", __func__);
-		return -EINVAL;
-	}
-
-	if (cvp_hfi_defs[pkt_idx].type == HFI_CMD_SESSION_CVP_DME_FRAME) {
-		set_bit(DME_BIT_OFFSET, bitmask);
-		return 0;
-	}
-
-	if (cvp_hfi_defs[pkt_idx].type == HFI_CMD_SESSION_CVP_ICA_FRAME) {
-		set_bit(ICA_BIT_OFFSET, bitmask);
-		return 0;
-	}
-
-	if (cvp_hfi_defs[pkt_idx].type == HFI_CMD_SESSION_CVP_FD_FRAME) {
-		set_bit(FD_BIT_OFFSET, bitmask);
-		return 0;
-	}
-
-	dprintk(CVP_ERR, "%s: invalid pkt_idx %d\n", __func__, pkt_idx);
-	return -EINVAL;
-}
-
 int get_hfi_version(void)
 {
 	struct msm_cvp_core *core;

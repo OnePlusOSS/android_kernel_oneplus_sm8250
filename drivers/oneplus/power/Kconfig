@@ -1,0 +1,3 @@
+# oem device driver for charge
+#
+source "drivers/oneplus/power/supply/Kconfig"

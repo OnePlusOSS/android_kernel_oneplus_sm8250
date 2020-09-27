@@ -19,6 +19,11 @@
 #include "bus.h"
 #include "debug.h"
 #include "genl.h"
+#include <linux/oem/project_info.h>
+static u32 fw_version;
+static u32 fw_version_ext;
+static u32 bdf_version;
+static u32 bdf_version_ext;
 
 #define CNSS_DUMP_FORMAT_VER		0x11
 #define CNSS_DUMP_FORMAT_VER_V2		0x22
@@ -47,6 +52,47 @@
 static struct cnss_plat_data *plat_env;
 
 static DECLARE_RWSEM(cnss_pm_sem);
+
+int  bdf_WifiChain_mode;
+EXPORT_SYMBOL(bdf_WifiChain_mode);
+
+void cnss_set_bdf_name(u32 version, u32 ext)
+{
+	bdf_version = version;
+	bdf_version_ext = ext;
+}
+EXPORT_SYMBOL(cnss_set_bdf_name);
+
+static ssize_t bdf_name_show(struct device *dev,
+			     struct device_attribute *attr,
+			     char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%u.%u\n",
+		bdf_version, bdf_version_ext);
+}
+static DEVICE_ATTR_RO(bdf_name);
+
+int get_wifi_chain_mode(void)
+{
+	return bdf_WifiChain_mode;
+}
+EXPORT_SYMBOL(get_wifi_chain_mode);
+
+static ssize_t wifichain_flag_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, sizeof(buf), "%u\n", bdf_WifiChain_mode);
+}
+EXPORT_SYMBOL(wifichain_flag_show);
+
+static ssize_t wifichain_flag_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
+{
+	if (buf && size != 0)
+		bdf_WifiChain_mode = *buf;
+	return bdf_WifiChain_mode;
+}
+EXPORT_SYMBOL(wifichain_flag_store);
+
+static DEVICE_ATTR_RW(wifichain_flag);
 
 static struct cnss_fw_files FW_FILES_QCA6174_FW_3_0 = {
 	"qwlan30.bin", "bdwlan30.bin", "otp30.bin", "utf30.bin",
@@ -2261,6 +2307,25 @@ cnss_use_nv_mac(struct cnss_plat_data *plat_priv)
 				     "use-nv-mac");
 }
 
+void cnss_set_fw_version(u32 version, u32 ext)
+{
+	fw_version = version;
+	fw_version_ext = ext;
+}
+EXPORT_SYMBOL(cnss_set_fw_version);
+
+static ssize_t cnss_version_information_show(struct device *dev,
+					     struct device_attribute *attr,
+					     char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%u.%u.%u.%u.%u\n",
+		(fw_version & 0xf0000000) >> 28,
+	(fw_version & 0xf000000) >> 24, (fw_version & 0xf00000) >> 20,
+	fw_version & 0x7fff, (fw_version_ext & 0xf0000000) >> 28);
+}
+
+static DEVICE_ATTR_RO(cnss_version_information);
+
 static int cnss_probe(struct platform_device *plat_dev)
 {
 	int ret = 0;
@@ -2351,7 +2416,13 @@ static int cnss_probe(struct platform_device *plat_dev)
 	ret = cnss_genl_init();
 	if (ret < 0)
 		cnss_pr_err("CNSS genl init failed %d\n", ret);
-
+	device_create_file(&plat_priv->plat_dev->dev,
+			   &dev_attr_cnss_version_information);
+	push_component_info(WCN, "QCA6391", "QualComm");
+	device_create_file(&plat_priv->plat_dev->dev,
+			   &dev_attr_wifichain_flag);
+	device_create_file(&plat_priv->plat_dev->dev,
+			   &dev_attr_bdf_name);
 	cnss_pr_info("Platform driver probed successfully.\n");
 
 	return 0;
@@ -2400,6 +2471,12 @@ static int cnss_remove(struct platform_device *plat_dev)
 	cnss_put_resources(plat_priv);
 	platform_set_drvdata(plat_dev, NULL);
 	plat_env = NULL;
+	device_remove_file(&plat_priv->plat_dev->dev,
+			   &dev_attr_cnss_version_information);
+	device_remove_file(&plat_priv->plat_dev->dev,
+			   &dev_attr_wifichain_flag);
+	device_remove_file(&plat_priv->plat_dev->dev,
+			   &dev_attr_bdf_name);
 
 	return 0;
 }

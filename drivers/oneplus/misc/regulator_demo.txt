@@ -1,0 +1,6 @@
+&soc {
+    regulator_demo {
+        compatible = "oneplus,regulator_demo";
+        regulator_demo-supply = <&pm8150_s5>;
+    };
+};

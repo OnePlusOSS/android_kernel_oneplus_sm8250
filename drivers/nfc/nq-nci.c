@@ -22,6 +22,8 @@
 #include <linux/compat.h>
 #endif
 #include <linux/jiffies.h>
+#include <linux/oem/boot_mode.h>
+#include <linux/oem/project_info.h>
 #include <linux/regulator/consumer.h>
 
 struct nqx_platform_data {
@@ -1454,6 +1456,13 @@ static int nqx_probe(struct i2c_client *client,
 					platform_data->en_gpio);
 			goto err_en_gpio;
 		}
+		if (get_boot_mode() == MSM_BOOT_MODE_FACTORY) {
+			gpio_set_value(platform_data->en_gpio, 0);
+			dev_err(&client->dev,
+			"%s: ftm_at mode, set ven low and dont probe pn5xx\n",
+			__func__);
+			goto err_en_gpio;
+		}
 	} else {
 		dev_err(&client->dev,
 		"%s: nfc reset gpio not provided\n", __func__);
@@ -1628,6 +1637,8 @@ static int nqx_probe(struct i2c_client *client,
 		gpio_set_value(platform_data->en_gpio, 0);
 		/* We don't think there is hardware switch NFC OFF */
 		goto err_request_hw_check_failed;
+	} else {
+		push_component_info(NFC, "SN100", "NXP");
 	}
 
 	/* Register reboot notifier here */

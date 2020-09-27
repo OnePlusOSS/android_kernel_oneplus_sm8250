@@ -801,6 +801,32 @@ static int msm_ssphy_qmp_extcon_register(struct msm_ssphy_qmp *phy,
 	return 0;
 }
 
+static int msm_ssphy_qmp_powerup(struct usb_phy *uphy, bool powerup)
+{
+	struct msm_ssphy_qmp *phy = container_of(uphy, struct msm_ssphy_qmp,
+					phy);
+	u8 reg = powerup ? 1 : 0;
+	u8 temp;
+
+	if (!(uphy->flags & PHY_WAKEUP_WA_EN))
+		return 0;
+
+	temp = readl_relaxed(phy->base +
+	phy->phy_reg[USB3_PHY_POWER_DOWN_CONTROL]);
+
+	if (temp == powerup)
+		return 0;
+
+	writel_relaxed(reg,
+			phy->base + phy->phy_reg[USB3_PHY_POWER_DOWN_CONTROL]);
+	temp = readl_relaxed(phy->base +
+			phy->phy_reg[USB3_PHY_POWER_DOWN_CONTROL]);
+
+	dev_dbg(uphy->dev, "P3 powerup:%x\n", temp);
+
+	return 0;
+}
+
 static int msm_ssphy_qmp_get_clks(struct msm_ssphy_qmp *phy, struct device *dev)
 {
 	int ret = 0;
@@ -1120,6 +1146,7 @@ static int msm_ssphy_qmp_probe(struct platform_device *pdev)
 	phy->phy.set_suspend		= msm_ssphy_qmp_set_suspend;
 	phy->phy.notify_connect		= msm_ssphy_qmp_notify_connect;
 	phy->phy.notify_disconnect	= msm_ssphy_qmp_notify_disconnect;
+	phy->phy.powerup		= msm_ssphy_qmp_powerup;
 
 	if (phy->phy.type == USB_PHY_TYPE_USB3_AND_DP)
 		phy->phy.reset		= msm_ssphy_qmp_dp_combo_reset;

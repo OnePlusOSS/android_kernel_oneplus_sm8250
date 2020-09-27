@@ -77,6 +77,7 @@ struct pl_data {
 	struct power_supply	*dc_psy;
 	struct power_supply	*cp_master_psy;
 	struct power_supply	*cp_slave_psy;
+	struct power_supply *op_chg_psy;
 	int			charge_type;
 	int			total_settled_ua;
 	int			pl_settled_ua;
@@ -193,8 +194,7 @@ static int cp_get_parallel_mode(struct pl_data *chip, int mode)
 
 static int get_adapter_icl_based_ilim(struct pl_data *chip)
 {
-	int main_icl = -EINVAL, adapter_icl = -EINVAL, final_icl = -EINVAL;
-	int rc = -EINVAL;
+	int main_icl, adapter_icl = -EINVAL, rc = -EINVAL, final_icl = -EINVAL;
 	union power_supply_propval pval = {0, };
 
 	rc = power_supply_get_property(chip->usb_psy,
@@ -951,6 +951,7 @@ static int pl_fcc_vote_callback(struct votable *votable, void *data,
 
 	if (!chip->main_psy)
 		return 0;
+	pr_info("total_fcc_ua=%d\n", total_fcc_ua);
 
 	if (!chip->cp_disable_votable)
 		chip->cp_disable_votable = find_votable("CP_DISABLE");
@@ -1221,7 +1222,7 @@ static int pl_fv_vote_callback(struct votable *votable, void *data,
 		return 0;
 
 	pval.intval = fv_uv;
-
+	pr_err("fv_uv=%d\n", fv_uv);
 	rc = power_supply_set_property(chip->main_psy,
 			POWER_SUPPLY_PROP_VOLTAGE_MAX, &pval);
 	if (rc < 0) {
@@ -1301,10 +1302,10 @@ static int usb_icl_vote_callback(struct votable *votable, void *data,
 	 */
 	if (icl_ua <= 1400000)
 		vote(chip->pl_enable_votable_indirect, USBIN_I_VOTER, false, 0);
-	else
+	else {
 		schedule_delayed_work(&chip->status_change_work,
 						msecs_to_jiffies(PL_DELAY_MS));
-
+	}
 	/* rerun AICL */
 	/* get the settled current */
 	rc = power_supply_get_property(chip->main_psy,
@@ -1915,9 +1916,9 @@ static int pl_notifier_call(struct notifier_block *nb,
 
 	if ((strcmp(psy->desc->name, "parallel") == 0)
 	    || (strcmp(psy->desc->name, "battery") == 0)
-	    || (strcmp(psy->desc->name, "main") == 0))
+	    || (strcmp(psy->desc->name, "main") == 0)) {
 		schedule_delayed_work(&chip->status_change_work, 0);
-
+	}
 	return NOTIFY_OK;
 }
 

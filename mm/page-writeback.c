@@ -1715,7 +1715,8 @@ static void balance_dirty_pages(struct bdi_writeback *wb,
 		min_pause = wb_min_pause(wb, max_pause,
 					 task_ratelimit, dirty_ratelimit,
 					 &nr_dirtied_pause);
-
+		trace_printk("max_pause %d, min_pause %d, nr_dirtied_pause %d\n",
+			max_pause, min_pause, nr_dirtied_pause);
 		if (unlikely(task_ratelimit == 0)) {
 			period = max_pause;
 			pause = max_pause;

@@ -1,0 +1,27 @@
+&pm8009_gpios {
+    pm8009_gpios_pinctl: pm8009_gpios_pinctl {
+
+        pm8009_gpios01: pm8009_gpios01 {
+            pins = "gpio1";
+            function = "normal";
+            power-source = <1>;
+        };
+        pm8009_gpios02: pm8009_gpios02{
+            pins = "gpio2";
+            function = "normal";
+            power-source = <1>;
+        };
+    };
+};
+
+&soc {
+    gpio_switch {
+        compatible = "oneplus,gpio_switch";
+        gpios = <&pm8009_gpios 1 0>,
+                <&pm8009_gpios 2 0>;
+
+        pinctrl-names = "gpio_switch_pin_active";
+        pinctrl-0 = <&pm8009_gpios01 &pm8009_gpios02 &pm8009_gpios04>;
+    };
+};
+
