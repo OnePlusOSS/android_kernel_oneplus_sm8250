@@ -1770,7 +1770,12 @@ static void _sde_encoder_autorefresh_disable_seq1(
 	_sde_encoder_phys_cmd_config_autorefresh(phys_enc, 0);
 
 	do {
+#if defined(PXLW_IRIS_DUAL)
+		usleep_range(AUTOREFRESH_SEQ1_POLL_TIME,
+			AUTOREFRESH_SEQ1_POLL_TIME + 1);
+#else
 		udelay(AUTOREFRESH_SEQ1_POLL_TIME);
+#endif
 		if ((trial * AUTOREFRESH_SEQ1_POLL_TIME)
 				> (KICKOFF_TIMEOUT_MS * USEC_PER_MSEC)) {
 			SDE_ERROR_CMDENC(cmd_enc,

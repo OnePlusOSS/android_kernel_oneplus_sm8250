@@ -1088,7 +1088,7 @@ void reg_dmav1_setup_dspp_igcv31(struct sde_hw_dspp *ctx, void *cfg)
 	if (lut_cfg->flags & IGC_DITHER_ENABLE) {
 	if (op_dither_enable==1){
 		reg = lut_cfg->strength & IGC_DITHER_DATA_MASK;
-		//reg=6;
+		reg=6;
 	}
 	else{
           reg =0;

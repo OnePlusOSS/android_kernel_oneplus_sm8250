@@ -3,11 +3,22 @@
 #include <linux/regmap.h>
 #include <linux/input/qpnp-power-on.h>
 
+#define OP_SWARP_SUPPORTED
+
 enum {
 	ADAPTER_FW_UPDATE_NONE,
 	ADAPTER_FW_NEED_UPDATE,
 	ADAPTER_FW_UPDATE_SUCCESS,
 	ADAPTER_FW_UPDATE_FAIL,
+};
+
+enum mcu_action_mode {
+	ACTION_MODE_ENABLE,
+	ACTION_MODE_RESET_ACTIVE,
+	ACTION_MODE_RESET_SLEEP,
+	ACTION_MODE_SWITCH_UPGRADE,
+	ACTION_MODE_SWITCH_NORMAL,
+	ACTION_MODE_SWITCH_WARP,
 };
 
 struct op_adapter_chip {
@@ -30,6 +41,8 @@ struct op_adapter_operations {
 
 struct external_battery_gauge {
 	int (*get_battery_mvolts)(void);
+	int (*get_battery_mvolts_2cell_max)(void);
+	int (*get_battery_mvolts_2cell_min)(void);
 	int (*get_battery_temperature)(void);
 	bool (*is_battery_present)(void);
 	bool (*is_battery_temp_within_range)(void);
@@ -66,12 +79,29 @@ struct external_battery_gauge {
 	int (*get_device_type)(void);
 	/* david.liu@bsp, 20161025 Add BQ27411 dash charging */
 	int (*wlchg_started_status)(bool status);
+	int (*get_time_to_full)(void);
+};
+
+enum fast_charger_type {
+	CHARGER_DEFAULT = 0,
+	CHARGER_DASH,
+	CHARGER_WARP,
+	CHARGER_CAR,
+	CHARGER_SWARP_2,
+	CHARGER_SWARP_1,
+	CHARGER_PD,
+	CHARGER_QC,
+	CHARGER_WIRELESS,
+	CHARGER_MAX,
 };
 
 struct notify_dash_event {
 	int (*notify_event)(void);
 	int (*op_contrl)(int status, bool check_power_ok);
 	int (*notify_dash_charger_present)(int true);
+	int (*update_dash_type)(enum fast_charger_type type);
+	int (*update_adapter_sid)(unsigned int sid);
+	int (*suspend_disable_nor_charge)(bool suspend);
 };
 
 struct notify_usb_enumeration_status {
@@ -92,6 +122,7 @@ enum temp_region_type {
 enum ffc_step {
 	FFC_DEFAULT = 0,
 	FFC_FAST,
+	FFC_FAST_2,
 	FFC_TAPER,
 	FFC_NOR_TAPER,
 	FFC_WARM_TAPER,
@@ -102,11 +133,14 @@ enum batt_status_type {
 	BATT_STATUS_GOOD,
 	BATT_STATUS_BAD_TEMP, /* cold or hot */
 	BATT_STATUS_BAD,
+	BATT_STATUS_BAD_VOL_DIFF,
 	BATT_STATUS_REMOVED, /* on v2.2 only */
 	BATT_STATUS_INVALID_v1 = BATT_STATUS_REMOVED,
 	BATT_STATUS_INVALID
 };
 void op_pm8998_regmap_register(struct regmap *regmap);
+void op_pm8150_regmap_register(struct regmap *regmap);
+void op_sdram_regmap_register(struct regmap *regmap);
 
 void regsister_notify_usb_enumeration_status(
 	struct notify_usb_enumeration_status *event);
@@ -132,11 +166,17 @@ extern void clean_backup_soc_ex(void);
 /*add for dash adapter update*/
 extern void op_bus_vote(int disable);
 extern int is_hw_support_n76e(void);
+void op_warp_config_for_swarp(void);
+void op_pd_config_switch_normal(void);
 void op_switch_normal_set(void);
 void clean_backup_soc_ex(void);
 bool get_4p45_battery_support(void);
 bool check_skin_thermal_high(void);
+bool check_skin_thermal_warm(void);
 bool check_skin_thermal_medium(void);
 bool check_call_on_status(void);
+bool check_video_call_on_status(void);
+bool check_lcd_on_status(void);
 void update_fast_switch_off_status(void);
+int opchg_mcu_action(enum mcu_action_mode mode);
 #endif

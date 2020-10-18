@@ -185,6 +185,15 @@ static int fingerprint_detect_probe(struct platform_device *pdev)
 	}
 */
 
+	if (of_property_read_bool(fp_detect->dev->of_node, "oneplus,19805")){
+		fp_dtsi_product = 19805;
+		if(id0){
+			fp_detect->sensor_version = 0x9678;
+		}else{
+			fp_detect->sensor_version = 0x9638;
+		}
+	}
+
 	fp_version = fp_detect->sensor_version;
 	dev_info(dev, "%s: success\n", __func__);
 exit:

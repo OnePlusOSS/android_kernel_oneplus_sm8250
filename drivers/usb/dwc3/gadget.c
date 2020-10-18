@@ -1252,6 +1252,10 @@ static void dwc3_prepare_one_trb(struct dwc3_ep *dep,
 	unsigned		no_interrupt = req->request.no_interrupt;
 
 	if (req->request.num_sgs > 0) {
+		if (req->start_sg == NULL) {
+			dev_err(dep->dwc->dev, "req->start_sg == NULL\n");
+			return;
+		}
 		length = sg_dma_len(req->start_sg);
 		dma = sg_dma_address(req->start_sg);
 	} else {

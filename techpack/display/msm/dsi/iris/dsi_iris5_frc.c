@@ -561,7 +561,11 @@ static void iris_frc_setting_switch(bool dual)
 	pcfg->frc_setting.video_baseaddr = video_baseaddr[i];
 
 	if (process_hres[0] != process_hres[1]) {
+		uint32_t add_last_flag = pcfg->add_last_flag;
+
+		pcfg->add_last_flag = pcfg->add_on_last_flag;
 		iris_scaler_filter_ratio_get();
+		pcfg->add_last_flag = add_last_flag;
 		IRIS_LOGI("update scaler filter");
 	}
 	payload = iris_get_ipopt_payload_data(IRIS_IP_DSC_ENC_2, dual ? 0xf2 : 0xf1, 2);

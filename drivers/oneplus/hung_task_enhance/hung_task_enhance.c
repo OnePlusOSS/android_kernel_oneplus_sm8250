@@ -42,6 +42,10 @@ static bool is_userspace_key_process(struct task_struct *t)
 	if(!strncmp(t->comm, "system_server", TASK_COMM_LEN) ||
 			!strncmp(t->comm, "surfaceflinger", TASK_COMM_LEN))
 		return true;
+	if (!strncmp(t->comm, "Binder:", 7) && (t->group_leader->pid == t->pid)
+			&& (tcred->uid.val == 1000) && (t->parent != 0 && !strcmp(t->parent->comm, "main")))
+		return true;
+
 	return false;
 }
 

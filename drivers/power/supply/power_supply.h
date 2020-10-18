@@ -40,3 +40,7 @@ static inline int power_supply_create_triggers(struct power_supply *psy)
 static inline void power_supply_remove_triggers(struct power_supply *psy) {}
 
 #endif /* CONFIG_LEDS_TRIGGERS */
+
+#ifdef CONFIG_F2FS_OF2FS
+extern int f2fs_battery_notifier_call_chain(unsigned long val, void *v);
+#endif

@@ -135,7 +135,6 @@ static char *sched_list[OHM_TYPE_TOTAL] = {
 #define MAX_OHMEVENT_PARAM 4
 #define TRIG_MIN_INTERVAL 400
 static struct kobject *ohm_kobj;
-static struct delayed_work ohm_detect_ws;
 static char *ohm_detect_env[MAX_OHMEVENT_PARAM] = { "OHMACTION=uevent", NULL };
 static bool ohm_action_ctrl;
 static unsigned long last_trig;
@@ -145,8 +144,14 @@ static int iowait_summ_thresh;
 static int iowait_total;
 static bool iowait_summ_reset = true;
 
+static atomic_t ohm_scheduled;
+static struct kthread_worker __rcu *ohm_kworker;
+static struct kthread_delayed_work ohm_work;
+
 void ohm_action_trig(int type)
 {
+	struct kthread_worker *kworker;
+
 	if (!ohm_action_ctrl) {
 		ohm_err_deferred("ctrl off\n");
 		return;
@@ -157,16 +162,23 @@ void ohm_action_trig(int type)
 			ohm_err_deferred("kobj NULL\n");
 			return;
 		}
+		if (atomic_cmpxchg(&ohm_scheduled, 0, 1) != 0)
+			return;
 		sprintf(ohm_detect_env[1], "OHMTYPE=%s", sched_list[type]);
 		sprintf(ohm_detect_env[2], "NOLEVEL");
 		ohm_detect_env[MAX_OHMEVENT_PARAM - 1] = NULL;
-		cancel_delayed_work(&ohm_detect_ws);
-		schedule_delayed_work(&ohm_detect_ws, msecs_to_jiffies(1));
+		rcu_read_lock();
+		kworker = rcu_dereference(ohm_kworker);
+		if (likely(kworker))
+			kthread_queue_delayed_work(kworker, &ohm_work, msecs_to_jiffies(1));
+		rcu_read_unlock();
 	}
 }
 
 void ohm_action_trig_level(int type, bool highlevel)
 {
+	struct kthread_worker *kworker;
+
 	if (!ohm_action_ctrl) {
 		ohm_err_deferred("ctrl off\n");
 		return;
@@ -179,26 +191,34 @@ void ohm_action_trig_level(int type, bool highlevel)
 		}
 		if (!time_after(jiffies, last_trig + msecs_to_jiffies(TRIG_MIN_INTERVAL)))
 			return;
+		if (atomic_cmpxchg(&ohm_scheduled, 0, 1) != 0)
+			return;
 		ohm_debug_deferred("%s trig action\n", sched_list[type]);
 		sprintf(ohm_detect_env[1], "OHMTYPE=%s", sched_list[type]);
 		sprintf(ohm_detect_env[2], "OHMLEVEL=%s", highlevel?"HIGH":"LOW");
 		ohm_detect_env[MAX_OHMEVENT_PARAM - 1] = NULL;
-		cancel_delayed_work(&ohm_detect_ws);
-		schedule_delayed_work(&ohm_detect_ws, msecs_to_jiffies(1));
+		rcu_read_lock();
+		kworker = rcu_dereference(ohm_kworker);
+		if (likely(kworker))
+			kthread_queue_delayed_work(kworker, &ohm_work, msecs_to_jiffies(1));
+		rcu_read_unlock();
 		last_trig = jiffies;
 	}
 }
 
-void ohm_detect_work(struct work_struct *work)
+void ohm_detect_work(struct kthread_work *work)
 {
 	ohm_debug_deferred("Uevent Para: %s, %s\n", ohm_detect_env[0], ohm_detect_env[1]);
 	kobject_uevent_env(ohm_kobj, KOBJ_CHANGE, ohm_detect_env);
 	ohm_debug_deferred("Uevent Done!\n");
+	atomic_set(&ohm_scheduled, 0);
 }
 
 void ohm_action_init(void)
 {
 	int i = 0;
+	struct kthread_worker *kworker;
+
 	for (i = 1; i < MAX_OHMEVENT_PARAM - 1; i++) {
 		ohm_detect_env[i] = kzalloc(50, GFP_KERNEL);
 		if (!ohm_detect_env[i]) {
@@ -212,7 +232,13 @@ void ohm_action_init(void)
 		goto ohm_action_init_kobj_failed;
 	}
 	last_trig = jiffies;
-	INIT_DELAYED_WORK(&ohm_detect_ws, ohm_detect_work);
+	kworker = kthread_create_worker(0, "healthinfo");
+	if (IS_ERR(kworker)) {
+		goto ohm_action_init_free_memory;
+	}
+	kthread_init_delayed_work(&ohm_work, ohm_detect_work);
+	rcu_assign_pointer(ohm_kworker, kworker);
+	atomic_set(&ohm_scheduled, 0);
 	ohm_debug("Success !\n");
 	return;
 

@@ -194,12 +194,30 @@
 	op,skin-thermal-pre-high-threshold = <39>;
 	op,skin-thermal-medium-threshold = <38>;
 	op,skin-thermal-normal-threshold = <36>;
+	op,skin-thermal-lcdoff-high-threshold = <41>;
+	op,skin-thermal-lcdoff-pre-high-threshold = <39>;
+	op,skin-thermal-lcdoff-medium-threshold = <38>;
+	op,skin-thermal-lcdoff-normal-threshold = <36>;
 	op,enable-dash-current-dynamic-adjust;
 
-	/* skin thermal temp adjust the pd current */
-	op,pd-skin-thermal-high-threshold = <39>;
-	op,pd-skin-thermal-normal-threshold = <37>;
-	op,enable-pd-current-dynamic-adjust;
+	/* skin thermal temp adjust the normal charger path current */
+	op,nor-skin-thermal-high-threshold = <39>;
+	op,nor-skin-thermal-pre-high-threshold = <37>;
+	op,nor-skin-thermal-warm-threshold = <36>;
+	op,nor-skin-thermal-pre-warm-threshold = <35>;
+	op,nor-skin-thermal-medium-threshold = <34>;
+	op,nor-skin-thermal-normal-threshold = <33>;
+	op,nor-skin-thermal-lcdoff-high-threshold = <39>;
+	op,nor-skin-thermal-lcdoff-pre-high-threshold = <37>;
+	op,nor-skin-thermal-lcdoff-warm-threshold = <36>;
+	op,nor-skin-thermal-lcdoff-pre-warm-threshold = <35>;
+	op,nor-skin-thermal-lcdoff-medium-threshold = <34>;
+	op,nor-skin-thermal-lcdoff-normal-threshold = <33>;
+	op,nor-call-on-current-ma = <1800>;
+	op,nor-skin-thermal-high-current-ma = <2000>;
+	op,nor-skin-thermal-warm-current-ma = <3000>;
+	op,nor-skin-thermal-medium-current-ma = <3000>;
+	op,enable-nor-current-dynamic-adjust;
 };
 
 &kona_mtp_batterydata {

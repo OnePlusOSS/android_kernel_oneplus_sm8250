@@ -157,6 +157,7 @@ extern void im_set_op_group(struct task_struct *task, int flag, bool insert);
 extern int im_render_grouping_enable(void);
 extern void im_list_add_task(struct task_struct *task);
 extern void im_list_del_task(struct task_struct *task);
+
 extern void im_to_str(int flag, char* desc, int size);
 #else
 static inline bool im_sf(struct task_struct *task) { return false; }

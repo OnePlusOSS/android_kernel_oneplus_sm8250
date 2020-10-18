@@ -958,6 +958,7 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 
 #ifdef CONFIG_TPD
 	tsk->tpd = 0;
+	tsk->dtpd = 0;
 #endif
 	return tsk;
 

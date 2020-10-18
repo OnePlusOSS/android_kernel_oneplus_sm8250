@@ -3531,7 +3531,8 @@ static ssize_t proc_touch_hold_switch_write(struct file *file, const char __user
 
 	TPD_DEBUG("%s value: %d, touch_hold_enable :%d\n", __func__, value, ts->touch_hold_enable);
 	if (value == 2) {//fingerprint unlock success in FOD, close touchhold
-		ts->skip_reset_in_resume = true;
+		if (ts->is_suspended)
+			ts->skip_reset_in_resume = true;
 		ts->skip_enable_touchhold = true;
 		return count;
 	} else {

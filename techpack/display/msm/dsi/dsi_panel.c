@@ -2253,6 +2253,8 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-loading-effect-disable-command",
 	"qcom,mdss-dsi-mca-setting-mode-1-command",
 	"qcom,mdss-dsi-mca-setting-mode-0-command",
+	"qcom,mdss-dsi-dimming-setting-mode-1-command",
+	"qcom,mdss-dsi-dimming-setting-mode-0-command",
 	"qcom,mdss-dsi-panel-gamma-flash-pre-read-1-command",
 	"qcom,mdss-dsi-panel-gamma-flash-pre-read-2-command",
 	"qcom,mdss-dsi-panel-gamma-otp-read-c8-smrps-command",
@@ -2343,6 +2345,8 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-loading-effect-disable-command-state",
 	"qcom,mdss-dsi-mca-setting-mode-1-command-state",
 	"qcom,mdss-dsi-mca-setting-mode-0-command-state",
+	"qcom,mdss-dsi-dimming-setting-mode-1-command-state",
+	"qcom,mdss-dsi-dimming-setting-mode-0-command-state",
 	"qcom,mdss-dsi-panel-gamma-flash-pre-read-1-command-state",
 	"qcom,mdss-dsi-panel-gamma-flash-pre-read-2-command-state",
 	"qcom,mdss-dsi-panel-gamma-otp-read-c8-smrps-command-state",
@@ -6205,6 +6209,51 @@ int dsi_panel_set_mca_setting_mode(struct dsi_panel *panel, int mca_setting_mode
 			if (rc)
 				DSI_ERR("Failed to send DSI_CMD_SET_MCA_SETTING_MODE_0 cmds\n");
 			DSI_ERR("Send DSI_CMD_SET_MCA_SETTING_MODE_0 cmds\n");
+		}
+	}
+
+error:
+	return rc;
+}
+
+int dsi_panel_set_dimming_setting_mode(struct dsi_panel *panel, int dimming_setting_mode)
+{
+	int rc = 0;
+	u32 count;
+	struct dsi_display_mode *mode;
+
+	if (!panel->cur_mode) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	mode = panel->cur_mode;
+
+	if (dimming_setting_mode == 1) {
+		count = mode->priv_info->cmd_sets[DSI_CMD_SET_DIMMING_SETTING_MODE_1].count;
+		if (!count) {
+			DSI_ERR("This panel does not support dimming setting mode 1\n");
+			rc = -EINVAL;
+			goto error;
+		}
+		else {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DIMMING_SETTING_MODE_1);
+			DSI_ERR("Send DSI_CMD_SET_DIMMING_SETTING_MODE_1 cmds\n");
+			if (rc)
+				DSI_ERR("Failed to send DSI_CMD_SET_DIMMING_SETTING_MODE_1 cmds\n");
+		}
+	} else if (dimming_setting_mode == 0) {
+		count = mode->priv_info->cmd_sets[DSI_CMD_SET_DIMMING_SETTING_MODE_0].count;
+		if (!count) {
+			DSI_ERR("This panel does not support dimming setting mode 0\n");
+			rc = -EINVAL;
+			goto error;
+		}
+		else {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DIMMING_SETTING_MODE_0);
+			DSI_ERR("Send DSI_CMD_SET_DIMMING_SETTING_MODE_0 cmds\n");
+			if (rc)
+				DSI_ERR("Failed to send DSI_CMD_SET_DIMMING_SETTING_MODE_0 cmds\n");
 		}
 	}
 

@@ -915,13 +915,13 @@ static int gf_probe(struct platform_device *pdev)
 	if (status)
 		goto err_irq;
 
-    if (1) {
+    if (fp_dtsi_product != 19805) {
         status = gf_pinctrl_init(gf_dev);
 	    if (status)
 		    goto err_irq;
     }
 	if (get_boot_mode() !=  MSM_BOOT_MODE_FACTORY) {
-        if (1) {
+        if (fp_dtsi_product != 19805) {
         	status = pinctrl_select_state(gf_dev->gf_pinctrl,
         		gf_dev->gpio_state_enable);
         	if (status) {
@@ -936,7 +936,7 @@ static int gf_probe(struct platform_device *pdev)
             }
         }  
 	} else {
-	    if (1) {
+	    if (fp_dtsi_product != 19805) {
     		status = pinctrl_select_state(gf_dev->gf_pinctrl,
     			gf_dev->gpio_state_disable);
     		if (status) {

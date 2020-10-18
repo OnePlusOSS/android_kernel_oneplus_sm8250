@@ -1612,6 +1612,7 @@ struct task_struct {
 
 #ifdef CONFIG_TPD
 	int tpd;
+	int dtpd;
 #endif
 
 #ifdef CONFIG_HOUSTON

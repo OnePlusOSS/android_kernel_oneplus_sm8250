@@ -27,3 +27,17 @@ config ONEPLUS_FASTCHG
 	  the battery. The state of charge is reported through a battery power
 	  supply property
 
+config CP_DA9313
+	tristate "Dialog da9313 dual cell switched capacitor divider"
+	depends on I2C
+	help
+	  Say Y here to enable the da9313 divider driver.This adds support
+	  for dual cell switched capacitor divider to power system.
+
+config CHGIC_MP2762
+	tristate "MPS mp2762 buck and boost charger ic"
+	depends on I2C
+	help
+	  Say Y here to enable the MP2762 buck and boost charger driver.This adds support
+	  for dual cell switched capacitor divider to power system.
+

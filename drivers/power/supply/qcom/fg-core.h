@@ -478,6 +478,7 @@ struct fg_dev {
 	enum prof_load_status	profile_load_status;
 	bool			battery_missing;
 	bool			use_external_fg;
+	bool			iskebab;
 	bool			fg_restarting;
 	bool			charge_full;
 	bool			recharge_soc_adjusted;

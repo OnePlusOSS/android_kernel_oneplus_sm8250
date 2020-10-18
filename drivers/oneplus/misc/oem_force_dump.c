@@ -20,6 +20,7 @@
 #include <linux/sched/signal.h>
 #include <linux/syscalls.h>
 #include <linux/sched/debug.h>
+#include <linux/cred.h>
 
 struct sock *nl_sk;
 static int fd = -1;
@@ -32,18 +33,32 @@ static int message_state = -1;
 static int selinux_switch;
 enum key_stat_item pwr_status, vol_up_status;
 
+static bool find_task_by_name(struct task_struct *t, char *name)
+{
+	const struct cred *tcred = __task_cred(t);
+
+	if (!strncmp(t->comm, name, TASK_COMM_LEN))
+		return true;
+	if (!strncmp(t->comm, "Binder:", 7) && (t->group_leader->pid == t->pid)
+			&& (tcred->uid.val == 1000) && (t->parent != 0 && !strcmp(t->parent->comm, "main")))
+		return true;
+
+	return false;
+}
+
 void send_sig_to_get_trace(char *name)
 {
 	struct task_struct *g, *t;
 
 	for_each_process_thread(g, t) {
-		if (!strncmp(t->comm, name, TASK_COMM_LEN)) {
+		if (find_task_by_name(t, name)) {
 			do_send_sig_info(SIGQUIT, SEND_SIG_FORCED, t, PIDTYPE_TGID);
 			msleep(500);
 			return;
 		}
 	}
 }
+
 
 void send_sig_to_get_tombstone(char *name)
 {

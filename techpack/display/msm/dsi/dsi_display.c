@@ -11244,6 +11244,82 @@ error:
 	return rc;
 }
 
+int dsi_display_get_dimming_setting_mode(struct drm_connector *connector)
+{
+	struct dsi_display *dsi_display = NULL;
+	struct dsi_bridge *c_bridge;
+
+	if ((connector == NULL) || (connector->encoder == NULL)
+			|| (connector->encoder->bridge == NULL))
+		return -EINVAL;
+
+	c_bridge =  to_dsi_bridge(connector->encoder->bridge);
+	dsi_display = c_bridge->display;
+
+	if ((dsi_display == NULL) || (dsi_display->panel == NULL))
+		return -EINVAL;
+
+	return dsi_display->panel->dimming_setting_mode;
+}
+
+int dsi_display_set_dimming_setting_mode(struct drm_connector *connector, int dimming_setting_mode)
+{
+	struct dsi_display *dsi_display = NULL;
+	struct dsi_panel *panel = NULL;
+	struct dsi_bridge *c_bridge;
+	int rc = 0;
+
+	if ((connector == NULL) || (connector->encoder == NULL)
+			|| (connector->encoder->bridge == NULL))
+		return -EINVAL;
+
+	c_bridge =  to_dsi_bridge(connector->encoder->bridge);
+	dsi_display = c_bridge->display;
+
+	if ((dsi_display == NULL) || (dsi_display->panel == NULL))
+		return -EINVAL;
+
+	panel = dsi_display->panel;
+
+	if (strcmp(panel->name, "samsung amb655x fhd cmd mode dsc dsi panel") != 0) {
+		dsi_display->panel->dimming_setting_mode = 0;
+		return 0;
+	}
+
+	mutex_lock(&dsi_display->display_lock);
+
+	panel->dimming_setting_mode = dimming_setting_mode;
+
+	if (!dsi_panel_initialized(panel))
+		goto error;
+
+	rc = dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
+			DSI_CORE_CLK, DSI_CLK_ON);
+	if (rc) {
+		DSI_ERR("[%s] failed to enable DSI core clocks, rc=%d\n",
+			dsi_display->name, rc);
+		goto error;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	rc = dsi_panel_set_dimming_setting_mode(panel, dimming_setting_mode);
+	if (rc)
+		DSI_ERR("Failed to set dimming setting mode %d\n", dimming_setting_mode);
+	mutex_unlock(&panel->panel_lock);
+
+	rc = dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
+			DSI_CORE_CLK, DSI_CLK_OFF);
+	if (rc) {
+		DSI_ERR("[%s] failed to disable DSI core clocks, rc=%d\n",
+			dsi_display->name, rc);
+		goto error;
+	}
+
+error:
+	mutex_unlock(&dsi_display->display_lock);
+	return rc;
+}
+
 int dsi_display_read_panel_id(struct dsi_display *dsi_display,
 		struct dsi_panel *panel, char* buf, int len)
 {

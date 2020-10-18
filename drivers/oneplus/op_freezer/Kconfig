@@ -1,5 +1,5 @@
 config OP_FREEZER
 	bool "op_freezer kernel and freezer native communication channel"
-	default y
+	default n
 	help
 	Key events (signal/network package/binder) report to freezer native.

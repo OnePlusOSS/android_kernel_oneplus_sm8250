@@ -4059,7 +4059,7 @@ bias_to_this_cpu(struct task_struct *p, int cpu, int start_cpu)
 	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
 	cpumask_t mask = CPU_MASK_ALL;
 
-	if (is_tpd_enable() && is_tpd_task(p)) {
+	if ((is_dynamic_tpd_task(p) || is_tpd_task(p)) && is_tpd_enable()) {
 
 		tpd_mask(p, rd->min_cap_orig_cpu,
 				rd->mid_cap_orig_cpu == -1 ? rd->max_cap_orig_cpu : rd->mid_cap_orig_cpu,
@@ -7134,7 +7134,7 @@ static int get_start_cpu(struct task_struct *p)
 		start_cpu = rd->max_cap_orig_cpu;
 
 #ifdef CONFIG_TPD
-	if (is_tpd_enable() && is_tpd_task(p)) {
+	if ((is_dynamic_tpd_task(p) || is_tpd_task(p)) && is_tpd_enable()) {
 		start_cpu = tpd_suggested(p, rd->min_cap_orig_cpu,
 			rd->mid_cap_orig_cpu == -1 ? rd->max_cap_orig_cpu : rd->mid_cap_orig_cpu,
 			rd->max_cap_orig_cpu, start_cpu);
@@ -7231,7 +7231,7 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 	else {
 		cpumask_copy(&new_allowed_cpus, &p->cpus_allowed);
 #ifdef CONFIG_TPD
-		if (is_tpd_enable() && is_tpd_task(p)) {
+		if ((is_dynamic_tpd_task(p) || is_tpd_task(p)) && is_tpd_enable()) {
 			tpd_mask(p, rd->min_cap_orig_cpu,
 				rd->mid_cap_orig_cpu == -1 ? rd->max_cap_orig_cpu : rd->mid_cap_orig_cpu,
 				rd->max_cap_orig_cpu, &new_allowed_cpus, nr_cpu_ids);
@@ -9016,7 +9016,7 @@ static inline bool can_migrate_boosted_task(struct task_struct *p,
 	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
 	int mid_core;
 
-	if (is_tpd_enable() && is_tpd_task(p)) {
+	if ((is_dynamic_tpd_task(p) || is_tpd_task(p)) && is_tpd_enable()) {
 		/*avoid task migrate to wrong tpd suggested cpu*/
 		mid_core = rd->mid_cap_orig_cpu == -1 ? rd->max_cap_orig_cpu : rd->mid_cap_orig_cpu;
 		if (tpd_check(p, dst_cpu, rd->min_cap_orig_cpu, mid_core, rd->max_cap_orig_cpu))

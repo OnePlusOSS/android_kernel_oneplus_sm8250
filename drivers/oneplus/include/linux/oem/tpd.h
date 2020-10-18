@@ -41,6 +41,12 @@
 #define tpd_loge(fmt...) pr_err(TPD_TAG fmt)
 #define tpd_logd(fmt...) pr_debug(TPD_TAG fmt)
 
+enum dynamic_tpd_type {
+        TPD_GROUP_MEDIAPROVIDER = 0,
+
+        TPD_GROUP_MAX
+};
+
 #ifdef CONFIG_TPD
 extern bool is_tpd_enable(void);
 extern int tpd_suggested(struct task_struct* tsk, int min_idx, int mid_idx,
@@ -48,6 +54,7 @@ extern int tpd_suggested(struct task_struct* tsk, int min_idx, int mid_idx,
 extern void tpd_mask(struct task_struct* tsk, int min_idx, int mid_idx, int max_idx,
 		cpumask_t *request, int nrcpu);
 extern bool tpd_check(struct task_struct *tsk, int dest_cpu, int min_idx, int mid_idx, int max_idx);
+extern bool is_dynamic_tpd_task(struct task_struct *tsk);
 static inline bool is_tpd_task(struct task_struct *tsk) { return tsk ? (tsk->tpd != 0) : false; }
 #else
 static inline bool is_tpd_enable(void) { return false; }
@@ -57,6 +64,7 @@ static inline void tpd_mask(struct task_struct* tsk, int min_idx, int mid_idx, i
 			cpumask_t *request, int nrcpu) {}
 static inline bool tpd_check(struct task_struct *tsk, int dest_cpu, int min_idx,
 			int mid_idx, int max_idx) { return false; }
+static inline bool is_dynamic_tpd_task(struct task_struct *tsk) { return false; }
 static inline bool is_tpd_task(struct task_struct *tsk) { return false; }
 #endif
 

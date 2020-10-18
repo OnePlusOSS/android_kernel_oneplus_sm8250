@@ -25,6 +25,13 @@
 #include <linux/oem/power/op_wlc_helper.h>
 #include "usbpd.h"
 
+#undef dev_dbg
+#define dev_dbg dev_err
+#undef pr_debug
+#define pr_debug pr_err
+#undef pr_info
+#define pr_info pr_err
+
 /* To start USB stack for USB3.1 compliance testing */
 static bool usb_compliance_mode;
 module_param(usb_compliance_mode, bool, 0644);
@@ -412,6 +419,7 @@ struct usbpd {
 	bool			peer_dr_swap;
 	bool		oem_bypass;
 	bool		periph_direct;
+	bool		probe_done;
 
 	u32			sink_caps[7];
 	int			num_sink_caps;
@@ -1216,6 +1224,7 @@ static void phy_shutdown(struct usbpd *pd)
 	if (pd->vconn_enabled) {
 		regulator_disable(pd->vconn);
 		pd->vconn_enabled = false;
+		usbpd_err(&pd->dev, "Vconn disabled!!");
 	}
 
 	if (pd->vbus_enabled) {
@@ -1430,6 +1439,7 @@ static void handle_vdm_resp_ack(struct usbpd *pd, u32 *vdos, u8 num_vdos,
 	u16 svid, *psvid;
 	u8 cmd = SVDM_HDR_CMD(vdm_hdr);
 	struct usbpd_svid_handler *handler;
+	u32 op_svid;
 
 	switch (cmd) {
 	case USBPD_SVDM_DISCOVER_IDENTITY:
@@ -1439,6 +1449,22 @@ static void handle_vdm_resp_ack(struct usbpd *pd, u32 *vdos, u8 num_vdos,
 		if (!num_vdos) {
 			usbpd_dbg(&pd->dev, "Discarding Discover ID response with no VDOs\n");
 			break;
+		}
+		if (num_vdos == 3) {
+			op_svid = vdos[0] & 0xffff;
+
+			usbpd_info(&pd->dev, "OP SVID discovered: 0x%04x\n", op_svid);
+			if (op_svid == OP_SVID) {
+				handler = find_svid_handler(pd, op_svid);
+				if (handler) {
+					usbpd_info(&pd->dev, "op_svid SVID: 0x%04x connected\n",
+							handler->svid);
+					handler->connect(handler,
+							pd->peer_usb_comm);
+					handler->discovered = true;
+					break;
+				}
+			}
 		}
 
 		if (!pd->in_explicit_contract)
@@ -1952,6 +1978,7 @@ static void vconn_swap(struct usbpd *pd)
 		}
 
 		pd->vconn_enabled = true;
+		usbpd_err(&pd->dev, "Vconn enabled!!");
 
 		pd_phy_update_frame_filter(FRAME_FILTER_EN_SOP |
 					   FRAME_FILTER_EN_HARD_RESET);
@@ -2099,6 +2126,7 @@ static void handle_state_unknown(struct usbpd *pd, struct rx_msg *rx_msg)
 				usbpd_err(&pd->dev, "Unable to enable vconn\n");
 			else
 				pd->vconn_enabled = true;
+			usbpd_err(&pd->dev, "Vconn enabled!!");
 		}
 		enable_vbus(pd);
 
@@ -2589,6 +2617,7 @@ static void handle_state_src_transition_to_default(struct usbpd *pd,
 	if (pd->vconn_enabled)
 		regulator_disable(pd->vconn);
 	pd->vconn_enabled = false;
+	usbpd_err(&pd->dev, "Vconn disabled!!");
 
 	if (pd->vbus_enabled) {
 		if (pd->use_external_boost) {
@@ -2737,6 +2766,13 @@ static void handle_state_snk_wait_for_capabilities(struct usbpd *pd,
 
 		usbpd_set_state(pd, PE_SNK_EVALUATE_CAPABILITY);
 	} else if (pd->hard_reset_count < 3) {
+		if (pd->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH && pd->probe_done) {
+			usbpd_err(&pd->dev, "Didn't receive source cap when probe, reset rd!\n");
+			pd->probe_done = false;
+			val.intval = 0xf;
+			power_supply_set_property(pd->usb_psy,
+					POWER_SUPPLY_PROP_RESET_RD, &val);
+		}
 		usbpd_set_state(pd, PE_SNK_HARD_RESET);
 	} else {
 		usbpd_dbg(&pd->dev, "Sink hard reset count exceeded, disabling PD\n");
@@ -2834,6 +2870,7 @@ static void handle_state_snk_select_capability(struct usbpd *pd,
 		}
 
 		pd->selected_pdo = pd->requested_pdo;
+		usbpd_info(&pd->dev, "Pdo select successfully!!\n");
 	} else if (IS_CTRL(rx_msg, MSG_REJECT) ||
 			IS_CTRL(rx_msg, MSG_WAIT)) {
 		if (pd->in_explicit_contract)
@@ -2874,6 +2911,7 @@ static void handle_state_snk_transition_sink(struct usbpd *pd,
 		power_supply_set_property(pd->usb_psy,
 				POWER_SUPPLY_PROP_PD_CURRENT_MAX, &val);
 
+		usbpd_info(&pd->dev, "Requested current: %d\n", pd->requested_current);
 		usbpd_set_state(pd, PE_SNK_READY);
 	} else {
 		/* timed out; go to hard reset */
@@ -3119,6 +3157,7 @@ static void handle_snk_ready_tx(struct usbpd *pd, struct rx_msg *rx_msg)
 		kick_sm(pd, SENDER_RESPONSE_TIME);
 	} else if (pd->send_request) {
 		pd->send_request = false;
+		usbpd_info(&pd->dev, "Sink ready state, select cap!!");
 		usbpd_set_state(pd, PE_SNK_SELECT_CAPABILITY);
 	} else if (pd->send_pr_swap) {
 		pd->send_pr_swap = false;
@@ -3183,6 +3222,7 @@ static void enter_state_snk_transition_to_default(struct usbpd *pd)
 	if (pd->vconn_enabled) {
 		regulator_disable(pd->vconn);
 		pd->vconn_enabled = false;
+		usbpd_err(&pd->dev, "Vconn disabled!!");
 	}
 
 	/* max time for hard reset to turn vbus off */
@@ -3389,6 +3429,7 @@ static void handle_state_vcs_wait_for_vconn(struct usbpd *pd,
 		if (pd->vconn_enabled)
 			regulator_disable(pd->vconn);
 		pd->vconn_enabled = false;
+		usbpd_err(&pd->dev, "Vconn disabled!!");
 
 		pd->current_state = pd->current_pr == PR_SRC ?
 			PE_SRC_READY : PE_SNK_READY;
@@ -3479,6 +3520,7 @@ static void handle_disconnect(struct usbpd *pd)
 	if (pd->vconn_enabled) {
 		regulator_disable(pd->vconn);
 		pd->vconn_enabled = false;
+		usbpd_err(&pd->dev, "Vconn disabled!!");
 	}
 
 	usbpd_info(&pd->dev, "USB Type-C disconnect\n");
@@ -4271,9 +4313,17 @@ static ssize_t select_pdo_store(struct device *dev,
 	struct usbpd *pd = dev_get_drvdata(dev);
 	int src_cap_id;
 	int pdo, uv = 0, ua = 0;
-	int ret;
+	int ret = 0;
 
 	mutex_lock(&pd->swap_lock);
+
+	usbpd_info(&pd->dev, "%s:, Current vol: %d, Request vol: %d\n",
+		__func__, pd->current_voltage, pd->requested_voltage);
+	if (pd->current_voltage == 9000000 &&
+		(pd->current_voltage == pd->requested_voltage)) {
+		usbpd_err(&pd->dev, "Same voltage level, return!\n");
+		goto out;
+	}
 
 	/* Only allowed if we are already in explicit sink contract */
 	if (pd->current_state != PE_SNK_READY) {
@@ -4283,6 +4333,8 @@ static ssize_t select_pdo_store(struct device *dev,
 	}
 
 	ret = sscanf(buf, "%d %d %d %d", &src_cap_id, &pdo, &uv, &ua);
+	usbpd_info(&pd->dev, "PD: src_cap_id: %d, pdo: %d, uv: %d, ua: %d!\n",
+		src_cap_id, pdo, uv, ua);
 	if (ret != 2 && ret != 4) {
 		usbpd_err(&pd->dev, "Must specify <src cap id> <PDO> [<uV> <uA>]\n");
 		ret = -EINVAL;
@@ -4688,6 +4740,95 @@ static void usbpd_release(struct device *dev)
 
 static int num_pd_instances;
 
+int op_usbpd_send_svdm(u16 svid, u8 cmd, enum usbpd_svdm_cmd_type cmd_type,
+		int obj_pos, const u32 *vdos, int num_vdos)
+{
+	struct usbpd *pd = pd_p;
+	u32 svdm_hdr = SVDM_HDR(svid, 0, obj_pos, cmd_type, cmd);
+
+	usbpd_info(&pd->dev, "Send svdm!! svid:%x cmd:%x cmd_type:%x svdm_hdr:%x\n",
+			svid, cmd, cmd_type, svdm_hdr);
+	return usbpd_send_vdm(pd, svdm_hdr, vdos, num_vdos);
+}
+EXPORT_SYMBOL(op_usbpd_send_svdm);
+
+int op_pdo_select(int vbus_mv, int ibus_ma)
+{
+
+	int i = 0;
+	int rc = 0;
+	u32 pdo = 0;
+	struct usbpd *pd = pd_p;
+
+	for (i = 0; i < ARRAY_SIZE(pd->received_pdos); i++) {
+		pdo = pd->received_pdos[i];
+		if (vbus_mv == PD_SRC_PDO_FIXED_VOLTAGE(pdo) * 50 || pdo == 0)
+			break;
+	}
+
+	mutex_lock(&pd->swap_lock);
+
+	/* Only allowed if we are already in explicit sink contract */
+	if (pd->current_state != PE_SNK_READY || !is_sink_tx_ok(pd)) {
+		usbpd_err(&pd->dev, "%s: cannot select new pdo yet\n", __func__);
+		rc = -EBUSY;
+		goto out;
+	}
+
+	if (i > 7) {
+		usbpd_err(&pd->dev, "%s: inval pdo[0x%x]\n", __func__, pdo);
+		rc = -EINVAL;
+		goto out;
+	}
+
+	if (vbus_mv != PD_SRC_PDO_FIXED_VOLTAGE(pdo) * 50) {
+		if (i > 0) {
+			usbpd_err(&pd->dev, "%s: can not find vbus_mv[%d], the last pdos[%d]=[%d]\n",
+				__func__, vbus_mv, i - 1,
+				PD_SRC_PDO_FIXED_VOLTAGE(pd->received_pdos[i - 1]) * 50);
+		} else {
+			usbpd_err(&pd->dev, "%s: can not find vbus_mv[%d], pdos0=[%d]\n",
+				__func__, vbus_mv,
+				PD_SRC_PDO_FIXED_VOLTAGE(pd->received_pdos[i]) * 50);
+		}
+		rc = -EINVAL;
+		goto out;
+	}
+
+	rc = pd_select_pdo(pd, i + 1, vbus_mv * 1000, ibus_ma * 1000);
+	if (rc) {
+		usbpd_err(&pd->dev, "%s: pd_select_pdo fail, rc=%d\n", __func__, rc);
+		goto out;
+	}
+
+	reinit_completion(&pd->is_ready);
+	pd->send_request = true;
+	kick_sm(pd, 0);
+
+	/* wait for operation to complete */
+	if (!wait_for_completion_timeout(&pd->is_ready, msecs_to_jiffies(1000))) {
+		usbpd_err(&pd->dev, "%s: pdo[%d], vbus_mv[%d], ibus_ma[%d] request timed out\n",
+				__func__, i, vbus_mv, ibus_ma);
+		rc = -ETIMEDOUT;
+		goto out;
+	}
+
+	/* determine if request was accepted/rejected */
+	if (pd->selected_pdo != pd->requested_pdo ||
+			pd->current_voltage != pd->requested_voltage) {
+		usbpd_err(&pd->dev, "%s: request rejected\n", __func__);
+		rc = -EINVAL;
+	}
+
+out:
+	usbpd_info(&pd->dev, "PDO: %d, vbus_mv: %d, ibus_ma: %d, cvol: %d, rvol: %d\n",
+		i, vbus_mv, ibus_ma, pd->current_voltage, pd->requested_voltage);
+	pd->send_request = false;
+	mutex_unlock(&pd->swap_lock);
+	return rc;
+}
+EXPORT_SYMBOL(op_pdo_select);
+
 /**
  * usbpd_create - Create a new instance of USB PD protocol/policy engine
  * @parent - parent device to associate with
@@ -4886,6 +5027,7 @@ struct usbpd *usbpd_create(struct device *parent)
 
 	pd->oem_bypass = true;
 	pd->periph_direct = false;
+	pd->probe_done = true;
 	pd->current_pr = PR_NONE;
 	pd->current_dr = DR_NONE;
 	list_add_tail(&pd->instance, &_usbpd);

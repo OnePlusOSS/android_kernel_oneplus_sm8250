@@ -338,6 +338,15 @@ struct bias_config {
 	int	bias_kohms;
 };
 
+enum capacity_level {
+	CAPACITY_LEVEL_UNKNOWN,
+	CAPACITY_LEVEL_CRITICAL,
+	CAPACITY_LEVEL_LOW,
+	CAPACITY_LEVEL_NORMAL,
+	CAPACITY_LEVEL_HIGH,
+	CAPACITY_LEVEL_FULL,
+};
+
 static int fg_gen4_debug_mask;
 
 static bool fg_profile_dump;
@@ -2779,14 +2788,14 @@ static int fg_gen4_update_maint_soc(struct fg_dev *fg)
 		goto out;
 	}
 
-	if (msoc > fg->maint_soc) {
+	if (msoc >= fg->maint_soc) {
 		/*
 		 * When the monotonic SOC goes above maintenance SOC, we should
 		 * stop showing the maintenance SOC.
 		 */
 		fg->delta_soc = 0;
 		fg->maint_soc = 0;
-	} else if (fg->maint_soc && msoc <= fg->last_msoc) {
+	} else if (fg->maint_soc && msoc < fg->last_msoc) {
 		/* MSOC is decreasing. Decrease maintenance SOC as well */
 		fg->maint_soc -= 1;
 		if (!(msoc % 10)) {
@@ -3875,7 +3884,7 @@ static struct fg_irq_info fg_irqs[FG_GEN4_IRQ_MAX] = {
 	[ESR_DELTA_IRQ] = {
 		.name		= "esr-delta",
 		.handler	= fg_delta_esr_irq_handler,
-		/*.wakeable	= true,*//*op disable ers calibration*/
+		.wakeable	= true,
 	},
 	[VBATT_LOW_IRQ] = {
 		.name		= "vbatt-low",
@@ -4551,6 +4560,13 @@ static int fg_psy_get_property(struct power_supply *psy,
 		} else
 			pval->intval = -400;
 		break;
+	case POWER_SUPPLY_PROP_BATTERY_HEALTH:
+		if (get_extern_fg_regist_done() && fg->use_external_fg && external_fg
+				&& external_fg->get_batt_health)
+			pval->intval = external_fg->get_batt_health();
+		else
+			pval->intval = -1;
+		break;
 	case POWER_SUPPLY_PROP_RESISTANCE:
 		rc = fg_get_battery_resistance(fg, &pval->intval);
 		break;
@@ -4601,9 +4617,17 @@ static int fg_psy_get_property(struct power_supply *psy,
 			pval->intval = -EINVAL;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
-		rc = fg_gen4_get_nominal_capacity(chip, &temp);
-		if (!rc)
+		if (!get_extern_fg_regist_done() && get_extern_bq_present())
 			pval->intval = -EINVAL;
+		else if (fg->use_external_fg && external_fg && external_fg->get_batt_full_chg_capacity) {
+			temp = external_fg->get_batt_full_chg_capacity();
+			pval->intval = 1000 * temp;
+		}
+		else {
+			rc = fg_gen4_get_nominal_capacity(chip, &temp);
+			if (!rc)
+				pval->intval = -EINVAL;
+		}
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
 		rc = fg_gen4_get_charge_counter(chip, &pval->intval);
@@ -4644,7 +4668,9 @@ static int fg_psy_get_property(struct power_supply *psy,
 			rc = fg_get_battery_current(fg, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_BQ_SOC:
-		if (fg->use_external_fg && external_fg
+		if (!get_extern_fg_regist_done())
+			pval->intval = 50;
+		else if (fg->use_external_fg && external_fg
 				&& external_fg->get_batt_bq_soc)
 			pval->intval = external_fg->get_batt_bq_soc();
 		else
@@ -4654,10 +4680,27 @@ static int fg_psy_get_property(struct power_supply *psy,
 		rc = fg_get_sram_prop(fg, FG_SRAM_VBATT_FULL, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_AVG:
-		rc = ttf_get_time_to_full(chip->ttf, &pval->intval);
+		if (fg->use_external_fg && external_fg
+			&& external_fg->get_time_to_full)
+			rc = external_fg->get_time_to_full();
+			if (rc >= 0)
+				pval->intval = rc;
+		else
+			rc = ttf_get_time_to_full(chip->ttf, &pval->intval);
 		break;
 	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG:
 		rc = ttf_get_time_to_empty(chip->ttf, &pval->intval);
+		break;
+	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
+		if (fg->iskebab) {
+			if (fg->use_external_fg && external_fg
+				&& external_fg->get_time_to_full)
+				rc = external_fg->get_time_to_full();
+				if (rc >= 0)
+					pval->intval = rc;
+		} else
+			rc = ttf_get_time_to_full(chip->ttf, &pval->intval);
+		pval->intval = pval->intval > 0 ? pval->intval : 1;
 		break;
 	case POWER_SUPPLY_PROP_CC_STEP:
 		if ((chip->ttf->cc_step.sel >= 0) &&
@@ -4687,6 +4730,39 @@ static int fg_psy_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CALIBRATE:
 		pval->intval = chip->calib_level;
+		break;
+	case POWER_SUPPLY_PROP_VBAT_CELL_MAX:
+		if (fg->use_external_fg && external_fg
+			&& external_fg->get_battery_mvolts_2cell_max)
+			pval->intval = external_fg->get_battery_mvolts_2cell_max();
+		else
+			pval->intval = 3800;
+		break;
+	case POWER_SUPPLY_PROP_VBAT_CELL_MIN:
+		if (fg->use_external_fg && external_fg
+			&& external_fg->get_battery_mvolts_2cell_min)
+			pval->intval = external_fg->get_battery_mvolts_2cell_min();
+		else
+			pval->intval = 3800;
+		break;
+	case POWER_SUPPLY_PROP_CAPACITY_LEVEL:
+		if (get_extern_fg_regist_done() && fg->use_external_fg && external_fg
+					&& external_fg->get_battery_soc) {
+			val = external_fg->get_battery_soc();
+			if (val < 0)
+				pval->intval = CAPACITY_LEVEL_UNKNOWN;
+			else if (val == 0)
+				pval->intval = CAPACITY_LEVEL_CRITICAL;
+			else if (val <= 15)
+				pval->intval = CAPACITY_LEVEL_LOW;
+			else if (val <= 85)
+				pval->intval = CAPACITY_LEVEL_NORMAL;
+			else if (val < 100)
+				pval->intval = CAPACITY_LEVEL_HIGH;
+			else if (val == 100)
+				pval->intval = CAPACITY_LEVEL_FULL;
+		} else
+			pval->intval = CAPACITY_LEVEL_NORMAL;
 		break;
 	default:
 		pr_err("unsupported property %d\n", psp);
@@ -4851,6 +4927,7 @@ static enum power_supply_property fg_psy_props[] = {
 	POWER_SUPPLY_PROP_DEBUG_BATTERY,
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE,
 	POWER_SUPPLY_PROP_TIME_TO_FULL_AVG,
+	POWER_SUPPLY_PROP_TIME_TO_FULL_NOW,
 	POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG,
 	POWER_SUPPLY_PROP_CC_STEP,
 	POWER_SUPPLY_PROP_CC_STEP_SEL,
@@ -4862,6 +4939,10 @@ static enum power_supply_property fg_psy_props[] = {
 	POWER_SUPPLY_PROP_SET_ALLOW_READ_EXTERN_FG_IIC,
 	POWER_SUPPLY_PROP_BQ_SOC,
 	POWER_SUPPLY_PROP_REMAINING_CAPACITY,
+	POWER_SUPPLY_PROP_VBAT_CELL_MAX,
+	POWER_SUPPLY_PROP_VBAT_CELL_MIN,
+	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
+	POWER_SUPPLY_PROP_BATTERY_HEALTH,
 };
 
 static const struct power_supply_desc fg_psy_desc = {
@@ -6171,6 +6252,9 @@ static int fg_gen4_parse_dt(struct fg_gen4_chip *chip)
 	fg->use_external_fg =
 	of_property_read_bool(node, "oem,use_external_fg");
 	pr_info("use_external_fg=%d\n", fg->use_external_fg);
+	fg->iskebab =
+	of_property_read_bool(node, "oem,iskebab");
+	pr_info("iskebab=%d\n", fg->use_external_fg);
 
 	fg_gen4_parse_cl_params_dt(chip);
 	fg_gen4_parse_batt_temp_dt(chip);
@@ -6559,7 +6643,7 @@ static int fg_gen4_probe(struct platform_device *pdev)
 
 	fg_gen4_post_init(chip);
 
-	pr_debug("FG GEN4 driver probed successfully\n");
+	pr_info("yfb FG GEN4 driver probed successfully\n");
 	return 0;
 exit:
 	fg_gen4_cleanup(chip);

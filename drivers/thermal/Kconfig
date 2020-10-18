@@ -209,6 +209,15 @@ config THERMAL_EMULATION
 	  because userland can easily disable the thermal policy by simply
 	  flooding this sysfs node with low temperature values.
 
+config HORAE_THERMAL_SHELL
+	bool "Horae shell temp driver"
+	default y
+	help
+	  Provide three thermal zones (front, frame and back) to get real shell temp.
+	  /sys/class/thermal/thermal_zoneX/type
+	  /sys/class/thermal/thermal_zoneY/type
+	  /sys/class/thermal/thermal_zoneZ/type
+
 config HISI_THERMAL
 	tristate "Hisilicon thermal driver"
 	depends on ARCH_HISI || COMPILE_TEST
