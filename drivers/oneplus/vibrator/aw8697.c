@@ -36,6 +36,10 @@
 #include <linux/fb.h>
 #include <linux/vmalloc.h>
 
+#ifdef AAC_RICHTAP
+#include <linux/mman.h>
+#endif
+
 
 /******************************************************
  *
@@ -3015,6 +3019,8 @@ static void rtp_work_proc(struct work_struct *work)
     struct mmap_buf_format *opbuf = aw8697->start_buf;
     uint32_t count = 100;
     uint8_t reg_val = 0x10;
+    ktime_t t_start;
+    s64 elapsed_us;
 
     opbuf = aw8697->start_buf;
     count = 100;
@@ -3034,9 +3040,16 @@ static void rtp_work_proc(struct work_struct *work)
         }
     }
 
+    t_start = ktime_get();
     reg_val = 0x10;
     while(true)
     {
+        elapsed_us = ktime_us_delta(ktime_get(), t_start);
+        if(elapsed_us > 800000)
+        {
+            pr_info("Failed ! %s endless loop\n", __func__);
+            break;
+        }
         if(reg_val & 0x01 || (aw8697->done_flag == true) || (opbuf->status == MMAP_BUF_DATA_FINISHED) || (opbuf->status == MMAP_BUF_DATA_INVALID))
         {
             break;
@@ -3044,8 +3057,10 @@ static void rtp_work_proc(struct work_struct *work)
         else if(opbuf->status == MMAP_BUF_DATA_VALID && (reg_val & 0x01 << 4))
         {
             aw8697_i2c_writes(aw8697, AW8697_REG_RTP_DATA, opbuf->data, opbuf->length);
+            memset(opbuf->data, 0, opbuf->length);
             opbuf->status = MMAP_BUF_DATA_INVALID;
             opbuf = opbuf->kernel_next;
+            t_start = ktime_get();
         }
         //else
         //{
@@ -3116,7 +3131,7 @@ static long aw8697_file_unlocked_ioctl(struct file *file, unsigned int cmd, unsi
                 ret = -EINVAL;
             }
             aw8697_haptic_set_bst_vol(aw8697, 0x15);
-            aw8697_haptic_upload_lra(aw8697, 1);
+            aw8697_haptic_upload_lra(aw8697, 2);
             //aw8697_haptic_play_mode(aw8697, AW8697_HAPTIC_RTP_MODE);
             //aw8697_haptic_start(aw8697);
             //aw8697_i2c_writes(aw8697, AW8697_REG_RTP_DATA, &aw8697->rtp_ptr[4], tmp);
@@ -3156,6 +3171,8 @@ static long aw8697_file_unlocked_ioctl(struct file *file, unsigned int cmd, unsi
             break;
         case RICHTAP_F0_UPDATE:
             tmp = aw8697->f0_flag;
+            if (tmp != 0)
+                tmp = aw8697->haptic_real_f0;
             if(copy_to_user((void __user *)arg, &tmp, sizeof(uint32_t)))
                 ret = -EFAULT;
             break;
@@ -3293,7 +3310,16 @@ static int aw8697_file_mmap(struct file *filp, struct vm_area_struct *vma)
     unsigned long phys;
     struct aw8697 *aw8697 = (struct aw8697 *)filp->private_data;
     int ret = 0;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(4,7,0)
+    //only accept PROT_READ, PROT_WRITE and MAP_SHARED from the API of mmap
+    vm_flags_t vm_flags = calc_vm_prot_bits(PROT_READ|PROT_WRITE, 0) | calc_vm_flag_bits(MAP_SHARED);
+    vm_flags |= current->mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC| VM_SHARED | VM_MAYSHARE;
+    if(vma && (pgprot_val(vma->vm_page_prot) != pgprot_val(vm_get_page_prot(vm_flags))))
+        return -EPERM;
 
+    if(vma && ((vma->vm_end - vma->vm_start) != (PAGE_SIZE << RICHTAP_MMAP_PAGE_ORDER)))
+        return -ENOMEM;
+#endif
     phys = virt_to_phys(aw8697->start_buf);
 
     ret = remap_pfn_range(vma, vma->vm_start, (phys >> PAGE_SHIFT), (vma->vm_end - vma->vm_start), vma->vm_page_prot);
