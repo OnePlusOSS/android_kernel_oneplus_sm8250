@@ -3163,7 +3163,7 @@ static long aw8697_file_unlocked_ioctl(struct file *file, unsigned int cmd, unsi
         case RICHTAP_STOP_MODE:
             aw8697->done_flag = true;
             haptic_clean_buf(aw8697, MMAP_BUF_DATA_FINISHED);
-            usleep_range(3000, 5000);
+            //usleep_range(3000, 5000);
             aw8697_haptic_set_rtp_aei(aw8697, false);
 
             aw8697_haptic_stop(aw8697);
