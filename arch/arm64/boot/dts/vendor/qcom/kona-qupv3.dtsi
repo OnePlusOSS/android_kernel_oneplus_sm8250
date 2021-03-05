@@ -564,6 +564,7 @@
 		pinctrl-0 = <&qupv3_se11_i2c_active>;
 		pinctrl-1 = <&qupv3_se11_i2c_sleep>;
 		qcom,wrapper-core = <&qupv3_1>;
+		qcom,clk-freq-out = <1000000>;
 		status = "disabled";
 	};
 
