@@ -22,6 +22,9 @@
 #include <linux/ioctl.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/slab.h>
+#include <linux/gpio.h>
+#define AP_BAT_SCL 49
+#define AP_BAT_SDA 48
 
 #define SE_I2C_TX_TRANS_LEN		(0x26C)
 #define SE_I2C_RX_TRANS_LEN		(0x270)
@@ -128,6 +131,8 @@ struct geni_i2c_dev {
 	bool is_shared;
 	u32 dbg_num;
 	struct dbg_buf_ctxt *dbg_buf_ptr;
+	int reset_support;
+	int retry_time;
 };
 
 static struct geni_i2c_dev *gi2c_dev_dbg[MAX_SE];
@@ -870,8 +875,14 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
 			timeout = wait_for_completion_timeout(&gi2c->xfer, HZ);
 			if (!timeout) {
 				GENI_SE_ERR(gi2c->ipcl, true, gi2c->dev,
-					"Abort\n");
+					"Cancel failed\n");
+				reinit_completion(&gi2c->xfer);
 				geni_abort_m_cmd(gi2c->base);
+				timeout =
+				wait_for_completion_timeout(&gi2c->xfer, HZ);
+				if (!timeout)
+					GENI_SE_ERR(gi2c->ipcl, true, gi2c->dev,
+						"Abort failed\n");
 			}
 		}
 		gi2c->cur_wr = 0;
@@ -897,8 +908,29 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
 
 		ret = gi2c->err;
 		if (gi2c->err) {
+			if (gi2c->err == -ETIMEDOUT && gi2c->reset_support
+				&& gi2c->retry_time <= 20) {
+				pinctrl_select_state(gi2c->i2c_rsc.geni_pinctrl,
+						gi2c->i2c_rsc.geni_gpio_reset);
+				gpio_direction_output(AP_BAT_SDA, 0);
+				gpio_direction_output(AP_BAT_SCL, 0);
+				msleep(3000);
+				dev_info(gi2c->dev, "b clk:%d,data:%d\n",
+					gpio_get_value(AP_BAT_SCL),
+					gpio_get_value(AP_BAT_SDA));
+				gpio_direction_output(AP_BAT_SDA, 1);
+				gpio_direction_output(AP_BAT_SCL, 1);
+				dev_info(gi2c->dev, "c clk:%d,data:%d\n",
+					gpio_get_value(AP_BAT_SCL),
+					gpio_get_value(AP_BAT_SDA));
+				gpio_direction_input(AP_BAT_SDA);
+				gpio_direction_input(AP_BAT_SCL);
+				pinctrl_select_state(gi2c->i2c_rsc.geni_pinctrl,
+						gi2c->i2c_rsc.geni_gpio_active);
+			}
 			GENI_SE_ERR(gi2c->ipcl, true, gi2c->dev,
 				"i2c error :%d\n", gi2c->err);
+			gi2c->retry_time++;
 			break;
 		}
 	}
@@ -1021,13 +1053,33 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		gi2c->is_shared = true;
 		dev_info(&pdev->dev, "Multi-EE usecase\n");
 	}
-
+	gi2c->i2c_rsc.geni_gpio_reset =
+		pinctrl_lookup_state(gi2c->i2c_rsc.geni_pinctrl,
+							PINCTRL_RESET);
+	if (IS_ERR_OR_NULL(gi2c->i2c_rsc.geni_gpio_reset)) {
+		dev_err(&pdev->dev, "No reset config specified\n");
+		ret = PTR_ERR(gi2c->i2c_rsc.geni_gpio_reset);
+	} else {
+		if (gpio_is_valid(AP_BAT_SCL)
+			&& gpio_is_valid(AP_BAT_SDA)) {
+			ret = gpio_request(AP_BAT_SCL, "bat_scl");
+			if (ret)
+				pr_err("gpio_request failed for %d ret=%d\n",
+				AP_BAT_SCL, ret);
+			ret = gpio_request(AP_BAT_SDA, "bat_sda");
+			if (ret)
+				pr_err("gpio_request failed for %d ret=%d\n",
+				AP_BAT_SDA, ret);
+		}
+		gi2c->reset_support = true;
+		dev_err(&pdev->dev, "reset config specified\n");
+	}
 	if (of_property_read_u32(pdev->dev.of_node, "qcom,clk-freq-out",
 				&gi2c->i2c_rsc.clk_freq_out)) {
-		dev_info(&pdev->dev,
-			"Bus frequency not specified, default to 400KHz.\n");
 		gi2c->i2c_rsc.clk_freq_out = KHz(400);
 	}
+	dev_info(&pdev->dev, "Bus frequency is set to %dHz\n",
+					gi2c->i2c_rsc.clk_freq_out);
 
 	gi2c->irq = platform_get_irq(pdev, 0);
 	if (gi2c->irq < 0) {

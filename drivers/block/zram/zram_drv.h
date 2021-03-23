@@ -96,6 +96,7 @@ struct zram_stats {
 	atomic64_t bd_count;		/* no. of pages in backing device */
 	atomic64_t bd_reads;		/* no. of reads from backing device */
 	atomic64_t bd_writes;		/* no. of writes from backing device */
+	atomic64_t bd_free;
 #endif
 	atomic64_t dup_data_size;	/*
 					 * compressed size of pages
@@ -160,4 +161,9 @@ static inline bool zram_dedup_enabled(struct zram *zram)
 }
 
 void zram_entry_free(struct zram *zram, struct zram_entry *entry);
+
+void ksys_sync(void);
+#ifdef CONFIG_ZWB_HANDLE
+extern struct task_struct *zwb_clear_tsk;
+#endif
 #endif

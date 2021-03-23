@@ -59,6 +59,36 @@ config UXCHAIN
 	default n
 	bool "A sched policy for ux relative threads "
 
+config UXCHAIN_V2
+        default n
+        depends on UXCHAIN
+        bool "optimization for mmap_sem of mm_struct "
+
 config TPD
 	default n
 	bool "a task placement decision for cpu limitation"
+
+config TPP
+	default n
+	depends on IM
+	bool "Task parallel placement"
+
+config MEMEX_STANDALONE
+	default n
+	bool "MemEX feature"
+	help
+	 MemEX feature
+
+config RATP
+       bool "restricted admission for task placement in low-end platfom"
+       default n
+       help
+         In low-end platform, we will restrict admission for task placement to avoid
+         CPU resource contention.
+
+config ZWB_HANDLE
+	default n
+	depends on ZRAM_WRITEBACK
+	bool "zram writeback feature"
+	help
+	 zram writeback feature

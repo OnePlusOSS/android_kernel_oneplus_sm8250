@@ -7761,6 +7761,7 @@ static int allocate_trace_buffers(struct trace_array *tr, int size)
 	 */
 	allocate_snapshot = false;
 #endif
+	vmalloc_sync_mappings();
 	return 0;
 }
 

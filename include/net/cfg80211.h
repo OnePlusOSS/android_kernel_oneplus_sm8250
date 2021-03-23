@@ -52,6 +52,7 @@
 /* Indicate backport support for key configuration for Beacon protection*/
 #define CFG80211_BIGTK_CONFIGURATION_SUPPORT 1
 
+#define CFG80211_REKEY_DATA_KEK_LEN 1
 /**
  * DOC: Introduction
  *

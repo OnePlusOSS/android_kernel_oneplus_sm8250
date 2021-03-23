@@ -284,6 +284,7 @@ struct wpc_data {
 
 	bool geted_tx_id;
 	bool quiet_mode_enabled;
+	bool quiet_mode_init;
 	bool get_adapter_err;
 	bool epp_working;
 	/* Indicates whether the message of getting adapter type was sent successfully */

@@ -17,6 +17,6 @@
 	/*we can add project id to this array,uefi can auto read it,if new project,we add to this array */
 	oem,project-id = <19805 20809>;
 	/*we can add hw id to this array,uefi can auto read it,if new hw,we add to this array  */
-	oem,hw-id = <11 12 13 14 15 51 52 53 54 55>;
+	oem,hw-id = <11 12 13 14 15 21 22 23 51 52 53 54 55>;
 };
 

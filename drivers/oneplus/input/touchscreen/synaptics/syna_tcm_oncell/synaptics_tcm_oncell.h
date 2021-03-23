@@ -237,6 +237,7 @@ enum dynamic_config_id {
 	DC_GRIP_ABS_DARK_SEL = 0xE5,
 	DC_SET_REPORT_FRE = 0xE6,
 	DC_GESTURE_MASK = 0xFE,
+	DC_GLASS_MODE = 0xFD,
 };
 
 enum command {

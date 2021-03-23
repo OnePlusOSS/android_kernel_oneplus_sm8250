@@ -641,6 +641,7 @@ static void handle_thermal_trip(struct thermal_zone_device *tz,
 	struct thermal_zone_device *zone;
 	struct __thermal_zone *data = tz->devdata;
 	struct list_head *head;
+	bool notify = false;
 
 	head = &data->senps->first_tz;
 	list_for_each_entry(data, head, list) {
@@ -653,10 +654,14 @@ static void handle_thermal_trip(struct thermal_zone_device *tz,
 		} else {
 			if (!of_thermal_is_trips_triggered(zone, trip_temp))
 				continue;
+			notify = true;
 			thermal_zone_device_update_temp(zone,
 				THERMAL_EVENT_UNSPECIFIED, trip_temp);
 		}
 	}
+	if (temp_valid && !notify)
+		thermal_zone_device_update_temp(tz, THERMAL_EVENT_UNSPECIFIED,
+				trip_temp);
 }
 
 /*

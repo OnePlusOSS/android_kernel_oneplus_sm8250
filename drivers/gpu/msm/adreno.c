@@ -993,6 +993,25 @@ static int adreno_of_parse_pwrlevels(struct adreno_device *adreno_dev,
 	return 0;
 }
 
+static void adreno_of_get_bimc_iface_clk(struct adreno_device *adreno_dev,
+		struct device_node *node)
+{
+	struct kgsl_device *device = KGSL_DEVICE(adreno_dev);
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
+
+	if (!of_property_read_u32(node, "qcom,gpu-bimc-interface-clk-freq",
+				&pwr->gpu_bimc_int_clk_freq)) {
+		pwr->gpu_bimc_int_clk = devm_clk_get(&device->pdev->dev,
+				"bimc_gpu_clk");
+		if (IS_ERR_OR_NULL(pwr->gpu_bimc_int_clk)) {
+			dev_err(&device->pdev->dev,
+					"dt: Couldn't get bimc_gpu_clk (%d)\n",
+					PTR_ERR(pwr->gpu_bimc_int_clk));
+			pwr->gpu_bimc_int_clk = NULL;
+		}
+	}
+}
+
 static void adreno_of_get_initial_pwrlevel(struct adreno_device *adreno_dev,
 		struct device_node *node)
 {
@@ -1050,6 +1069,8 @@ static int adreno_of_get_legacy_pwrlevels(struct adreno_device *adreno_dev,
 
 	adreno_of_get_limits(adreno_dev, parent);
 
+	adreno_of_get_bimc_iface_clk(adreno_dev, parent);
+
 	return 0;
 }
 
@@ -1076,6 +1097,8 @@ static int adreno_of_get_pwrlevels(struct adreno_device *adreno_dev,
 				return ret;
 
 			adreno_of_get_initial_pwrlevel(adreno_dev, child);
+
+			adreno_of_get_bimc_iface_clk(adreno_dev, child);
 
 			/*
 			 * Check for global throttle-pwrlevel first and override
@@ -1441,6 +1464,14 @@ static int adreno_probe(struct platform_device *pdev)
 
 	if (adreno_is_a6xx(adreno_dev))
 		device->mmu.features |= KGSL_MMU_SMMU_APERTURE;
+
+	if (ADRENO_FEATURE(adreno_dev, ADRENO_USE_SHMEM))
+		device->flags |= KGSL_FLAG_USE_SHMEM;
+
+	if (ADRENO_FEATURE(adreno_dev, ADRENO_PROCESS_RECLAIM)) {
+		device->flags |= KGSL_FLAG_USE_SHMEM;
+		device->flags |= KGSL_FLAG_PROCESS_RECLAIM;
+	}
 
 	device->pwrctrl.bus_width = adreno_dev->gpucore->bus_width;
 
@@ -2445,6 +2476,10 @@ int adreno_reset(struct kgsl_device *device, int fault)
 		}
 	}
 	if (ret) {
+		unsigned long flags = device->pwrctrl.ctrl_flags;
+
+		device->pwrctrl.ctrl_flags = 0;
+
 		/* If soft reset failed/skipped, then pull the power */
 		kgsl_pwrctrl_change_state(device, KGSL_STATE_INIT);
 		/* since device is officially off now clear start bit */
@@ -2462,6 +2497,8 @@ int adreno_reset(struct kgsl_device *device, int fault)
 					break;
 			}
 		}
+
+		device->pwrctrl.ctrl_flags = flags;
 	}
 	if (ret)
 		return ret;
@@ -3369,29 +3406,34 @@ int adreno_gmu_fenced_write(struct adreno_device *adreno_dev,
 		 * was successful
 		 */
 		if (!(status & fence_mask))
-			return 0;
+			break;
+
 		/* Wait a small amount of time before trying again */
 		udelay(GMU_CORE_WAKEUP_DELAY_US);
 
 		/* Try to write the fenced register again */
 		adreno_writereg(adreno_dev, offset, val);
-
-		if (i == GMU_CORE_SHORT_WAKEUP_RETRY_LIMIT)
-			dev_err(device->dev,
-				"Waited %d usecs to write fenced register 0x%x, status 0x%x. Continuing to wait...\n",
-				(GMU_CORE_SHORT_WAKEUP_RETRY_LIMIT *
-				GMU_CORE_WAKEUP_DELAY_US),
-				reg_offset, status);
 	}
 
-	ts2 = gmu_core_dev_read_ao_counter(device);
-	dev_err(device->dev,
-		"fenced write for 0x%x timed out in %dus. timestamps %llu %llu, status 0x%x\n",
-		reg_offset,
-		GMU_CORE_LONG_WAKEUP_RETRY_LIMIT * GMU_CORE_WAKEUP_DELAY_US,
-		ts1, ts2, status);
+	if (i < GMU_CORE_SHORT_WAKEUP_RETRY_LIMIT)
+		return 0;
 
-	return -ETIMEDOUT;
+	ts2 = gmu_core_dev_read_ao_counter(device);
+
+	if (i == GMU_CORE_LONG_WAKEUP_RETRY_LIMIT) {
+		dev_err(device->dev,
+			"Timed out waiting %d usecs to write fenced register 0x%x, timestamps %llu %llu, status 0x%x\n",
+			i * GMU_CORE_WAKEUP_DELAY_US,
+			reg_offset, ts1, ts2, status);
+
+		return -ETIMEDOUT;
+	}
+
+	dev_err(device->dev,
+		"Waited %d usecs to write fenced register 0x%x. status 0x%x\n",
+		i * GMU_CORE_WAKEUP_DELAY_US, reg_offset, status);
+
+	return 0;
 }
 
 bool adreno_is_cx_dbgc_register(struct kgsl_device *device,

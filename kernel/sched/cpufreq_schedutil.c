@@ -252,12 +252,19 @@ unsigned int cc_cal_next_freq_with_extra_util(
 	unsigned long extra_util = 0;
 
 	switch (policy->cpu) {
+/* RATP is used for low-end platform, so use this config to distinctguish CPU arch */
+#ifdef CONFIG_RATP
+	case 6: case 7:
+		type = CCDM_TB_CLUS_1_FREQ_BOOST;
+		break;
+#else
 	case 4: case 5: case 6:
 		type = CCDM_TB_CLUS_1_FREQ_BOOST;
 		break;
 	case 7:
 		type = CCDM_TB_CLUS_2_FREQ_BOOST;
 		break;
+#endif
 	}
 
 	extra_util = ccdm_get_hint(type);

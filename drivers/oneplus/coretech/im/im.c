@@ -31,9 +31,13 @@ static struct im_target {
 	{"composer-servic", "hwc "},
 	{"HwBinder:", "hwbinder "},
 	{"Binder:", "binder "},
-	{"", "hwui "},
+	{"hwuiTask", "hwui "},
 	{"", "render "},
+	{"", "unity_wk"},
+	{"UnityMain", "unityM"},
 	{"neplus.launcher", "launcher "},
+	{"HwuiTask", "HwuiEx "},
+	{"CrRendererMain", "crender "},
 };
 
 /* ignore list, not set any im_flag */
@@ -112,6 +116,12 @@ static inline void im_tagging(struct task_struct *task, int idx)
 		case IM_ID_BINDER:
 			task->im_flag |= IM_BINDER;
 			break;
+		case IM_ID_HWUI:
+			task->im_flag |= IM_HWUI;
+			break;
+		case IM_ID_HWUI_EX:
+			task->im_flag |= IM_HWUI_EX;
+			break;
 		}
 	}
 
@@ -135,6 +145,12 @@ static inline void im_tagging(struct task_struct *task, int idx)
 			break;
 		case IM_ID_LAUNCHER:
 			task->im_flag |= IM_LAUNCHER;
+			break;
+		case IM_ID_RENDER:
+			task->im_flag |= IM_RENDER;
+			break;
+		case IM_ID_UNITY_MAIN:
+			task->im_flag |= IM_UNITY_MAIN;
 			break;
 		}
 	}
@@ -178,12 +194,34 @@ void im_wmi_current(void)
 
 void im_set_flag(struct task_struct *task, int flag)
 {
+	struct task_struct *leader = task->group_leader;
+
 	task->im_flag |= flag;
+	if (flag == IM_ENQUEUE) {
+		if (leader)
+			im_set_flag(leader, IM_MAIN);
+	}
 }
 
 void im_set_flag_current(int flag)
 {
+
+	struct task_struct *leader = current->group_leader;
+
+	im_tagging(current, IM_ID_HWUI);
+	if (current->im_flag & IM_HWUI) {
+		return;
+	}
+	im_tagging(current, IM_ID_HWUI_EX);
+	if (current->im_flag & IM_HWUI_EX) {
+		return;
+	}
+
 	current->im_flag |= flag;
+	if (flag == IM_ENQUEUE) {
+		if (leader)
+			im_set_flag(leader, IM_MAIN);
+	}
 }
 
 void im_unset_flag(struct task_struct *task, int flag)
@@ -396,4 +434,11 @@ void im_list_del_task(struct task_struct *task)
 		}
 	}
 	spin_unlock(&tb_render_group_lock);
+}
+
+void im_tsk_init_flag(void *ptr)
+{
+	struct task_struct *task = (struct task_struct*) ptr;
+	task->im_flag &= ~IM_HWUI;
+	task->im_flag &= ~IM_HWUI_EX;
 }

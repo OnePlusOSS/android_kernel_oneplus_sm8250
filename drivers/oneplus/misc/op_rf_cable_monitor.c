@@ -33,7 +33,13 @@
 static struct class *rf_uevent_class;
 static struct device *rf_uevent_device;
 static struct project_info *project_info_desc;
+
+#ifdef CONFIG_ARCH_LITO
+#define CABLE_GPIO_NUM 3
+#else
 #define CABLE_GPIO_NUM 4
+#endif
+
 struct cable_data {
 	int irq[CABLE_GPIO_NUM];
 	int cable_gpio[CABLE_GPIO_NUM];
@@ -112,7 +118,7 @@ int get_all_gpio_val(void)
 	/*only 19811 china and 19821 china use ANT6(gpio109)*/
 	if((get_prj_version() == 12 && get_rf_version() == 11) 
 		||(get_prj_version() == 11 && get_rf_version() == 11)
-		||(get_prj_version() == 14))
+		||(get_prj_version() == 14) || (get_prj_version() == 15))
 		return gpiostate;
 	else
 		return gpiostate - gpiostate % 10;

@@ -8,6 +8,13 @@
 
 #include <linux/bitops.h>
 
+
+#ifdef VENDOR_EDIT
+#ifdef CONFIG_OPLUS_SM7225R_CHARGER
+#include "../../../oneplus/power/oplus_chg/charger_ic/oplus_battery_msm7225_R.h"
+#endif
+#endif
+
 #define SCHGM_FLASH_BASE			0xA600
 
 #define SCHGM_FLASH_STATUS_2_REG		(SCHGM_FLASH_BASE + 0x07)

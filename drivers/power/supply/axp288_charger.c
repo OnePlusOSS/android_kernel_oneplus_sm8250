@@ -28,6 +28,7 @@
 #include <linux/property.h>
 #include <linux/mfd/axp20x.h>
 #include <linux/extcon.h>
+#include <linux/dmi.h>
 
 #define PS_STAT_VBUS_TRIGGER		(1 << 0)
 #define PS_STAT_BAT_CHRG_DIR		(1 << 2)
@@ -552,6 +553,15 @@ out:
 	return IRQ_HANDLED;
 }
 
+static const struct dmi_system_id axp288_hp_x2_dmi_ids[] = {
+	{
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "HP Pavilion x2 Detachable"),
+		},
+	},
+	{} /* Terminating entry */
+};
+
 static void axp288_charger_extcon_evt_worker(struct work_struct *work)
 {
 	struct axp288_chrg_info *info =
@@ -575,7 +585,10 @@ static void axp288_charger_extcon_evt_worker(struct work_struct *work)
 	}
 
 	/* Determine cable/charger type */
-	if (extcon_get_state(edev, EXTCON_CHG_USB_SDP) > 0) {
+	if (dmi_check_system(axp288_hp_x2_dmi_ids)) {
+		dev_dbg(&info->pdev->dev, "HP X2 with Type-C, setting inlmt to 3A\n");
+		current_limit = 3000000;
+	} else if (extcon_get_state(edev, EXTCON_CHG_USB_SDP) > 0) {
 		dev_dbg(&info->pdev->dev, "USB SDP charger is connected\n");
 		current_limit = 500000;
 	} else if (extcon_get_state(edev, EXTCON_CHG_USB_CDP) > 0) {
@@ -690,6 +703,12 @@ static int charger_init_hw_regs(struct axp288_chrg_info *info)
 		dev_err(&info->pdev->dev, "register(%x) write error(%d)\n",
 						AXP20X_CC_CTRL, ret);
 		return ret;
+	}
+
+	if (dmi_check_system(axp288_hp_x2_dmi_ids)) {
+		ret = axp288_charger_vbus_path_select(info, true);
+		if (ret < 0)
+			return ret;
 	}
 
 	/* Read current charge voltage and current limit */

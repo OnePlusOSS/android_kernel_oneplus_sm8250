@@ -643,7 +643,7 @@ cpu_util_freq_walt(int cpu, struct sched_walt_cpu_load *walt_load)
 static inline void account_load_subtractions(struct rq *rq)
 {
 	u64 ws = rq->window_start;
-	u64 prev_ws = ws - sched_ravg_window;
+	u64 prev_ws = ws - rq->prev_window_size;
 	struct load_subtractions *ls = rq->load_subs;
 	int i;
 
@@ -718,7 +718,7 @@ void update_cluster_load_subtractions(struct task_struct *p,
 {
 	struct sched_cluster *cluster = cpu_cluster(cpu);
 	struct cpumask cluster_cpus = cluster->cpus;
-	u64 prev_ws = ws - sched_ravg_window;
+	u64 prev_ws = ws - cpu_rq(cpu)->prev_window_size;
 	int i;
 
 	cpumask_clear_cpu(cpu, &cluster_cpus);
@@ -2670,7 +2670,6 @@ static void transfer_busy_time(struct rq *rq, struct related_thread_group *grp,
  * The children inherits the group id from the parent.
  */
 unsigned int __read_mostly sysctl_sched_coloc_downmigrate_ns;
-unsigned int __read_mostly sysctl_sched_enable_thread_grouping;
 
 struct related_thread_group *related_thread_groups[MAX_NUM_CGROUP_COLOC_ID];
 static LIST_HEAD(active_related_thread_groups);
@@ -2941,8 +2940,6 @@ void add_new_task_to_grp(struct task_struct *new)
 {
 	unsigned long flags;
 	struct related_thread_group *grp;
-	struct task_struct *leader = new->group_leader;
-	unsigned int leader_grp_id = sched_get_group_id(leader);
 
 #ifdef CONFIG_IM
 	if (im_sf(new)) {
@@ -2951,10 +2948,6 @@ void add_new_task_to_grp(struct task_struct *new)
 			im_list_add_task(new);
 	}
 #endif
-
-	if (!sysctl_sched_enable_thread_grouping &&
-	    leader_grp_id != DEFAULT_CGROUP_COLOC_ID)
-		return;
 
 	/*
 	 * If the task does not belong to colocated schedtune
@@ -3482,7 +3475,8 @@ void walt_irq_work(struct irq_work *irq_work)
 	if (!is_migration) {
 		spin_lock_irqsave(&sched_ravg_window_lock, flags);
 
-		if (sched_ravg_window != new_sched_ravg_window) {
+		if ((sched_ravg_window != new_sched_ravg_window) &&
+		    (wc < this_rq()->window_start + new_sched_ravg_window)) {
 			sched_ravg_window_change_time = sched_ktime_clock();
 			printk_deferred("ALERT: changing window size from %u to %u at %lu\n",
 					sched_ravg_window,

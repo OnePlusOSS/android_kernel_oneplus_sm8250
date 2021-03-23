@@ -73,11 +73,13 @@ struct se_geni_rsc {
 	int	clk_freq_out;
 	unsigned int num_clk_levels;
 	unsigned long *clk_perf_tbl;
+	struct pinctrl_state *geni_gpio_reset;
 };
 
 #define PINCTRL_DEFAULT	"default"
 #define PINCTRL_ACTIVE	"active"
 #define PINCTRL_SLEEP	"sleep"
+#define PINCTRL_RESET	"reset"
 
 #define KHz(freq) (1000 * (freq))
 

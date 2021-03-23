@@ -9,6 +9,7 @@ enum oem_boot_mode {
 	MSM_BOOT_MODE_FACTORY,
 	MSM_BOOT_MODE_RF,
 	MSM_BOOT_MODE_CHARGE,
+	MSM_BOOT_MODE_WLAN,
 };
 
 enum oem_boot_mode get_boot_mode(void);

@@ -1,4 +1,5 @@
 config ONEPLUS_HEALTHINFO
+	depends on OPCHAIN
 	default n
 	bool "config oneplus healthinfo"
 	help

@@ -84,6 +84,13 @@ EXPORT_SYMBOL_GPL(cgroup_mutex);
 EXPORT_SYMBOL_GPL(css_set_lock);
 #endif
 
+#ifdef CONFIG_RATP
+#define STUNE_TYPE_MAX 5
+int stune_map[STUNE_TYPE_MAX] = {0, 0, 0, 0, 0};
+const char *stune_cgroup_type[STUNE_TYPE_MAX] = {"foreground", "background",
+				"top-app", "rt", "audio-app"};
+#endif
+
 DEFINE_SPINLOCK(trace_cgroup_path_lock);
 char trace_cgroup_path[TRACE_CGROUP_PATH_LEN];
 
@@ -4946,6 +4953,10 @@ static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
 	struct cgroup_subsys_state *parent_css = cgroup_css(parent, ss);
 	struct cgroup_subsys_state *css;
 	int err;
+#ifdef CONFIG_RATP
+	const char *tune_cgroup;
+	int i;
+#endif
 
 	lockdep_assert_held(&cgroup_mutex);
 
@@ -4983,6 +4994,20 @@ static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
 		ss->warned_broken_hierarchy = true;
 	}
 
+#ifdef CONFIG_RATP
+	/* establish the groups of schedtune mapping table*/
+	if (css->cgroup && css->cgroup->kn) {
+		tune_cgroup = css->cgroup->kn->name;
+		if (!strncmp(ss->name, "schedtune", strlen("schedtune"))) {
+			for (i = 0; i < STUNE_TYPE_MAX; ++i) {
+				if (!strncmp(tune_cgroup, stune_cgroup_type[i], strlen(stune_cgroup_type[i]))) {
+					stune_map[i] = i+1;
+					break;
+				}
+			}
+		}
+	}
+#endif
 	return css;
 
 err_list_del:

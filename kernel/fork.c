@@ -101,6 +101,10 @@
 #ifdef CONFIG_CONTROL_CENTER
 #include <oneplus/control_center/control_center_helper.h>
 #endif
+#ifdef CONFIG_IM
+#include <linux/oem/im.h>
+#endif
+
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -921,6 +925,10 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk->nice_effect_ts = 0;
 	tsk->cached_prio = tsk->static_prio;
 #endif
+
+#ifdef CONFIG_RATP
+	tsk->cpus_suggested = CPU_MASK_ALL;
+#endif
 /* 2020-05-19 add for uxrealm*/
 #ifdef CONFIG_OPCHAIN
 	tsk->utask_tag = 0;
@@ -937,6 +945,13 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk->oncpu_time = 0;
 	tsk->prio_saved = 0;
 	tsk->saved_flag = 0;
+#endif
+
+#ifdef CONFIG_UXCHAIN_V2
+	tsk->fork_by_static_ux = 0;
+	tsk->ux_once = 0;
+	tsk->get_mmlock = 0;
+	tsk->get_mmlock_ts = 0;
 #endif
 
 	account_kernel_stack(tsk, 1);
@@ -959,6 +974,7 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 #ifdef CONFIG_TPD
 	tsk->tpd = 0;
 	tsk->dtpd = 0;
+	tsk->dtpdg = -1;
 #endif
 	return tsk;
 
@@ -1815,6 +1831,25 @@ static int pidfd_create(struct pid *pid)
 	return fd;
 }
 
+static void copy_oom_score_adj(u64 clone_flags, struct task_struct *tsk)
+{
+	/* Skip if kernel thread */
+	if (!tsk->mm)
+		return;
+
+	/* Skip if spawning a thread or using vfork */
+	if ((clone_flags & (CLONE_VM | CLONE_THREAD | CLONE_VFORK)) != CLONE_VM)
+		return;
+
+	/* We need to synchronize with __set_oom_adj */
+	mutex_lock(&oom_adj_mutex);
+	set_bit(MMF_MULTIPROCESS, &tsk->mm->flags);
+	/* Update the values in case they were changed after copy_signal */
+	tsk->signal->oom_score_adj = current->signal->oom_score_adj;
+	tsk->signal->oom_score_adj_min = current->signal->oom_score_adj_min;
+	mutex_unlock(&oom_adj_mutex);
+}
+
 /*
  * This creates a new process as a copy of the old one,
  * but does not actually start it yet.
@@ -2068,6 +2103,7 @@ static __latent_entropy struct task_struct *copy_process(
 	p->sequential_io_avg	= 0;
 #endif
 #ifdef CONFIG_ONEPLUS_HEALTHINFO
+/*2020-06-17, add for stuck monitor*/
 	p->stuck_trace = 0;
 	memset(&p->oneplus_stuck_info, 0, sizeof(struct oneplus_uifirst_monitor_info));
 #endif /*CONFIG_ONEPLUS_HEALTHINFO*/
@@ -2309,7 +2345,7 @@ static __latent_entropy struct task_struct *copy_process(
 	trace_task_newtask(p, clone_flags);
 	uprobe_copy_process(p, clone_flags);
 
-#if defined(CONFIG_CONTROL_CENTER) || defined(CONFIG_HOUSTON)
+#if defined(CONFIG_CONTROL_CENTER) || defined(CONFIG_HOUSTON) || defined(CONFIG_IM)
 	if (likely(!IS_ERR(p))) {
 #ifdef CONFIG_HOUSTON
 		ht_perf_event_init(p);
@@ -2318,11 +2354,19 @@ static __latent_entropy struct task_struct *copy_process(
 #ifdef CONFIG_CONTROL_CENTER
 		cc_tsk_init((void *) p);
 #endif
+#ifdef CONFIG_TPP
+		p->tpp_flag = 0;
+#endif
 #ifdef CONFIG_ONEPLUS_FG_OPT
 		p->fuse_boost = 0;
 #endif
+#ifdef CONFIG_IM
+		im_tsk_init_flag((void *) p);
+#endif
 	}
 #endif
+
+	copy_oom_score_adj(clone_flags, p);
 
 	return p;
 

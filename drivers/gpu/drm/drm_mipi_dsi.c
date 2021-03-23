@@ -1061,6 +1061,11 @@ int mipi_dsi_dcs_set_display_brightness(struct mipi_dsi_device *dsi,
 	u8 payload[2] = { brightness & 0xff, brightness >> 8 };
 	ssize_t err;
 
+#ifdef OEM_TARGET_PRODUCT_EBBA
+	payload[0] = brightness >> 8;
+	payload[1] = brightness & 0xff;
+#endif
+
 	err = mipi_dsi_dcs_write(dsi, MIPI_DCS_SET_DISPLAY_BRIGHTNESS,
 				 payload, sizeof(payload));
 	if (err < 0)

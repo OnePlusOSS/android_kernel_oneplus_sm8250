@@ -182,13 +182,9 @@ vhost_transport_do_send_pkt(struct vhost_vsock *vsock,
 			break;
 		}
 
+		virtio_transport_deliver_tap_pkt(pkt);
 		vhost_add_used(vq, head, sizeof(pkt->hdr) + payload_len);
 		added = true;
-
-		/* Deliver to monitoring devices all correctly transmitted
-		 * packets.
-		 */
-		virtio_transport_deliver_tap_pkt(pkt);
 
 		pkt->off += payload_len;
 		total_len += payload_len;
@@ -499,6 +495,7 @@ static int vhost_vsock_start(struct vhost_vsock *vsock)
 		mutex_unlock(&vq->mutex);
 	}
 
+	vhost_work_queue(&vsock->dev, &vsock->send_pkt_work);
 	mutex_unlock(&vsock->dev.mutex);
 	return 0;
 

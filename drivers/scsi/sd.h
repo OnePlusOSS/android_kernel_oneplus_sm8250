@@ -9,6 +9,8 @@
  */
 #define SD_MAJORS	16
 
+extern struct gendisk *ufs_disk[SD_NUM];
+
 /*
  * Time out in seconds for disks and Magneto-opticals (which are slower).
  */
@@ -117,6 +119,9 @@ struct scsi_disk {
 	unsigned	urswrz : 1;
 	unsigned	security : 1;
 	unsigned	ignore_medium_access_errors : 1;
+
+	ANDROID_KABI_RESERVE(1);
+	ANDROID_KABI_RESERVE(2);
 };
 #define to_scsi_disk(obj) container_of(obj,struct scsi_disk,dev)
 

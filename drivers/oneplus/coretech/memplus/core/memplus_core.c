@@ -168,6 +168,28 @@ static bool is_fast_entry(swp_entry_t entry)
 out:
 	return ret;
 }
+static int enough_swap_size_mask(unsigned long req_size)
+{
+	int ret_mask = 0x0;
+	unsigned int n = 0;
+	struct swap_info_struct *sis, *next;
+	unsigned int node = numa_node_id();
+
+	spin_lock(&swap_lock);
+	plist_for_each_entry_safe(sis, next, &swap_avail_heads[node], avail_lists[node]) {
+		int fast_i = (sis->flags & SWP_SYNCHRONOUS_IO) ? 1:0;
+
+		spin_lock(&sis->lock);
+		if (sis->flags & SWP_WRITEOK) {
+			n += sis->pages - sis->inuse_pages;
+			if (n > req_size)
+				ret_mask |= (1 << fast_i);
+		}
+		spin_unlock(&sis->lock);
+	}
+	spin_unlock(&swap_lock);
+	return ret_mask;
+}
 static bool enough_swap_size(unsigned long req_size, int swap_bdv)
 {
 	bool ret = false;
@@ -1120,6 +1142,7 @@ static ssize_t memex_do_reclaim_anon(struct task_struct *task, int prev_adj)
 	struct mp_reclaim_param rp;
 	int task_anon = 0, task_swap = 0;
 	int a_task_anon = 0, a_task_swap = 0;
+	int type_mask = 0;
 
 	//u64 time_ns = 0;
 #if DEBUG_TIME_INFO
@@ -1129,15 +1152,17 @@ static ssize_t memex_do_reclaim_anon(struct task_struct *task, int prev_adj)
 #if FEAT_RECLAIM_LIMIT
 	rp.start_jiffies = jiffies;
 #endif
+	/* if available zram is less than 32MB, quit early */
+	type_mask = enough_swap_size_mask(8192);
 	rp.nr_to_reclaim = INT_MAX;
 	rp.nr_reclaimed = 0;
 	rp.nr_scanned = 0;
-	/* memex currently use zram by default */
-	rp.type = TYPE_FREQUENT;
-
-	/* if available zram is less than 32MB, quit early */
-	if (!enough_swap_size(8192, TYPE_FREQUENT))
+ 
+	if (!type_mask)
 		goto out;
+
+	/* memex currently use zram by default */
+	rp.type = (type_mask & (1 << TYPE_FREQUENT)) ? TYPE_FREQUENT : TYPE_NORMAL;
 
 	/* TODO: do we need to use p = find_lock_task_mm(tsk); in case main thread got killed */
 	mm = get_task_mm(task);

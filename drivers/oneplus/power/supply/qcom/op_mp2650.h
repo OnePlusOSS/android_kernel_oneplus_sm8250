@@ -550,6 +550,7 @@
 #define REG2829_MP2650_DISCHARGE_CURRENT_OFFSET                0
 #define REG2829_MP2650_SDISCHARGE_CURRENT_STEP                 12.5    //12.5mA
 
+#define REG2D_MP2650_ADDRESS                                 0x2D
 #define REG2F_MP2650_ADDRESS                                 0x2F
 #define REG31_MP2650_ADDRESS                                 0x31
 #define REG37_MP2650_ADDRESS                                 0x37

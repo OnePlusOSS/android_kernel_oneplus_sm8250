@@ -182,6 +182,7 @@ extern void cnss_schedule_recovery(struct device *dev,
 extern int cnss_self_recovery(struct device *dev,
 			      enum cnss_recovery_reason reason);
 extern int cnss_force_fw_assert(struct device *dev);
+extern int cnss_force_fw_assert_async(struct device *dev);
 extern int cnss_force_collect_rddm(struct device *dev);
 extern int cnss_qmi_send_get(struct device *dev);
 extern int cnss_qmi_send_put(struct device *dev);
@@ -197,6 +198,7 @@ extern int cnss_get_platform_cap(struct device *dev,
 extern struct iommu_domain *cnss_smmu_get_domain(struct device *dev);
 extern int cnss_smmu_map(struct device *dev,
 			 phys_addr_t paddr, uint32_t *iova_addr, size_t size);
+extern int cnss_smmu_unmap(struct device *dev, uint32_t iova_addr, size_t size);
 extern int cnss_get_soc_info(struct device *dev, struct cnss_soc_info *info);
 extern int cnss_request_bus_bandwidth(struct device *dev, int bandwidth);
 extern int cnss_power_up(struct device *dev);

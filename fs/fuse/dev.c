@@ -7,7 +7,6 @@
 */
 
 #include "fuse_i.h"
-#include "fuse_shortcircuit.h"
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -158,6 +157,10 @@ void fuse_request_free(struct fuse_req *req)
 	if (req->pages != req->inline_pages) {
 		kfree(req->pages);
 		kfree(req->page_descs);
+	}
+	if (req->iname) {
+		__putname(req->iname);
+		req->iname = NULL;
 	}
 	kmem_cache_free(fuse_req_cachep, req);
 }
@@ -630,13 +633,13 @@ ssize_t fuse_simple_request(struct fuse_conn *fc, struct fuse_args *args)
 	req->out.argvar = args->out.argvar;
 	req->out.numargs = args->out.numargs;
 	req->iname = args->iname;
+	args->iname = NULL;
 	memcpy(req->out.args, args->out.args,
 	       args->out.numargs * sizeof(struct fuse_arg));
 	fuse_request_send(fc, req);
 	ret = req->out.h.error;
 	if (!ret) {
-		if (req->private_lower_rw_file != NULL)
-			args->private_lower_rw_file = req->private_lower_rw_file;
+		args->sct = req->sct;
 	}
 	if (!ret && args->out.argvar) {
 		BUG_ON(args->out.numargs != 1);
@@ -916,15 +919,16 @@ static int fuse_try_move_page(struct fuse_copy_state *cs, struct page **pagep)
 	struct page *newpage;
 	struct pipe_buffer *buf = cs->pipebufs;
 
+	get_page(oldpage);
 	err = unlock_request(cs->req);
 	if (err)
-		return err;
+		goto out_put_old;
 
 	fuse_copy_finish(cs);
 
 	err = pipe_buf_confirm(cs->pipe, buf);
 	if (err)
-		return err;
+		goto out_put_old;
 
 	BUG_ON(!cs->nr_segs);
 	cs->currbuf = buf;
@@ -964,7 +968,7 @@ static int fuse_try_move_page(struct fuse_copy_state *cs, struct page **pagep)
 	err = replace_page_cache_page(oldpage, newpage, GFP_KERNEL);
 	if (err) {
 		unlock_page(newpage);
-		return err;
+		goto out_put_old;
 	}
 
 	get_page(newpage);
@@ -983,14 +987,19 @@ static int fuse_try_move_page(struct fuse_copy_state *cs, struct page **pagep)
 	if (err) {
 		unlock_page(newpage);
 		put_page(newpage);
-		return err;
+		goto out_put_old;
 	}
 
 	unlock_page(oldpage);
+	/* Drop ref for ap->pages[] array */
 	put_page(oldpage);
 	cs->len = 0;
 
-	return 0;
+	err = 0;
+out_put_old:
+	/* Drop ref obtained in this function */
+	put_page(oldpage);
+	return err;
 
 out_fallback_unlock:
 	unlock_page(newpage);
@@ -999,10 +1008,10 @@ out_fallback:
 	cs->offset = buf->offset;
 
 	err = lock_request(cs->req);
-	if (err)
-		return err;
+	if (!err)
+		err = 1;
 
-	return 1;
+	goto out_put_old;
 }
 
 static int fuse_ref_page(struct fuse_copy_state *cs, struct page *page,
@@ -1014,14 +1023,16 @@ static int fuse_ref_page(struct fuse_copy_state *cs, struct page *page,
 	if (cs->nr_segs == cs->pipe->buffers)
 		return -EIO;
 
+	get_page(page);
 	err = unlock_request(cs->req);
-	if (err)
+	if (err) {
+		put_page(page);
 		return err;
+	}
 
 	fuse_copy_finish(cs);
 
 	buf = cs->pipebufs;
-	get_page(page);
 	buf->page = page;
 	buf->offset = offset;
 	buf->len = count;
@@ -1407,6 +1418,7 @@ static ssize_t fuse_dev_do_read(struct fuse_dev *fud, struct file *file,
 			if (likely(current->fpack)) {
 				current->fpack->fuse_open_req = true;
 				current->fpack->iname = req->iname;
+				req->iname = NULL;
 			}
 		}
 	}
@@ -1941,6 +1953,11 @@ static ssize_t fuse_dev_do_write(struct fuse_dev *fud,
 	struct fuse_req *req;
 	struct fuse_out_header oh;
 
+	if (current->fpack && current->fpack->iname) {
+		__putname(current->fpack->iname);
+		current->fpack->iname = NULL;
+	}
+
 	if (nbytes < sizeof(struct fuse_out_header))
 		return -EINVAL;
 
@@ -2015,7 +2032,7 @@ static ssize_t fuse_dev_do_write(struct fuse_dev *fud,
 	}
 	fuse_copy_finish(cs);
 
-	fuse_setup_shortcircuit(fc, req);
+	fuse_shortcircuit_setup(fc, req);
 
 	spin_lock(&fpq->lock);
 	clear_bit(FR_LOCKED, &req->flags);

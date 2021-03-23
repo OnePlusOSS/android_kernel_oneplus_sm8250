@@ -76,6 +76,7 @@ struct pci_epc_mem {
 	unsigned long	*bitmap;
 	size_t		page_size;
 	int		pages;
+	struct mutex	lock;
 };
 
 /**

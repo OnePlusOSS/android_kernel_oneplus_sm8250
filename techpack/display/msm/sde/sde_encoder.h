@@ -313,6 +313,9 @@ void sde_encoder_recovery_events_handler(struct drm_encoder *encoder,
  */
 bool sde_encoder_in_clone_mode(struct drm_encoder *enc);
 
+bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
+	struct drm_crtc *drm_crtc);
+
 /**
  * sde_encoder_is_primary_display - checks if underlying display is primary
  *     display or not.

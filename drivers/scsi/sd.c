@@ -3118,12 +3118,14 @@ static int sd_revalidate_disk(struct gendisk *disk)
 	dev_max = min_not_zero(dev_max, sdkp->max_xfer_blocks);
 	q->limits.max_dev_sectors = logical_to_sectors(sdp, dev_max);
 
-	if (sd_validate_opt_xfer_size(sdkp, dev_max))
+	if (sd_validate_opt_xfer_size(sdkp, dev_max)) {
 		rw_max = q->limits.io_opt =
 			sdkp->opt_xfer_blocks * sdp->sector_size;
-	else
+	} else {
+		q->limits.io_opt = 0;
 		rw_max = min_not_zero(logical_to_sectors(sdp, dev_max),
 				      (sector_t)BLK_DEF_MAX_SECTORS);
+	}
 
 	/* Do not exceed controller limit */
 	rw_max = min(rw_max, queue_max_hw_sectors(q));
@@ -3301,7 +3303,7 @@ static int sd_probe(struct device *dev)
 	struct gendisk *gd;
 	int index;
 	int error;
-
+	static int num;
 	scsi_autopm_get_device(sdp);
 	error = -ENODEV;
 	if (sdp->type != TYPE_DISK &&
@@ -3337,6 +3339,11 @@ static int sd_probe(struct device *dev)
 		sdev_printk(KERN_WARNING, sdp, "SCSI disk (sd) name length exceeded.\n");
 		goto out_free_index;
 	}
+
+	if ((num < SD_NUM) && !(sdp->removable))
+		ufs_disk[num++] = gd;
+	else if (sdp->removable)
+		sdev_printk(KERN_WARNING, sdp, "it's a removable SCSI disk (sd) name: %s\n", gd->disk_name);
 
 	sdkp->device = sdp;
 	sdkp->driver = &sd_template;

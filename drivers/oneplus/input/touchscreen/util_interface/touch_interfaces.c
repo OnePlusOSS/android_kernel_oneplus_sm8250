@@ -125,7 +125,7 @@ int touch_i2c_read_block(struct i2c_client* client, u16 addr, unsigned short len
 	} else {
 		msg[0].len = 2;
 		msg[0].buf[0] = addr >> 8 & 0xff;
-		msg[0].buf[1] = addr * 0xff;
+		msg[0].buf[1] = addr & 0xff;
 	}
 
 	msg[1].addr = client->addr;

@@ -350,7 +350,7 @@
 	};
 
 	chosen {
-		bootargs = "rcupdate.rcu_expedited=1 rcu_nocbs=0-7";
+		bootargs = "rcupdate.rcu_expedited=1 rcu_nocbs=0-7 kpti=off";
 	};
 
 	firmware: firmware {
@@ -394,6 +394,12 @@
 			reg = <0x0 0x80860000 0x0 0x20000>;
 			compatible = "qcom,cmd-db";
 			no-map;
+		};
+
+		reserved_xbl_uefi_log: res_xbl_uefi_log_region@80880000 {
+			compatible = "removed-dma-pool";
+			no-map;
+			reg = <0x0 0x80880000 0x0 0x14000>;
 		};
 
 		smem_mem: smem_region@80900000 {
@@ -2453,6 +2459,7 @@
 		#clock-cells = <1>;
 		mboxes = <&qmp_aop 0>;
 		mbox-names = "qdss_clk";
+		qcom,clk-stop-bimc-log;
 	};
 
 	clock_gcc: qcom,gcc@100000 {
@@ -2792,6 +2799,7 @@
 		sw-reset = <&gpu_gx_sw_reset>;
 		parent-supply = <&VDD_GFX_LEVEL>;
 		vdd_parent-supply = <&VDD_GFX_LEVEL>;
+		qcom,skip-disable-before-sw-enable;
 		qcom,reset-aon-logic;
 		qcom,retain-regs;
 	};
@@ -3426,6 +3434,7 @@
 		qcom,ipa-wdi3-over-gsi;
 		qcom,arm-smmu;
 		qcom,smmu-fast-map;
+		qcom,lan-rx-napi;
 		qcom,bandwidth-vote-for-ipa;
 		qcom,use-64-bit-dma-mask;
 		qcom,ipa-endp-delay-wa;
@@ -4516,6 +4525,21 @@
 			qcom,dump-size = <0x1000>;
 			qcom,dump-id = <0x104>;
 		};
+
+		osm_reg {
+			qcom,dump-size = <0x400>;
+			qcom,dump-id = <0x163>;
+		};
+
+		pcu_reg {
+			qcom,dump-size = <0x400>;
+			qcom,dump-id = <0x164>;
+		};
+
+		fsm_data {
+			qcom,dump-size = <0x400>;
+			qcom,dump-id = <0x165>;
+		};
 	};
 
 	qcom_tzlog: tz-log@146bf720 {
@@ -4844,6 +4868,15 @@
 				mhi,msi = <2>;
 				mhi,priority = <1>;
 				mhi,brstmode = <2>;
+			};
+
+			mhi_event@2 {
+				mhi,num-elements = <32>;
+				mhi,intmod = <1>;
+				mhi,msi = <0>;
+				mhi,priority = <2>;
+				mhi,brstmode = <2>;
+				mhi,data-type = <3>;
 			};
 		};
 

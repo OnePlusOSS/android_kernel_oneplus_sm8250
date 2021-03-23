@@ -49,8 +49,10 @@ int panic_timeout = CONFIG_PANIC_TIMEOUT;
 EXPORT_SYMBOL_GPL(panic_timeout);
 
 ATOMIC_NOTIFIER_HEAD(panic_notifier_list);
-
 EXPORT_SYMBOL(panic_notifier_list);
+
+void (*vendor_panic_cb)(u64 sp);
+EXPORT_SYMBOL_GPL(vendor_panic_cb);
 
 static long no_blink(int state)
 {
@@ -186,6 +188,9 @@ void panic(const char *fmt, ...)
 	if (!oem_get_download_mode())
 		panic_flush_device_cache(2000);
 #endif
+
+	if (vendor_panic_cb)
+		vendor_panic_cb(0);
 
 	pr_emerg("Kernel panic - not syncing: %s\n", buf);
 	function_name = parse_function_builtin_return_address(

@@ -76,3 +76,7 @@ obj-$(CONFIG_WIGIG_SENSING_SPI)	+= wigig_sensing.o
 obj-$(CONFIG_QTI_MAXIM_FAN_CONTROLLER) += max31760.o
 obj-$(CONFIG_QTI_XR_SMRTVWR_MISC) += qxr-stdalonevwr.o
 obj-$(CONFIG_FPR_FPC)		+= fpr_FingerprintCard/
+
+#+bug 550748,zhanghaibin1@wt,20200509,Add hardware_info
+obj-y += hardware_info.o
+#-bug 550748,zhanghaibin1@wt,20200509,Add hardware_info

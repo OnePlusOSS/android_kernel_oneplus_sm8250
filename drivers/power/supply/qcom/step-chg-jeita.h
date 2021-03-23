@@ -11,7 +11,8 @@
 struct step_chg_jeita_param {
 	u32			psy_prop;
 	char			*prop_name;
-	int			hysteresis;
+	int			rise_hys;
+	int			fall_hys;
 	bool			use_bms;
 };
 
@@ -27,7 +28,6 @@ void qcom_step_chg_deinit(void);
 int read_range_data_from_node(struct device_node *node,
 		const char *prop_str, struct range_data *ranges,
 		int max_threshold, u32 max_value);
-int get_val(struct range_data *range, int hysteresis, int current_index,
-		int threshold,
-		int *new_index, int *val);
+int get_val(struct range_data *range, int rise_hys, int fall_hys,
+		int current_index, int threshold, int *new_index, int *val);
 #endif /* __STEP_CHG_H__ */

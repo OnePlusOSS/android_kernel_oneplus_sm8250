@@ -9,6 +9,7 @@
 #include "kona-mtp.dtsi"
 #include "kona-oem.dtsi"
 #include "instantnoodlep.dtsi"
+#include "instantnoodlep_evb.dtsi"
 #include "camera/kona-oem-camera-instantnoodlep_evb.dtsi"
 / {
 	model = "Qualcomm Technologies, Inc. kona MTP evb 19811 55";

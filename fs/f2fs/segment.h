@@ -614,6 +614,7 @@ static inline int utilization(struct f2fs_sb_info *sbi)
  */
 #define DEF_MIN_IPU_UTIL	70
 #ifdef CONFIG_F2FS_OF2FS
+/* [ASTI-147]: enlarge min_fsync_blocks to optimize performance */
 #define DEF_MIN_FSYNC_BLOCKS	20
 #else
 #define DEF_MIN_FSYNC_BLOCKS	8
@@ -760,7 +761,7 @@ static inline unsigned long long get_mtime(struct f2fs_sb_info *sbi,
 						bool base_time)
 {
 	struct sit_info *sit_i = SIT_I(sbi);
-	time64_t diff, now = ktime_get_real_seconds();
+	time64_t diff, now = ktime_get_boottime_seconds();
 
 	if (now >= sit_i->mounted_time)
 		return sit_i->elapsed_time + now - sit_i->mounted_time;

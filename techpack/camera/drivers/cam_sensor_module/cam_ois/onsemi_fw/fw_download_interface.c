@@ -899,7 +899,10 @@ int DownloadFW(struct cam_ois_ctrl_t *o_ctrl)
 
 	if (o_ctrl) {
 		mutex_lock(&ois_mutex);
-
+                if(o_ctrl->opcode.prog == 3){
+                        o_ctrl->ois_gyro_vendor = 0;
+                        CAM_ERR(CAM_OIS, "change gyro vendor");
+                }
 		if (CAM_OIS_INVALID == ois_state[o_ctrl->ois_type]) {
 
 			if (CAM_OIS_MASTER == o_ctrl->ois_type) {

@@ -56,6 +56,7 @@ enum {
 	DRM_PANEL_BLANK_LP,
 	/* fps change */
 	DRM_PANEL_BLANK_FPS_CHANGE,
+	DRM_PANEL_BLANK_AOD,
 };
 
 struct drm_panel_notifier {

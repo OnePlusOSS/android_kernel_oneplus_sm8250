@@ -27,6 +27,7 @@
 #include <linux/mmc/slot-gpio.h>
 
 #include "core.h"
+#include "crypto.h"
 #include "host.h"
 #include "slot-gpio.h"
 #include "pwrseq.h"
@@ -170,6 +171,10 @@ int mmc_retune(struct mmc_host *host)
 		return_to_hs400 = true;
 	}
 
+	if (host->card->mmc_avail_type & EXT_CSD_CARD_TYPE_HS400 &&
+		host->ios.bus_width == MMC_BUS_WIDTH_8)
+		mmc_set_timing(host, MMC_TIMING_MMC_HS400);
+
 	err = mmc_execute_tuning(host->card);
 	if (err)
 		goto out;
@@ -180,6 +185,21 @@ out:
 	host->doing_retune = 0;
 
 	return err;
+}
+
+/**
+ *	mmc_host_may_gate_card - check if this card may be gated
+ *	@card: card to check.
+ */
+bool mmc_host_may_gate_card(struct mmc_card *card)
+{
+	/* If there is no card we may gate it */
+	if (!card)
+		return true;
+
+	if (mmc_card_sdio(card) && card->cccr.async_intr_sup)
+		return true;
+	return !(card->quirks & MMC_QUIRK_BROKEN_CLK_GATING);
 }
 
 static void mmc_retune_timer(struct timer_list *t)
@@ -676,6 +696,7 @@ EXPORT_SYMBOL(mmc_remove_host);
  */
 void mmc_free_host(struct mmc_host *host)
 {
+	mmc_crypto_free_host(host);
 	mmc_pwrseq_free(host);
 	put_device(&host->class_dev);
 }

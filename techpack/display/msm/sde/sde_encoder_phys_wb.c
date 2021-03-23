@@ -589,18 +589,16 @@ static void sde_encoder_phys_wb_setup_cdp(struct sde_encoder_phys *phys_enc,
 
 }
 
-static void _sde_enc_phys_wb_detect_cwb(struct sde_encoder_phys *phys_enc,
+static bool _sde_enc_phys_wb_detect_cwb(struct sde_encoder_phys *phys_enc,
 		struct drm_crtc_state *crtc_state)
 {
 	struct drm_encoder *encoder;
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
 	const struct sde_wb_cfg *wb_cfg = wb_enc->hw_wb->caps;
 
-	phys_enc->in_clone_mode = false;
-
 	/* Check if WB has CWB support */
 	if (!(wb_cfg->features & BIT(SDE_WB_HAS_CWB)))
-		return;
+		return false;
 
 	/* if any other encoder is connected to same crtc enable clone mode*/
 	drm_for_each_encoder(encoder, crtc_state->crtc->dev) {
@@ -608,12 +606,11 @@ static void _sde_enc_phys_wb_detect_cwb(struct sde_encoder_phys *phys_enc,
 			continue;
 
 		if (phys_enc->parent != encoder) {
-			phys_enc->in_clone_mode = true;
-			break;
+			return true;
 		}
 	}
 
-	SDE_DEBUG("detect CWB - status:%d\n", phys_enc->in_clone_mode);
+	return false;
 }
 
 static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
@@ -709,15 +706,20 @@ static int sde_encoder_phys_wb_atomic_check(
 		return -EINVAL;
 	}
 
-	clone_mode_curr = phys_enc->in_clone_mode;
+	clone_mode_curr = _sde_enc_phys_wb_detect_cwb(phys_enc, crtc_state);
 
-	_sde_enc_phys_wb_detect_cwb(phys_enc, crtc_state);
-
-	if (clone_mode_curr && !phys_enc->in_clone_mode) {
+	/**
+	 * Fail the WB commit when there is a CWB session enabled in HW.
+	 * CWB session needs to be disabled since WB and CWB share the same
+	 * writeback hardware block.
+	 */
+	if (phys_enc->in_clone_mode && !clone_mode_curr) {
 		SDE_ERROR("WB commit before CWB disable\n");
 		return -EINVAL;
 	}
 
+	SDE_DEBUG("detect CWB - status:%d\n", clone_mode_curr);
+	phys_enc->in_clone_mode = clone_mode_curr;
 	memset(&wb_roi, 0, sizeof(struct sde_rect));
 
 	rc = sde_wb_connector_state_get_output_roi(conn_state, &wb_roi);
@@ -1033,7 +1035,8 @@ static void _sde_encoder_phys_wb_frame_done_helper(void *arg, bool frame_error)
 	SDE_DEBUG("[wb:%d,%u]\n", hw_wb->idx - WB_0, wb_enc->frame_count);
 
 	/* don't notify upper layer for internal commit */
-	if (phys_enc->enable_state == SDE_ENC_DISABLING)
+	if (phys_enc->enable_state == SDE_ENC_DISABLING &&
+			!phys_enc->in_clone_mode)
 		goto complete;
 
 	if (phys_enc->parent_ops.handle_frame_done &&
@@ -1213,6 +1216,32 @@ static int sde_encoder_phys_wb_frame_timeout(struct sde_encoder_phys *phys_enc)
 	return event;
 }
 
+static void _sde_encoder_phys_wb_reset_state(
+		struct sde_encoder_phys *phys_enc)
+{
+	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
+
+	/*
+	 * frame count and kickoff count are only used for debug purpose. Frame
+	 * count can be more than kickoff count at the end of disable call due
+	 * to extra frame_done wait. It does not cause any issue because
+	 * frame_done wait is based on retire_fence count. Leaving these
+	 * counters for debugging purpose.
+	 */
+	if (wb_enc->frame_count != wb_enc->kickoff_count) {
+		SDE_EVT32(DRMID(phys_enc->parent), WBID(wb_enc),
+			wb_enc->kickoff_count, wb_enc->frame_count,
+			phys_enc->in_clone_mode);
+		wb_enc->frame_count = wb_enc->kickoff_count;
+	}
+
+	phys_enc->enable_state = SDE_ENC_DISABLED;
+	wb_enc->crtc = NULL;
+	phys_enc->hw_cdm = NULL;
+	phys_enc->hw_ctl = NULL;
+	phys_enc->in_clone_mode = false;
+}
+
 static int _sde_encoder_phys_wb_wait_for_commit_done(
 		struct sde_encoder_phys *phys_enc, bool is_disable)
 {
@@ -1296,7 +1325,17 @@ skip_wait:
 static int sde_encoder_phys_wb_wait_for_commit_done(
 		struct sde_encoder_phys *phys_enc)
 {
-	return _sde_encoder_phys_wb_wait_for_commit_done(phys_enc, false);
+	int rc;
+
+	if (phys_enc->enable_state == SDE_ENC_DISABLING &&
+			phys_enc->in_clone_mode) {
+		rc = _sde_encoder_phys_wb_wait_for_commit_done(phys_enc, true);
+		_sde_encoder_phys_wb_reset_state(phys_enc);
+	} else {
+		rc = _sde_encoder_phys_wb_wait_for_commit_done(phys_enc, false);
+	}
+
+	return rc;
 }
 
 static int sde_encoder_phys_wb_wait_for_cwb_done(
@@ -1580,7 +1619,9 @@ static void sde_encoder_phys_wb_disable(struct sde_encoder_phys *phys_enc)
 	SDE_DEBUG("[wait_for_done: wb:%d, frame:%u, kickoff:%u]\n",
 			hw_wb->idx - WB_0, wb_enc->frame_count,
 			wb_enc->kickoff_count);
-	_sde_encoder_phys_wb_wait_for_commit_done(phys_enc, true);
+
+	if (!phys_enc->in_clone_mode || !wb_enc->crtc->state->active)
+		_sde_encoder_phys_wb_wait_for_commit_done(phys_enc, true);
 
 	if (!phys_enc->hw_ctl || !phys_enc->parent ||
 			!phys_enc->sde_kms || !wb_enc->fb_disable) {
@@ -1588,11 +1629,14 @@ static void sde_encoder_phys_wb_disable(struct sde_encoder_phys *phys_enc)
 		goto exit;
 	}
 
-	/* avoid reset frame for CWB */
 	if (phys_enc->in_clone_mode) {
 		_sde_encoder_phys_wb_setup_cwb(phys_enc, false);
 		_sde_encoder_phys_wb_update_cwb_flush(phys_enc, false);
-		phys_enc->in_clone_mode = false;
+		phys_enc->enable_state = SDE_ENC_DISABLING;
+
+		if (wb_enc->crtc->state->active)
+			return;
+
 		goto exit;
 	}
 
@@ -1625,24 +1669,7 @@ static void sde_encoder_phys_wb_disable(struct sde_encoder_phys *phys_enc)
 	sde_encoder_phys_wb_irq_ctrl(phys_enc, false);
 
 exit:
-	/*
-	 * frame count and kickoff count are only used for debug purpose. Frame
-	 * count can be more than kickoff count at the end of disable call due
-	 * to extra frame_done wait. It does not cause any issue because
-	 * frame_done wait is based on retire_fence count. Leaving these
-	 * counters for debugging purpose.
-	 */
-	if (wb_enc->frame_count != wb_enc->kickoff_count) {
-		SDE_EVT32(DRMID(phys_enc->parent), WBID(wb_enc),
-			wb_enc->kickoff_count, wb_enc->frame_count,
-			phys_enc->in_clone_mode);
-		wb_enc->frame_count = wb_enc->kickoff_count;
-	}
-
-	phys_enc->enable_state = SDE_ENC_DISABLED;
-	wb_enc->crtc = NULL;
-	phys_enc->hw_cdm = NULL;
-	phys_enc->hw_ctl = NULL;
+	_sde_encoder_phys_wb_reset_state(phys_enc);
 }
 
 /**

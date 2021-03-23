@@ -1462,7 +1462,7 @@ static ssize_t fg_sram_dfs_reg_write(struct file *file, const char __user *buf,
 {
 	int bytes_read;
 	int data;
-	int pos = 0;
+	u32 pos = 0;
 	int cnt = 0;
 	u8  *values;
 	char *kbuf;

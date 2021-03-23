@@ -7,7 +7,11 @@
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
+#ifdef CONFIG_OPLUS_CHARGER
+#include <linux/oem/power_supply.h>
+#else
 #include <linux/power_supply.h>
+#endif
 #include <linux/regmap.h>
 #include <linux/rtc.h>
 #include <linux/iio/consumer.h>
@@ -359,7 +363,10 @@ int qg_write_monotonic_soc(struct qpnp_qg *chip, int msoc)
 
 	return rc;
 }
-
+#ifdef VENDOR_EDIT
+int g_oplus_qg_ibta;
+extern bool is_batt_id_valid(struct qpnp_qg *chip);
+#endif
 int qg_get_battery_temp(struct qpnp_qg *chip, int *temp)
 {
 	int rc = 0;
@@ -411,7 +418,7 @@ int qg_get_battery_current(struct qpnp_qg *chip, int *ibat_ua)
 
 	last_ibat = sign_extend32(last_ibat, 15);
 	*ibat_ua = qg_iraw_to_ua(chip, last_ibat);
-
+	g_oplus_qg_ibta = *ibat_ua / 1000;
 release:
 	/* release */
 	qg_masked_write(chip, chip->qg_base + QG_DATA_CTL2_REG,

@@ -124,7 +124,7 @@ static int sensor_gc5035_get_dpc_data(struct cam_sensor_ctrl_t * s_ctrl)
 	    return rc;
 	}
 
-	for (i = 0; i < 19; i++) {
+	for (i = 0; i < 3; i++) {
 	    CAM_DBG(CAM_SENSOR, "gc5035SpcWrite_setting gc5035_dpcinfo[%d] = %x",i,gc5035_dpcinfo[i]);
 	}
 	if (gc5035_dpcinfo[0] == 1) {
@@ -1693,15 +1693,20 @@ int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
 		}
 	}
 
+	trace_begin("%d_%d_0x%x Power Up", s_ctrl->cci_num, s_ctrl->cci_i2c_master, s_ctrl->sensordata->slave_info.sensor_id);
 	rc = cam_sensor_core_power_up(power_info, soc_info);
 	if (rc < 0) {
 		CAM_ERR(CAM_SENSOR, "power up the core is failed:%d", rc);
+		trace_end();
 		return rc;
 	}
+	trace_end();
 
+	trace_begin("%d_%d_0x%x Init", s_ctrl->cci_num, s_ctrl->cci_i2c_master, s_ctrl->sensordata->slave_info.sensor_id);
 	rc = camera_io_init(&(s_ctrl->io_master_info));
 	if (rc < 0)
 		CAM_ERR(CAM_SENSOR, "cci_init failed: rc: %d", rc);
+	trace_end();
 
 	return rc;
 }
@@ -1777,6 +1782,7 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 			return 0;
 		}
 		if (i2c_set->is_settings_valid == 1) {
+			trace_begin("%d_%d_0x%x Apply Setting %d", s_ctrl->cci_num, s_ctrl->cci_i2c_master, s_ctrl->sensordata->slave_info.sensor_id, opcode);
 			list_for_each_entry(i2c_list,
 				&(i2c_set->list_head), list) {
 				rc = cam_sensor_i2c_modes_util(
@@ -1786,6 +1792,7 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 					CAM_ERR(CAM_SENSOR,
 						"Failed to apply settings: %d",
 						rc);
+					trace_end();
 					return rc;
 				}
                                 /******************** GC5035_OTP_EDIT_END*******************/
@@ -1798,6 +1805,7 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
                                 /******************** GC5035_OTP_EDIT_END*******************/
 
 			}
+			trace_end();
 		}
 	} else {
 		offset = req_id % MAX_PER_FRAME_ARRAY;

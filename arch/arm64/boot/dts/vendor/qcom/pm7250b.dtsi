@@ -367,6 +367,7 @@
 				qcom,ratiometric;
 				qcom,hw-settle-time = <200>;
 				qcom,pre-scaling = <1 1>;
+				qcom,lut-index = <2>;
 			};
 
 			bat_therm_400k@6a {

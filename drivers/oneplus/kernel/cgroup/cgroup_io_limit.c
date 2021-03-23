@@ -190,17 +190,10 @@ static int iolimit_enable_seq_show(struct seq_file *seq, void *p)
 static ssize_t iolimit_enable_write(struct file *filp, const char __user *ubuf,
 	size_t cnt, loff_t *ppos)
 {
-	char buf[64] = { 0 };
 	int user_set_value = 0;
 	int ret = -1;
 
-	if (cnt > sizeof(buf) - 1)
-		cnt = sizeof(buf) - 1;
-
-	if (copy_from_user(&buf[0], ubuf, cnt))
-		return -EFAULT;
-
-	ret = kstrtoint(strstrip(&buf[0]), 0, &user_set_value);
+    ret = kstrtoint_from_user(ubuf, cnt, 0, &user_set_value);
 
 	if (ret < 0)
 		return ret;

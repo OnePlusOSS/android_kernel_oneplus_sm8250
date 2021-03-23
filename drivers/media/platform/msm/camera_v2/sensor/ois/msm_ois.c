@@ -903,22 +903,22 @@ static long msm_ois_subdev_do_ioctl(
 			settings.reg_setting = memdup_user((void __user *)
 				compat_ptr(settings32.reg_setting),
 				sizeof(struct msm_camera_i2c_seq_reg_array));
-				if (IS_ERR(settings.reg_setting)) {
-					return PTR_ERR(settings.reg_setting);
-					ois_data.cfg.settings = &settings;
-					parg = &ois_data;
-					break;
-					default:
-					parg = &ois_data;
-					break;
-				}
-				break;
-		case VIDIOC_MSM_OIS_CFG:
-			pr_err("%s: invalid cmd 0x%x received\n", __func__,
-				cmd);
-			return -EINVAL;
+			if (IS_ERR(settings.reg_setting))
+				return PTR_ERR(settings.reg_setting);
+			ois_data.cfg.settings = &settings;
+			parg = &ois_data;
+			break;
+		default:
+			parg = &ois_data;
+			break;
 		}
-		rc = msm_ois_subdev_ioctl(sd, cmd, parg);
+		break;
+	case VIDIOC_MSM_OIS_CFG:
+		pr_err("%s: invalid cmd 0x%x received\n", __func__,
+				cmd);
+		return -EINVAL;
+	}
+	rc = msm_ois_subdev_ioctl(sd, cmd, parg);
 
 			return rc;
 	}

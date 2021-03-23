@@ -125,6 +125,12 @@ static inline int rwsem_is_contended(struct rw_semaphore *sem)
 	return !list_empty(&sem->wait_list);
 }
 
+#ifdef CONFIG_UXCHAIN_V2
+extern void uxchain_rwsem_wake(struct task_struct *tsk, struct rw_semaphore *sem);
+extern void uxchain_rwsem_down(struct rw_semaphore *sem);
+extern void uxchain_rwsem_up(struct rw_semaphore *sem);
+#define PREEMPT_DISABLE_RWSEM 3000000
+#endif
 /*
  * lock for reading
  */

@@ -29,6 +29,7 @@
 #include <linux/micrel_phy.h>
 #include <linux/of.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 
 /* Operation Mode Strap Override */
 #define MII_KSZPHY_OMSO				0x16
@@ -738,6 +739,7 @@ static int kszphy_resume(struct phy_device *phydev)
 
 	genphy_resume(phydev);
 
+	usleep_range(1000, 2000);
 	ret = kszphy_config_reset(phydev);
 	if (ret)
 		return ret;

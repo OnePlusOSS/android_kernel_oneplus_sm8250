@@ -144,6 +144,12 @@
 					39 01 00 00 00 00 03 F0 5A 5A
 					39 01 00 00 00 00 02 35 00
 					39 01 00 00 00 00 03 F0 A5 A5
+					/* TSP Setting */
+					39 01 00 00 00 00 03 F0 5A 5A
+					39 01 00 00 00 00 04 DF 83 00 10
+					39 01 00 00 00 00 02 B0 01
+					39 01 00 00 00 00 02 E6 01
+					39 01 00 00 00 00 03 F0 A5 A5
 					/* CASET/PASET Setting */
 					39 01 00 00 00 00 05 2A 00 00 04 37
 					39 01 00 00 00 00 05 2B 00 00 09 5F
@@ -319,6 +325,19 @@
 					/* HBM Mode OFF */
 					39 01 00 00 00 00 02 53 20
 				];
+				qcom,mdss-dsi-loading-effect-1-command = [
+					39 01 00 00 00 00 03 F0 5A 5A
+					39 01 00 00 00 00 02 B0 01
+					39 01 00 00 00 00 02 C2 27
+					39 01 00 00 00 00 03 F0 A5 A5
+
+				];
+				qcom,mdss-dsi-loading-effect-off-command = [
+					39 01 00 00 00 00 03 F0 5A 5A
+					39 01 00 00 00 00 02 B0 01
+					39 01 00 00 00 00 02 C2 07
+					39 01 00 00 00 00 03 F0 A5 A5
+				];
 
 				qcom,mdss-dsi-loading-effect-enable-command = [
 					39 01 00 00 00 00 03 F0 5A 5A
@@ -331,24 +350,6 @@
 					39 01 00 00 00 00 02 B0 01
 					39 01 00 00 00 00 02 C2 27
 					39 01 00 00 00 00 03 F0 A5 A5
-				];
-				qcom,mdss-dsi-dimming-setting-mode-1-command = [
-					39 01 00 00 00 00 03 F0 5A 5A
-					39 01 00 00 00 00 02 B0 06
-					39 01 00 00 00 00 02 B7 06
-					39 01 00 00 00 00 02 B0 05
-					39 01 00 00 00 00 02 B7 93
-					39 01 00 00 00 00 03 F0 A5 A5
-					39 01 00 00 00 00 02 53 28
-				];
-				qcom,mdss-dsi-dimming-setting-mode-0-command = [
-					39 01 00 00 00 00 03 F0 5A 5A
-					39 01 00 00 00 00 02 B0 06
-					39 01 00 00 00 00 02 B7 01
-					39 01 00 00 00 00 02 B0 05
-					39 01 00 00 00 00 02 B7 13
-					39 01 00 00 00 00 03 F0 A5 A5
-					39 01 00 00 00 00 02 53 20
 				];
 				qcom,mdss-dsi-seed-command = [
 					39 01 00 00 00 00 02 81 90
@@ -373,6 +374,21 @@
 				qcom,mdss-dsi-panel-level2-key-enable-command = [
 					39 01 00 00 00 00 03 F0 5A 5A
 				];
+				qcom,mdss-dsi-panel-gamma-change-write-command = [
+					39 01 00 00 00 00 03 F0 5A 5A
+					15 01 00 00 00 00 02 B0 AE
+					39 01 00 00 00 00 09 B9 0C E3 C4 E5 0D A3 D1 01
+					15 01 00 00 00 00 02 B0 83
+					39 01 00 00 00 00 09 B9 0E 24 1C FB 0E D4 39 0D
+					15 01 00 00 00 00 02 B0 58
+					39 01 00 00 00 00 09 B9 0F A4 81 19 10 24 99 25
+					15 01 00 00 00 00 02 B0 2D
+					39 01 00 00 00 00 09 B9 0F 94 C9 2C 10 84 F1 3A
+					15 01 00 00 00 00 02 B0 DD
+					39 01 00 00 00 00 09 B9 0E 73 C5 08 10 24 05 28
+					15 01 00 00 00 00 02 F7 0F
+					39 01 00 00 00 00 03 F0 A5 A5
+					];
 				qcom,mdss-dsi-panel-level2-key-disable-command = [
 					39 01 00 00 00 00 03 F0 A5 A5
 				];
@@ -401,14 +417,14 @@
 				qcom,mdss-dsi-panel-hbm-off-aod-on-command-state = "dsi_hs_mode";
 				qcom,mdss-dsi-loading-effect-enable-command-state  = "dsi_lp_mode";
 				qcom,mdss-dsi-loading-effect-disable-command-state  = "dsi_lp_mode";
-				qcom,mdss-dsi-dimming-setting-mode-1-command-state = "dsi_lp_mode";
-				qcom,mdss-dsi-dimming-setting-mode-0-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-loading-effect-1-command-state	= "dsi_hs_mode";
+				qcom,mdss-dsi-loading-effect-off-command-state	= "dsi_hs_mode";
 				qcom,mdss-dsi-seed-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-register-read-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-enable-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-disable-command-state = "dsi_lp_mode";
-
+				qcom,mdss-dsi-panel-gamma-change-write-command-state = "dsi_lp_mode";
 				qcom,panel-roi-alignment = <540 30 540 30 540 30>;
 				qcom,lm-split = <540 540>;
 				qcom,compression-mode = "dsc";
@@ -489,6 +505,12 @@
 					/* TE ON */
 					39 01 00 00 00 00 03 F0 5A 5A
 					39 01 00 00 00 00 02 35 00
+					39 01 00 00 00 00 03 F0 A5 A5
+					/* TSP Setting */
+					39 01 00 00 00 00 03 F0 5A 5A
+					39 01 00 00 00 00 04 DF 83 00 10
+					39 01 00 00 00 00 02 B0 01
+					39 01 00 00 00 00 02 E6 01
 					39 01 00 00 00 00 03 F0 A5 A5
 					/* CASET/PASET Setting */
 					39 01 00 00 00 00 05 2A 00 00 04 37
@@ -665,6 +687,19 @@
 					/* HBM Mode OFF */
 					39 01 00 00 00 00 02 53 20
 				];
+				qcom,mdss-dsi-loading-effect-1-command = [
+					39 01 00 00 00 00 03 F0 5A 5A
+					39 01 00 00 00 00 02 B0 01
+					39 01 00 00 00 00 02 C2 27
+					39 01 00 00 00 00 03 F0 A5 A5
+
+				];
+				qcom,mdss-dsi-loading-effect-off-command = [
+					39 01 00 00 00 00 03 F0 5A 5A
+					39 01 00 00 00 00 02 B0 01
+					39 01 00 00 00 00 02 C2 07
+					39 01 00 00 00 00 03 F0 A5 A5
+				];
 
 				qcom,mdss-dsi-loading-effect-enable-command = [
 					39 01 00 00 00 00 03 F0 5A 5A
@@ -677,24 +712,6 @@
 					39 01 00 00 00 00 02 B0 01
 					39 01 00 00 00 00 02 C2 27
 					39 01 00 00 00 00 03 F0 A5 A5
-				];
-				qcom,mdss-dsi-dimming-setting-mode-1-command = [
-					39 01 00 00 00 00 03 F0 5A 5A
-					39 01 00 00 00 00 02 B0 06
-					39 01 00 00 00 00 02 B7 06
-					39 01 00 00 00 00 02 B0 05
-					39 01 00 00 00 00 02 B7 93
-					39 01 00 00 00 00 03 F0 A5 A5
-					39 01 00 00 00 00 02 53 28
-				];
-				qcom,mdss-dsi-dimming-setting-mode-0-command = [
-					39 01 00 00 00 00 03 F0 5A 5A
-					39 01 00 00 00 00 02 B0 06
-					39 01 00 00 00 00 02 B7 01
-					39 01 00 00 00 00 02 B0 05
-					39 01 00 00 00 00 02 B7 13
-					39 01 00 00 00 00 03 F0 A5 A5
-					39 01 00 00 00 00 02 53 20
 				];
 				qcom,mdss-dsi-seed-command = [
 					39 01 00 00 00 00 02 81 90
@@ -719,10 +736,24 @@
 				qcom,mdss-dsi-panel-level2-key-enable-command = [
 					39 01 00 00 00 00 03 F0 5A 5A
 				];
+				qcom,mdss-dsi-panel-gamma-change-write-command = [
+					39 01 00 00 00 00 03 F0 5A 5A
+					15 01 00 00 00 00 02 B0 AE
+					39 01 00 00 00 00 09 B9 0C E3 C4 E5 0D A3 D1 01
+					15 01 00 00 00 00 02 B0 83
+					39 01 00 00 00 00 09 B9 0E 24 1C FB 0E D4 39 0D
+					15 01 00 00 00 00 02 B0 58
+					39 01 00 00 00 00 09 B9 0F A4 81 19 10 24 99 25
+					15 01 00 00 00 00 02 B0 2D
+					39 01 00 00 00 00 09 B9 0F 94 C9 2C 10 84 F1 3A
+					15 01 00 00 00 00 02 B0 DD
+					39 01 00 00 00 00 09 B9 0E 73 C5 08 10 24 05 28
+					15 01 00 00 00 00 02 F7 0F
+					39 01 00 00 00 00 03 F0 A5 A5
+					];
 				qcom,mdss-dsi-panel-level2-key-disable-command = [
 					39 01 00 00 00 00 03 F0 A5 A5
 				];
-
 				qcom,mdss-dsi-timing-switch-command-state = "dsi_hs_mode";
 				qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-off-command-state = "dsi_lp_mode";
@@ -747,14 +778,14 @@
 				qcom,mdss-dsi-panel-hbm-off-aod-on-command-state = "dsi_hs_mode";
 				qcom,mdss-dsi-loading-effect-enable-command-state  = "dsi_lp_mode";
 				qcom,mdss-dsi-loading-effect-disable-command-state  = "dsi_lp_mode";
-				qcom,mdss-dsi-dimming-setting-mode-1-command-state = "dsi_lp_mode";
-				qcom,mdss-dsi-dimming-setting-mode-0-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-loading-effect-1-command-state	= "dsi_hs_mode";
+				qcom,mdss-dsi-loading-effect-off-command-state	= "dsi_hs_mode";
 				qcom,mdss-dsi-seed-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-register-read-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-enable-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-panel-level2-key-disable-command-state = "dsi_lp_mode";
-
+				qcom,mdss-dsi-panel-gamma-change-write-command-state = "dsi_lp_mode";
 				qcom,panel-roi-alignment = <540 30 540 30 540 30>;
 				qcom,lm-split = <540 540>;
 				qcom,compression-mode = "dsc";

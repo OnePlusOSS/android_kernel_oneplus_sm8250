@@ -321,6 +321,7 @@ static const char * const qpnp_poff_reason[] = {
 	[39] = "Triggered by (OTST3 Over-temperature Stage 3)",
 };
 
+static bool is_black_screen;
 static int
 qpnp_pon_masked_write(struct qpnp_pon *pon, u16 addr, u8 mask, u8 val)
 {
@@ -971,6 +972,8 @@ static int qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 #endif
 		} else {
 			pr_info("Power-Key DOWN\n");
+			is_black_screen =  dsi_panel_backlight_get() != 0 ?
+					   false : true;
 			schedule_delayed_work(&pon->press_work, msecs_to_jiffies(4000));
 			schedule_delayed_work(&pon->press_pwr, msecs_to_jiffies(6000));
 #ifdef CONFIG_KEY_FLUSH
@@ -991,7 +994,7 @@ static int qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 		return -EINVAL;
 	}
 
-	pr_debug("PMIC input: code=%d, status=0x%02X\n", cfg->key_code,
+	pr_err("PMIC input: code=%d, status=0x%02X\n", cfg->key_code,
 		pon_rt_sts);
 	key_status = pon_rt_sts & pon_rt_bit;
 
@@ -1216,7 +1219,9 @@ static void up_work_func(struct work_struct *work)
 
 static void press_work_func(struct work_struct *work)
 {
-	int display_bl, boot_mode;
+	int boot_mode;
+	bool is_black_screen_now;
+	bool black_screen_detected = false;
 	int rc;
 	uint pon_rt_sts = 0;
 	struct qpnp_pon_config *cfg;
@@ -1237,12 +1242,19 @@ static void press_work_func(struct work_struct *work)
 	if ((pon_rt_sts & QPNP_PON_KPDPWR_N_SET) == 1) {
 		qpnp_powerkey_state_check(pon, 1);
 		dev_err(pon->dev, "after 4s Power-Key is still DOWN\n");
-		display_bl = dsi_panel_backlight_get();
+		is_black_screen_now =  dsi_panel_backlight_get() != 0 ? false : true;
+		if (is_black_screen == true && is_black_screen_now == true)
+			black_screen_detected = true;
+		pr_info("bl_screen=%d bl_screen_now=%d, bl_screen_det=%d\n",
+			 is_black_screen, is_black_screen_now, black_screen_detected);
 		boot_mode = get_boot_mode();
-		if (display_bl == 0 && boot_mode == MSM_BOOT_MODE_NORMAL) {
+		if (black_screen_detected == true && boot_mode == MSM_BOOT_MODE_NORMAL) {
+			pr_info(" ============== BLACK SCREEN DETECTED ==========");
 			oem_force_minidump_mode();
 			get_init_sched_info();
 			show_state_filter(TASK_UNINTERRUPTIBLE);
+			dump_runqueue();
+			dump_workqueue();
 			send_sig_to_get_trace("system_server");
 			send_sig_to_get_tombstone("surfaceflinger");
 			ksys_sync();
@@ -2828,6 +2840,8 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 	}
 	if (to_spmi_device(dev->parent)->usid == 10)
 		op_pm8998_regmap_register(pon->regmap);
+	if (to_spmi_device(dev->parent)->usid == 0)
+		op_pm8150_regmap_register(pon->regmap);
 	/* Get the total number of pon configurations and regulators */
 	for_each_available_child_of_node(dev->of_node, node) {
 		if (of_find_property(node, "regulator-name", NULL)) {

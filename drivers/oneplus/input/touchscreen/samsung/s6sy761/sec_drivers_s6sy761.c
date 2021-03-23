@@ -1000,7 +1000,8 @@ static fw_check_state sec_fw_check(void *chip_data, struct resolution_info *reso
 
 static fw_update_state sec_fw_update(void *chip_data, const struct firmware *fw, bool force)
 {
-	int i = 0, ret = 0;
+	u32 i = 0;
+	int ret = 0;
 	u8 buf[4] = {0};
 	u8 *fd = NULL;
 	uint8_t cal_status = 0;
@@ -1070,7 +1071,7 @@ static fw_update_state sec_fw_update(void *chip_data, const struct firmware *fw,
 	fd += sizeof(sec_fw_header);
 	for (i = 0; i < fw_hd->num_chunk; i++) {
 		fw_ch = (sec_fw_chunk *)fd;
-		TPD_INFO("update %d chunk(addr: 0x%08x, size: 0x%08x)\n", i, fw_ch->addr, fw_ch->size);
+		TPD_INFO("update %u chunk(addr: 0x%08x, size: 0x%08x)\n", i, fw_ch->addr, fw_ch->size);
 		if (fw_ch->signature != SEC_FW_CHUNK_SIGN) {
 			TPD_INFO("%s: firmware chunk error(0x%08x)\n", __func__, fw_ch->signature);
 			return FW_UPDATE_ERROR;

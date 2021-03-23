@@ -501,6 +501,7 @@ struct usbpd {
 	u8			get_battery_status_db;
 	bool			send_get_battery_status;
 	u32			battery_sts_dobj;
+	bool			typec_analog_audio_connected;
 };
 
 static struct usbpd *pd_p;
@@ -737,6 +738,7 @@ static inline void pd_reset_protocol(struct usbpd *pd)
 	memset(pd->rx_msgid, -1, sizeof(pd->rx_msgid));
 	memset(pd->tx_msgid, 0, sizeof(pd->tx_msgid));
 	pd->send_request = false;
+	pd->send_get_status = false;
 	pd->send_pr_swap = false;
 	pd->send_dr_swap = false;
 }
@@ -1643,12 +1645,19 @@ static void handle_vdm_rx(struct usbpd *pd, struct rx_msg *rx_msg)
 //						0, SOP_MSG);
 //				if (ret)
 //					usbpd_set_state(pd, PE_SEND_SOFT_RESET);
-//			} else {
+			if ((cmd == USBPD_SVDM_DISCOVER_SVIDS)
+				&& (pd->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH)) {
+				usbpd_info(&pd->dev, "not supported send svid.");
+				ret = pd_send_msg(pd, MSG_NOT_SUPPORTED, NULL,
+						0, SOP_MSG);
+				if (ret)
+					usbpd_set_state(pd, PE_SEND_SOFT_RESET);
+			} else {
 				usbpd_send_svdm(pd, svid, cmd,
 						SVDM_CMD_TYPE_RESP_NAK,
 						SVDM_HDR_OBJ_POS(vdm_hdr),
 						NULL, 0);
-//			}
+			}
 		}
 		break;
 
@@ -2553,9 +2562,21 @@ static void handle_state_src_ready(struct usbpd *pd, struct rx_msg *rx_msg)
 static void enter_state_hard_reset(struct usbpd *pd)
 {
 	union power_supply_propval val = {0};
+	bool disconnect_pd;
+	int ret;
+
+	ret = power_supply_get_property(pd->usb_psy,
+			POWER_SUPPLY_PROP_DISCONNECT_PD, &val);
+	if (ret) {
+		usbpd_err(&pd->dev, "Unable to read USB DISCONNECT_PD: %d\n", ret);
+		disconnect_pd = false;
+	} else {
+		disconnect_pd = val.intval;
+	}
 
 	/* are we still connected? */
-	if (pd->typec_mode == POWER_SUPPLY_TYPEC_NONE) {
+	if (pd->typec_mode == POWER_SUPPLY_TYPEC_NONE || disconnect_pd) {
+		pd->typec_mode = POWER_SUPPLY_TYPEC_NONE;
 		pd->current_pr = PR_NONE;
 		kick_sm(pd, 0);
 		return;
@@ -3595,6 +3616,7 @@ static void handle_disconnect(struct usbpd *pd)
 	pd->forced_pr = POWER_SUPPLY_TYPEC_PR_NONE;
 
 	pd->current_state = PE_UNKNOWN;
+	pd_reset_protocol(pd);
 
 	kobject_uevent(&pd->dev.kobj, KOBJ_CHANGE);
 	typec_unregister_partner(pd->partner);
@@ -3661,6 +3683,17 @@ static void usbpd_sm(struct work_struct *w)
 	usbpd_dbg(&pd->dev, "handle state %s\n",
 			usbpd_state_strings[pd->current_state]);
 
+	if (pd->typec_mode == POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER) {
+		if (!pd->partner) {
+			memset(&pd->partner_identity, 0,
+					sizeof(pd->partner_identity));
+			pd->partner_desc.usb_pd = false;
+			pd->partner_desc.accessory = TYPEC_ACCESSORY_AUDIO;
+			pd->partner = typec_register_partner(pd->typec_port,
+							&pd->partner_desc);
+			pd->typec_analog_audio_connected = true;
+		}
+	}
 	hrtimer_cancel(&pd->timer);
 	pd->sm_queued = false;
 
@@ -3674,9 +3707,13 @@ static void usbpd_sm(struct work_struct *w)
 	/* Disconnect? */
 	if (pd->current_pr == PR_NONE) {
 		if (pd->current_state == PE_UNKNOWN &&
-				pd->current_dr == DR_NONE)
-			goto sm_done;
+				pd->current_dr == DR_NONE) {
+			if (!pd->typec_analog_audio_connected &&
+					pd->partner)
+				handle_disconnect(pd);
 
+			goto sm_done;
+		}
 		handle_disconnect(pd);
 		goto sm_done;
 	}
@@ -3746,6 +3783,7 @@ static int usbpd_process_typec_mode(struct usbpd *pd,
 		}
 
 		pd->current_pr = PR_NONE;
+		pd->typec_analog_audio_connected = false;
 		break;
 
 	/* Sink states */
@@ -3822,6 +3860,15 @@ static int psy_changed(struct notifier_block *nb, unsigned long evt, void *ptr)
 	int ret;
 
 	if (ptr != pd->usb_psy || evt != PSY_EVENT_PROP_CHANGED)
+		return 0;
+
+	ret = power_supply_get_property(pd->usb_psy,
+			POWER_SUPPLY_PROP_DISCONNECT_PD, &val);
+	if (ret) {
+		usbpd_err(&pd->dev, "Unable to read USB DISCONNECT_PD: %d\n", ret);
+		return ret;
+	}
+	if (val.intval)
 		return 0;
 
 	ret = power_supply_get_property(pd->usb_psy,

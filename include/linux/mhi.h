@@ -636,7 +636,9 @@ int mhi_device_get_sync(struct mhi_device *mhi_dev, int vote);
  * -ETIMEDOUT is device faled to move to M0 before @timeout_us elapsed
  * -EIO if the MHI state is one of the ERROR states.
  */
-int mhi_device_get_sync_atomic(struct mhi_device *mhi_dev, int timeout_us);
+int mhi_device_get_sync_atomic(struct mhi_device *mhi_dev,
+			       int timeout_us,
+			       bool in_panic);
 
 /**
  * mhi_device_put - re-enable low power modes
@@ -838,6 +840,12 @@ int mhi_get_remote_time(struct mhi_device *mhi_dev,
 int mhi_get_remote_time_sync(struct mhi_device *mhi_dev,
 			     u64 *t_host,
 			     u64 *t_dev);
+
+/**
+ * mhi_get_exec_env - Return execution environment of the device
+ * @mhi_cntrl: MHI controller
+ */
+enum mhi_ee mhi_get_exec_env(struct mhi_controller *mhi_cntrl);
 
 /**
  * mhi_get_mhi_state - Return MHI state of device

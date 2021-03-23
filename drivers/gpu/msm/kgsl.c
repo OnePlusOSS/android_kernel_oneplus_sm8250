@@ -2808,7 +2808,7 @@ long kgsl_ioctl_gpuobj_import(struct kgsl_device_private *dev_priv,
 	return 0;
 
 unmap:
-	if (param->type == KGSL_USER_MEM_TYPE_DMABUF) {
+	if (kgsl_memdesc_usermem_type(&entry->memdesc) == KGSL_MEM_ENTRY_ION) {
 		kgsl_destroy_ion(entry->priv_data);
 		entry->memdesc.sgt = NULL;
 	}
@@ -3122,7 +3122,7 @@ long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 	return result;
 
 error_attach:
-	switch (memtype) {
+	switch (kgsl_memdesc_usermem_type(&entry->memdesc)) {
 	case KGSL_MEM_ENTRY_ION:
 		kgsl_destroy_ion(entry->priv_data);
 		entry->memdesc.sgt = NULL;
@@ -4481,6 +4481,8 @@ kgsl_mmap_memstore(struct kgsl_device *device, struct vm_area_struct *vma)
 	if (vma->vm_flags & VM_WRITE)
 		return -EPERM;
 
+	vma->vm_flags &= ~VM_MAYWRITE;
+
 	if (memdesc->size  !=  vma_size) {
 		dev_err(device->dev,
 			     "memstore bad size: %d should be %llu\n",
@@ -4823,23 +4825,25 @@ static void kgsl_send_uevent_notify(struct kgsl_device *desc, char *comm,
 			unsigned long len, unsigned long total_vm,
 			unsigned long largest_gap_cpu, unsigned long largest_gap_gpu)
 {
-	char *envp[6];
+	char *envp[7];
+	char *title = "GPU_VM";
 
 	if (!desc)
 		return;
-
-	envp[0] = kasprintf(GFP_KERNEL, "COMM=%s", comm);
-	envp[1] = kasprintf(GFP_KERNEL, "LEN=%lu", len);
-	envp[2] = kasprintf(GFP_KERNEL, "TOTAL_VM=%lu", total_vm);
-	envp[3] = kasprintf(GFP_KERNEL, "LARGEST_GAP_CPU=%lu", largest_gap_cpu);
-	envp[4] = kasprintf(GFP_KERNEL, "LARGEST_GAP_GPU=%lu", largest_gap_gpu);
-	envp[5] = NULL;
+	envp[0] = kasprintf(GFP_KERNEL, "title=%s", title);
+	envp[1] = kasprintf(GFP_KERNEL, "COMM=%s", comm);
+	envp[2] = kasprintf(GFP_KERNEL, "LEN=%lu", len);
+	envp[3] = kasprintf(GFP_KERNEL, "TOTAL_VM=%lu", total_vm);
+	envp[4] = kasprintf(GFP_KERNEL, "LARGEST_GAP_CPU=%lu", largest_gap_cpu);
+	envp[5] = kasprintf(GFP_KERNEL, "LARGEST_GAP_GPU=%lu", largest_gap_gpu);
+	envp[6] = NULL;
 	kobject_uevent_env(&desc->dev->kobj, KOBJ_CHANGE, envp);
-	kfree(envp[4]);
-	kfree(envp[3]);
-	kfree(envp[2]);
-	kfree(envp[1]);
 	kfree(envp[0]);
+	kfree(envp[1]);
+	kfree(envp[2]);
+	kfree(envp[3]);
+	kfree(envp[4]);
+	kfree(envp[5]);
 }
 
 static int current_pid = -1;
@@ -5220,9 +5224,9 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 	dma_set_max_seg_size(device->dev, KGSL_DMA_BIT_MASK);
 
 	/* Initialize the memory pools */
-	kgsl_init_page_pools(device->pdev);
+	kgsl_init_page_pools(device);
 
-	status = kgsl_reclaim_init();
+	status = kgsl_reclaim_init(device);
 	if (status)
 		goto error_close_mmu;
 

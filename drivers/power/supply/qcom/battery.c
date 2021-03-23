@@ -11,7 +11,11 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
+#ifdef CONFIG_OPLUS_CHARGER
+#include <linux/oem/power_supply.h>
+#else
 #include <linux/power_supply.h>
+#endif
 #include <linux/interrupt.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
@@ -194,7 +198,8 @@ static int cp_get_parallel_mode(struct pl_data *chip, int mode)
 
 static int get_adapter_icl_based_ilim(struct pl_data *chip)
 {
-	int main_icl, adapter_icl = -EINVAL, rc = -EINVAL, final_icl = -EINVAL;
+	int main_icl = -EINVAL, adapter_icl = -EINVAL, final_icl = -EINVAL;
+	int rc = -EINVAL;
 	union power_supply_propval pval = {0, };
 
 	rc = power_supply_get_property(chip->usb_psy,

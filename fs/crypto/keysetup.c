@@ -489,7 +489,6 @@ static void put_crypt_info(struct fscrypt_info *ci)
 #endif
 		}
 	}
-
 	key = ci->ci_master_key;
 	if (key) {
 		struct fscrypt_master_key *mk = key->payload.data[0];

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _IPA_PM_H_
@@ -13,7 +13,7 @@
 #define IPA_PM_MAX_EX_CL 64
 #define IPA_PM_THRESHOLD_MAX 5
 #define IPA_PM_EXCEPTION_MAX 5
-#define IPA_PM_DEFERRED_TIMEOUT 10
+#define IPA_PM_DEFERRED_TIMEOUT 100
 
 /*
  * ipa_pm group names
@@ -101,6 +101,8 @@ int ipa_pm_deactivate_all_deferred(void);
 int ipa_pm_stat(char *buf, int size);
 int ipa_pm_exceptions_stat(char *buf, int size);
 void ipa_pm_set_clock_index(int index);
+int ipa_pm_add_dummy_clients(s8 power_plan);
+int ipa_pm_remove_dummy_clients(void);
 
 #else
 
@@ -173,6 +175,16 @@ static inline int ipa_pm_stat(char *buf, int size)
 }
 
 static inline int ipa_pm_exceptions_stat(char *buf, int size)
+{
+	return -EPERM;
+}
+
+static inline int ipa_pm_add_dummy_clients(s8 power_plan);
+{
+	return -EPERM;
+}
+
+static inline int ipa_pm_remove_dummy_clients(void);
 {
 	return -EPERM;
 }

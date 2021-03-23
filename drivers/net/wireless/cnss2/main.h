@@ -11,7 +11,13 @@
 #include <linux/pm_qos.h>
 #include <net/cnss2.h>
 #include <soc/qcom/memory_dump.h>
+#if defined(CONFIG_MSM_SUBSYSTEM_RESTART) || defined(CONFIG_SUBSYSTEM_RAMDUMP)
+#include <soc/qcom/ramdump.h>
+#endif
+#ifdef CONFIG_MSM_SUBSYSTEM_RESTART
+#include <soc/qcom/subsystem_notif.h>
 #include <soc/qcom/subsystem_restart.h>
+#endif
 
 #include "qmi.h"
 
@@ -79,14 +85,20 @@ struct cnss_pinctrl_info {
 	struct pinctrl_state *wlan_en_sleep;
 };
 
+#ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 struct cnss_subsys_info {
 	struct subsys_device *subsys_device;
 	struct subsys_desc subsys_desc;
 	void *subsys_handle;
 };
+#else
+struct cnss_subsys_info {
+	void *subsys_handle;
+};
+#endif
 
 struct cnss_ramdump_info {
-	struct ramdump_device *ramdump_dev;
+	void *ramdump_dev;
 	unsigned long ramdump_size;
 	void *ramdump_va;
 	phys_addr_t ramdump_pa;
@@ -110,7 +122,7 @@ struct cnss_dump_data {
 };
 
 struct cnss_ramdump_info_v2 {
-	struct ramdump_device *ramdump_dev;
+	void *ramdump_dev;
 	unsigned long ramdump_size;
 	void *dump_data_vaddr;
 	u8 dump_data_valid;
@@ -227,6 +239,7 @@ enum cnss_driver_state {
 	CNSS_IMS_CONNECTED,
 	CNSS_IN_SUSPEND_RESUME,
 	CNSS_IN_REBOOT,
+	CNSS_QMI_DEL_SERVER,
 };
 
 struct cnss_recovery_data {
@@ -331,17 +344,20 @@ struct cnss_plat_data {
 	struct cnss_bus_bw_info bus_bw_info;
 	struct notifier_block modem_nb;
 	struct notifier_block reboot_nb;
+	struct notifier_block panic_nb;
 	struct cnss_platform_cap cap;
 	struct pm_qos_request qos_request;
 	struct cnss_device_version device_version;
 	unsigned long device_id;
 	enum cnss_driver_status driver_status;
 	u32 recovery_count;
+	u8 recovery_enabled;
 	unsigned long driver_state;
 	struct list_head event_list;
 	spinlock_t event_lock; /* spinlock for driver work event handling */
 	struct work_struct event_work;
 	struct workqueue_struct *event_wq;
+	struct work_struct recovery_work;
 	struct qmi_handle qmi_wlfw;
 	struct wlfw_rf_chip_info chip_info;
 	struct wlfw_rf_board_info board_info;
@@ -436,6 +452,8 @@ int cnss_register_subsys(struct cnss_plat_data *plat_priv);
 void cnss_unregister_subsys(struct cnss_plat_data *plat_priv);
 int cnss_register_ramdump(struct cnss_plat_data *plat_priv);
 void cnss_unregister_ramdump(struct cnss_plat_data *plat_priv);
+int cnss_do_ramdump(struct cnss_plat_data *plat_priv);
+int cnss_do_elf_ramdump(struct cnss_plat_data *plat_priv);
 void cnss_set_pin_connect_status(struct cnss_plat_data *plat_priv);
 int cnss_get_cpr_info(struct cnss_plat_data *plat_priv);
 int cnss_update_cpr_info(struct cnss_plat_data *plat_priv);

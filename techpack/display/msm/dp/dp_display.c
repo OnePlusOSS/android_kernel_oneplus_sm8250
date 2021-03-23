@@ -712,7 +712,7 @@ static void dp_display_send_hpd_event(struct dp_display_private *dp)
 	snprintf(pattern, HPD_STRING_SIZE, "pattern=%d",
 		dp->link->test_video.test_video_pattern);
 
-	DP_DEBUG("[%s]:[%s] [%s] [%s]\n", name, status, bpp, pattern);
+	DP_INFO("[%s]:[%s] [%s] [%s]\n", name, status, bpp, pattern);
 	envp[0] = name;
 	envp[1] = status;
 	envp[2] = bpp;
@@ -1164,6 +1164,12 @@ static void dp_display_stream_disable(struct dp_display_private *dp,
 	if (!dp->active_stream_cnt) {
 		DP_ERR("invalid active_stream_cnt (%d)\n",
 				dp->active_stream_cnt);
+		return;
+	}
+
+	if (dp_panel->stream_id == DP_STREAM_MAX ||
+			!dp->active_panels[dp_panel->stream_id]) {
+		DP_ERR("panel is already disabled\n");
 		return;
 	}
 
@@ -2309,7 +2315,6 @@ static enum drm_mode_status dp_display_validate_mode(
 		const struct msm_resource_caps_info *avail_res)
 {
 	struct dp_display_private *dp;
-	struct drm_dp_link *link_info;
 	u32 mode_rate_khz = 0, supported_rate_khz = 0, mode_bpp = 0;
 	struct dp_panel *dp_panel;
 	struct dp_debug *debug;
@@ -2338,8 +2343,6 @@ static enum drm_mode_status dp_display_validate_mode(
 		goto end;
 	}
 
-	link_info = &dp->panel->link_info;
-
 	debug = dp->debug;
 	if (!debug)
 		goto end;
@@ -2352,7 +2355,7 @@ static enum drm_mode_status dp_display_validate_mode(
 
 	mode_rate_khz = mode->clock * mode_bpp;
 	rate = drm_dp_bw_code_to_link_rate(dp->link->link_params.bw_code);
-	supported_rate_khz = link_info->num_lanes * rate * 8;
+	supported_rate_khz = dp->link->link_params.lane_count * rate * 8;
 	tmds_max_clock = dp_panel->connector->display_info.max_tmds_clock;
 
 	if (mode_rate_khz > supported_rate_khz) {

@@ -1,0 +1,7 @@
+/*this is for one project different hw version */
+&qupv3_se1_i2c {
+	nq@28 {
+		qcom,nq-ven = <&tlmm 109 0x00>;
+	};
+};
+

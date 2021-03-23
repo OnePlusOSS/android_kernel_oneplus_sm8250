@@ -787,6 +787,7 @@ static void wlchg_reset_variables(struct op_chg_chip *chip)
 	chg_status->wait_cep_stable = false;
 	chg_status->geted_tx_id = false;
 	chg_status->quiet_mode_enabled = false;
+	chg_status->quiet_mode_init = false;
 	chg_status->get_adapter_err = false;
 	chg_status->epp_working = false;
 	chg_status->adapter_msg_send = false;
@@ -1646,12 +1647,14 @@ static long wlchg_dev_ioctl(struct file *filp, unsigned int cmd,
 		break;
 	case WLCHG_NOTIFY_QUIET_MODE:
 		chg_status->quiet_mode_enabled = true;
+		chg_status->quiet_mode_init = true;
 		break;
 	case WLCHG_NOTIFY_QUIET_MODE_ERR:
 		chg_err("set quiet mode error\n");
 		break;
 	case WLCHG_NOTIFY_NORMAL_MODE:
 		chg_status->quiet_mode_enabled = false;
+		chg_status->quiet_mode_init = true;
 		break;
 	case WLCHG_NOTIFY_NORMAL_MODE_ERR:
 		chg_err("set normal mode error\n");
@@ -3108,7 +3111,8 @@ static int wlchg_charge_status_process(struct op_chg_chip *chip)
 			return 0;
 		} else {
 			wlchg_status_abnormal = false;
-			if ((chip->quiet_mode_need != chg_status->quiet_mode_enabled) &&
+			if (((chip->quiet_mode_need != chg_status->quiet_mode_enabled) ||
+			     !chg_status->quiet_mode_init) &&
 			    ((chg_status->adapter_type == ADAPTER_TYPE_FASTCHAGE_DASH) ||
 			     (chg_status->adapter_type == ADAPTER_TYPE_FASTCHAGE_WARP)) &&
 			    (atomic_read(&chip->hb_count) > 0) && !chg_status->charge_done) {

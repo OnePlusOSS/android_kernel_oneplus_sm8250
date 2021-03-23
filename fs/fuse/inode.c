@@ -922,7 +922,7 @@ static void process_init_reply(struct fuse_conn *fc, struct fuse_req *req)
 				/** an ugly way to determine FuseDaemon by writeback_cache
 				 *  since currently only FuseDaemon enable WBC
 				 */
-				fc->shortcircuit_io = shortcircuit ? 1 : 0;
+				fc->shortcircuit = shortcircuit ? 1 : 0;
 				pr_info("fuse sct flag: %d\n", shortcircuit);
 			}
 			if (arg->flags & FUSE_PARALLEL_DIROPS)

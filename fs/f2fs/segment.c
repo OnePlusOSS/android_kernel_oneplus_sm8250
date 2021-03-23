@@ -16,8 +16,10 @@
 #include <linux/freezer.h>
 #include <linux/sched/signal.h>
 #ifdef CONFIG_F2FS_OF2FS
+/* [ASTI-147]: trigger need_SSR GC base on bigdata stats */
 #include <linux/random.h>
 
+/* [ASTI-147]: add for oDiscard */
 int f2fs_trim_status;
 int f2fs_odiscard_enable = true;
 #endif
@@ -36,6 +38,7 @@ static struct kmem_cache *discard_cmd_slab;
 static struct kmem_cache *sit_entry_set_slab;
 static struct kmem_cache *inmem_entry_slab;
 #ifdef CONFIG_F2FS_OF2FS
+/* [ASTI-147]: add for oDiscard */
 static struct discard_cmd *__create_discard_cmd_of2fs(struct f2fs_sb_info *sbi,
 		struct block_device *bdev, block_t lstart,
 		block_t start, block_t len);
@@ -187,7 +190,7 @@ bool f2fs_need_SSR(struct f2fs_sb_info *sbi)
 	int dent_secs = get_blocktype_secs(sbi, F2FS_DIRTY_DENTS);
 	int imeta_secs = get_blocktype_secs(sbi, F2FS_DIRTY_IMETA);
 
-	if (test_opt(sbi, LFS))
+	if (f2fs_lfs_mode(sbi))
 		return false;
 	if (sbi->gc_mode == GC_URGENT)
 		return true;
@@ -200,6 +203,7 @@ bool f2fs_need_SSR(struct f2fs_sb_info *sbi)
 
 
 #ifdef CONFIG_F2FS_OF2FS
+/* [ASTI-147]: add code to optimize gc */
 block_t of2fs_seg_freefrag(struct f2fs_sb_info *sbi, unsigned int segno,
 				block_t *blocks, unsigned int n)
 {
@@ -288,7 +292,8 @@ retry:
 								LOOKUP_NODE);
 			if (err) {
 				if (err == -ENOMEM) {
-					congestion_wait(BLK_RW_ASYNC, HZ/50);
+					congestion_wait(BLK_RW_ASYNC,
+							DEFAULT_IO_TIMEOUT);
 					cond_resched();
 					goto retry;
 				}
@@ -355,7 +360,7 @@ next:
 skip:
 		iput(inode);
 	}
-	congestion_wait(BLK_RW_ASYNC, HZ/50);
+	congestion_wait(BLK_RW_ASYNC, DEFAULT_IO_TIMEOUT);
 	cond_resched();
 	if (gc_failure) {
 		if (++looped >= count)
@@ -458,7 +463,8 @@ retry:
 			err = f2fs_do_write_data_page(&fio);
 			if (err) {
 				if (err == -ENOMEM) {
-					congestion_wait(BLK_RW_ASYNC, HZ/50);
+					congestion_wait(BLK_RW_ASYNC,
+							DEFAULT_IO_TIMEOUT);
 					cond_resched();
 					goto retry;
 				}
@@ -525,6 +531,9 @@ int f2fs_commit_inmem_pages(struct inode *inode)
 }
 
 #ifdef CONFIG_F2FS_OF2FS
+/* [ASTI-147]: add need_SSR GC */
+/* [ASTI-147]: do FG GC in GC thread */
+/* [ASTI-147]: trigger need_SSR GC base on bigdata stats */
 #define DEF_DIRTY_STAT_INTERVAL 15 /* 15 secs */
 static inline bool of2fs_need_balance_dirty(struct f2fs_sb_info *sbi)
 {
@@ -649,12 +658,13 @@ void f2fs_balance_fs(struct f2fs_sb_info *sbi, bool need)
 
 	/* balance_fs_bg is able to be pending */
 	if (need && excess_cached_nats(sbi))
-		f2fs_balance_fs_bg(sbi);
+		f2fs_balance_fs_bg(sbi, false);
 
 	if (!f2fs_is_checkpoint_ready(sbi))
 		return;
 
 #ifdef CONFIG_F2FS_OF2FS
+	/* [ASTI-147]: add need_SSR GC */
 	of2fs_balance_fs(sbi);
 #else
 	/*
@@ -669,7 +679,7 @@ void f2fs_balance_fs(struct f2fs_sb_info *sbi, bool need)
 #endif
 }
 
-void f2fs_balance_fs_bg(struct f2fs_sb_info *sbi)
+void f2fs_balance_fs_bg(struct f2fs_sb_info *sbi, bool from_bg)
 {
 	if (unlikely(is_sbi_flag_set(sbi, SBI_POR_DOING)))
 		return;
@@ -698,7 +708,7 @@ void f2fs_balance_fs_bg(struct f2fs_sb_info *sbi)
 			excess_dirty_nats(sbi) ||
 			excess_dirty_nodes(sbi) ||
 			f2fs_time_over(sbi, CP_TIME)) {
-		if (test_opt(sbi, DATA_FLUSH)) {
+		if (test_opt(sbi, DATA_FLUSH) && from_bg) {
 			struct blk_plug plug;
 
 			mutex_lock(&sbi->flush_lock);
@@ -1145,6 +1155,7 @@ static struct discard_cmd *__attach_discard_cmd(struct f2fs_sb_info *sbi,
 	struct discard_cmd *dc;
 
 #ifdef CONFIG_F2FS_OF2FS
+	/* [ASTI-147]: add for oDiscard */
 	if (f2fs_odiscard_enable)
 		dc = __create_discard_cmd_of2fs(sbi, bdev, lstart, start, len);
 	else
@@ -1217,9 +1228,9 @@ static void f2fs_submit_discard_endio(struct bio *bio)
 	struct discard_cmd *dc = (struct discard_cmd *)bio->bi_private;
 	unsigned long flags;
 
-	dc->error = blk_status_to_errno(bio->bi_status);
-
 	spin_lock_irqsave(&dc->lock, flags);
+	if (!dc->error)
+		dc->error = blk_status_to_errno(bio->bi_status);
 	dc->bio_ref--;
 	if (!dc->bio_ref && dc->state == D_SUBMIT) {
 		dc->state = D_DONE;
@@ -1278,7 +1289,7 @@ static void __init_discard_policy(struct f2fs_sb_info *sbi,
 
 	dpolicy->max_requests = DEF_MAX_DISCARD_REQUEST;
 	dpolicy->io_aware_gran = MAX_PLIST_NUM;
-	dpolicy->timeout = 0;
+	dpolicy->timeout = false;
 
 	if (discard_type == DPOLICY_BG) {
 		dpolicy->min_interval = DEF_MIN_DISCARD_ISSUE_TIME;
@@ -1302,6 +1313,7 @@ static void __init_discard_policy(struct f2fs_sb_info *sbi,
 		dpolicy->io_aware = false;
 		/* we need to issue all to keep CP_TRIMMED_FLAG */
 		dpolicy->granularity = 1;
+		dpolicy->timeout = true;
 	}
 }
 
@@ -1415,8 +1427,10 @@ submit:
 		len = total_len;
 	}
 
-	if (!err && len)
+	if (!err && len) {
+		dcc->undiscard_blks -= len;
 		__update_discard_tree_range(sbi, bdev, lstart, start, len);
+	}
 	return err;
 }
 
@@ -1636,6 +1650,7 @@ static unsigned int __issue_discard_cmd_orderly(struct f2fs_sb_info *sbi,
 
 		if (dpolicy->io_aware && !is_idle(sbi, DISCARD_TIME)) {
 #ifdef CONFIG_F2FS_OF2FS
+			/* [ASTI-147]: add for oDiscard */
 			if (f2fs_odiscard_enable)
 				dpolicy->io_busy = true;
 #endif
@@ -1680,14 +1695,14 @@ static int __issue_discard_cmd(struct f2fs_sb_info *sbi,
 	int i, issued;
 	bool io_interrupted = false;
 
-	if (dpolicy->timeout != 0)
-		f2fs_update_time(sbi, dpolicy->timeout);
+	if (dpolicy->timeout)
+		f2fs_update_time(sbi, UMOUNT_DISCARD_TIMEOUT);
 
 retry:
 	issued = 0;
 	for (i = MAX_PLIST_NUM - 1; i >= 0; i--) {
-		if (dpolicy->timeout != 0 &&
-				f2fs_time_over(sbi, dpolicy->timeout))
+		if (dpolicy->timeout &&
+				f2fs_time_over(sbi, UMOUNT_DISCARD_TIMEOUT))
 			break;
 
 		if (i + 1 < dpolicy->granularity)
@@ -1708,14 +1723,15 @@ retry:
 		list_for_each_entry_safe(dc, tmp, pend_list, list) {
 			f2fs_bug_on(sbi, dc->state != D_PREP);
 
-			if (dpolicy->timeout != 0 &&
-				f2fs_time_over(sbi, dpolicy->timeout))
+			if (dpolicy->timeout &&
+				f2fs_time_over(sbi, UMOUNT_DISCARD_TIMEOUT))
 				break;
 
 			if (dpolicy->io_aware && i < dpolicy->io_aware_gran &&
 						!is_idle(sbi, DISCARD_TIME)) {
 				io_interrupted = true;
 #ifdef CONFIG_F2FS_OF2FS
+				/* [ASTI-147]: add for oDiscard */
 				if (f2fs_odiscard_enable)
 					dpolicy->io_busy = true;
 #endif
@@ -1845,6 +1861,7 @@ static unsigned int __wait_all_discard_cmd(struct f2fs_sb_info *sbi,
 
 	/* wait all */
 #ifdef CONFIG_F2FS_OF2FS
+/* [ASTI-147]: add for oDiscard */
 	if (f2fs_odiscard_enable)
 		__init_discard_policy_of2fs(sbi, &dp, DPOLICY_FSTRIM, 1);
 	else
@@ -1854,6 +1871,7 @@ static unsigned int __wait_all_discard_cmd(struct f2fs_sb_info *sbi,
 #endif
 	discard_blks = __wait_discard_cmd_range(sbi, &dp, 0, UINT_MAX);
 #ifdef CONFIG_F2FS_OF2FS
+	/* [ASTI-147]: add for oDiscard */
 	if (f2fs_odiscard_enable)
 		__init_discard_policy_of2fs(sbi, &dp, DPOLICY_UMOUNT, 1);
 	else
@@ -1910,6 +1928,7 @@ bool f2fs_issue_discard_timeout(struct f2fs_sb_info *sbi)
 	bool dropped;
 
 #ifdef CONFIG_F2FS_OF2FS
+	/* [ASTI-147]: add for oDiscard */
 	if (f2fs_odiscard_enable)
 		__init_discard_policy_of2fs(sbi, &dpolicy, DPOLICY_UMOUNT, dcc->discard_granularity);
 	else
@@ -1937,6 +1956,7 @@ static int issue_discard_thread(void *data)
 	unsigned int wait_ms = DEF_MIN_DISCARD_ISSUE_TIME;
 	int issued;
 #ifdef CONFIG_F2FS_OF2FS
+	/* [ASTI-147]: add for odiscard */
 	int discard_type = DPOLICY_BG;
 	int expect_odiscard_type = MAX_DPOLICY;
 	unsigned long odiscard_expire = 0;
@@ -1952,6 +1972,7 @@ static int issue_discard_thread(void *data)
 
 	do {
 #ifdef CONFIG_F2FS_OF2FS
+		/* [ASTI-147]: add for odiscard */
 		if (f2fs_odiscard_enable) {
 			wait_event_interruptible_timeout(*q,
 					kthread_should_stop() || freezing(current) ||
@@ -2337,7 +2358,7 @@ void f2fs_clear_prefree_segments(struct f2fs_sb_info *sbi,
 	unsigned int start = 0, end = -1;
 	unsigned int secno, start_segno;
 	bool force = (cpc->reason & CP_DISCARD);
-	bool need_align = test_opt(sbi, LFS) && __is_large_section(sbi);
+	bool need_align = f2fs_lfs_mode(sbi) && __is_large_section(sbi);
 
 	mutex_lock(&dirty_i->seglist_lock);
 
@@ -2369,7 +2390,7 @@ void f2fs_clear_prefree_segments(struct f2fs_sb_info *sbi,
 					(end - 1) <= cpc->trim_end)
 				continue;
 
-		if (!test_opt(sbi, LFS) || !__is_large_section(sbi)) {
+		if (!f2fs_lfs_mode(sbi) || !__is_large_section(sbi)) {
 			f2fs_issue_discard(sbi, START_BLOCK(sbi, start),
 				(end - start) << sbi->log_blocks_per_seg);
 			continue;
@@ -3198,7 +3219,7 @@ next:
 			blk_finish_plug(&plug);
 			mutex_unlock(&dcc->cmd_lock);
 			trimmed += __wait_all_discard_cmd(sbi, NULL);
-			congestion_wait(BLK_RW_ASYNC, HZ/50);
+			congestion_wait(BLK_RW_ASYNC, DEFAULT_IO_TIMEOUT);
 			goto next;
 		}
 skip:
@@ -3227,7 +3248,7 @@ int f2fs_trim_fs(struct f2fs_sb_info *sbi, struct fstrim_range *range)
 	struct discard_policy dpolicy;
 	unsigned long long trimmed = 0;
 	int err = 0;
-	bool need_align = test_opt(sbi, LFS) && __is_large_section(sbi);
+	bool need_align = f2fs_lfs_mode(sbi) && __is_large_section(sbi);
 
 	if (start >= MAX_BLKADDR(sbi) || range->len < sbi->blocksize)
 		return -EINVAL;
@@ -3271,6 +3292,7 @@ int f2fs_trim_fs(struct f2fs_sb_info *sbi, struct fstrim_range *range)
 	 */
 	if (f2fs_realtime_discard_enable(sbi)) {
 #ifdef CONFIG_F2FS_OF2FS
+		/* [ASTI-147]: add for oDiscard */
 		if (f2fs_odiscard_enable)
 			wake_up_otrim_of2fs(sbi);
 #endif
@@ -3281,6 +3303,7 @@ int f2fs_trim_fs(struct f2fs_sb_info *sbi, struct fstrim_range *range)
 	end_block = START_BLOCK(sbi, end_segno + 1);
 
 #ifdef CONFIG_F2FS_OF2FS
+	/* [ASTI-147]: add for oDiscard */
 	if (f2fs_odiscard_enable)
 		__init_discard_policy_of2fs(sbi, &dpolicy, DPOLICY_FSTRIM, cpc.trim_minlen);
 	else
@@ -3614,7 +3637,7 @@ static void update_device_state(struct f2fs_io_info *fio)
 static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 {
 	int type = __get_segment_type(fio);
-	bool keep_order = (test_opt(fio->sbi, LFS) && type == CURSEG_COLD_DATA);
+	bool keep_order = (f2fs_lfs_mode(fio->sbi) && type == CURSEG_COLD_DATA);
 
 	if (keep_order)
 		down_read(&fio->sbi->io_order_lock);
@@ -4511,7 +4534,7 @@ static int build_sit_info(struct f2fs_sb_info *sbi)
 	sit_i->dirty_sentries = 0;
 	sit_i->sents_per_block = SIT_ENTRY_PER_BLOCK;
 	sit_i->elapsed_time = le64_to_cpu(sbi->ckpt->elapsed_time);
-	sit_i->mounted_time = ktime_get_real_seconds();
+	sit_i->mounted_time = ktime_get_boottime_seconds();
 	init_rwsem(&sit_i->sentry_lock);
 	return 0;
 }
@@ -4861,7 +4884,7 @@ int f2fs_build_segment_manager(struct f2fs_sb_info *sbi)
 	if (sm_info->rec_prefree_segments > DEF_MAX_RECLAIM_PREFREE_SEGMENTS)
 		sm_info->rec_prefree_segments = DEF_MAX_RECLAIM_PREFREE_SEGMENTS;
 
-	if (!test_opt(sbi, LFS))
+	if (!f2fs_lfs_mode(sbi))
 		sm_info->ipu_policy = 1 << F2FS_IPU_FSYNC;
 	sm_info->min_ipu_util = DEF_MIN_IPU_UTIL;
 	sm_info->min_fsync_blocks = DEF_MIN_FSYNC_BLOCKS;
@@ -5013,22 +5036,22 @@ void f2fs_destroy_segment_manager(struct f2fs_sb_info *sbi)
 
 int __init f2fs_create_segment_manager_caches(void)
 {
-	discard_entry_slab = f2fs_kmem_cache_create("discard_entry",
+	discard_entry_slab = f2fs_kmem_cache_create("f2fs_discard_entry",
 			sizeof(struct discard_entry));
 	if (!discard_entry_slab)
 		goto fail;
 
-	discard_cmd_slab = f2fs_kmem_cache_create("discard_cmd",
+	discard_cmd_slab = f2fs_kmem_cache_create("f2fs_discard_cmd",
 			sizeof(struct discard_cmd));
 	if (!discard_cmd_slab)
 		goto destroy_discard_entry;
 
-	sit_entry_set_slab = f2fs_kmem_cache_create("sit_entry_set",
+	sit_entry_set_slab = f2fs_kmem_cache_create("f2fs_sit_entry_set",
 			sizeof(struct sit_entry_set));
 	if (!sit_entry_set_slab)
 		goto destroy_discard_cmd;
 
-	inmem_entry_slab = f2fs_kmem_cache_create("inmem_page_entry",
+	inmem_entry_slab = f2fs_kmem_cache_create("f2fs_inmem_page_entry",
 			sizeof(struct inmem_pages));
 	if (!inmem_entry_slab)
 		goto destroy_sit_entry_set;
@@ -5053,6 +5076,7 @@ void f2fs_destroy_segment_manager_caches(void)
 }
 
 #ifdef CONFIG_F2FS_OF2FS
+/* [ASTI-147]: add for oDiscard */
 static struct discard_cmd *__create_discard_cmd_of2fs(struct f2fs_sb_info *sbi,
 		struct block_device *bdev, block_t lstart,
 		block_t start, block_t len)
