@@ -2664,13 +2664,15 @@ out:
 
 static inline int ufshpb_version_check(struct ufshpb_dev_info *hpb_dev_info)
 {
-	INFO_MSG("Support HPB Spec : UFSHPB_VER_2_0_0 = (%.4X)   UFSHPB_VER_2_0_1 = (%.4X)   Device = (%.4X)",
-		 UFSHPB_VER_2_0_0, UFSHPB_VER_2_0_1, hpb_dev_info->version);
+	INFO_MSG("Support HPB Spec : UFSHPB_VER_2_0_0 = (%.4X)   UFSHPB_VER_2_0_1 = (%.4X)   UFSHPB_VER_2_2_1 = (%.4X)",
+		UFSHPB_VER_2_0_0, UFSHPB_VER_2_0_1, UFSHPB_VER_2_2_1);
+	INFO_MSG("Device HPB Version : Device = (%.4X)", hpb_dev_info->version);
 
 	INFO_MSG("HPB Driver Version : (%.6X%s)", UFSHPB_DD_VER, UFSHPB_DD_VER_POST);
 
 	if (hpb_dev_info->version != UFSHPB_VER_2_0_0 &&
-		hpb_dev_info->version != UFSHPB_VER_2_0_1) {
+		hpb_dev_info->version != UFSHPB_VER_2_0_1 &&
+		hpb_dev_info->version != UFSHPB_VER_2_2_1) {
 		ERR_MSG("ERROR: HPB Spec Version mismatch. So HPB disabled.");
 		return -ENODEV;
 	}
