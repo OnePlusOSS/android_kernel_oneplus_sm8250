@@ -5395,9 +5395,13 @@ static void op_icon_debounce_unplug_check_work(struct work_struct *work)
 	struct smb_charger *chg = container_of(work, struct smb_charger,
 						icon_debounce_unplug_check.work);
 
+	if (!is_usb_present(chg)) {
+		chg->tried_fastchg = false;
+		chg->reconnect_count = 0;
+	}
 	chg->icon_debounce = false;
 	power_supply_changed(chg->usb_psy);
-	pr_info("icon_debounce: false");
+	pr_info("type-c unpluged");
 }
 
 #define PR_LOCK_TIMEOUT_MS	1000
@@ -6638,6 +6642,7 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 	int rc;
 	u8 stat;
 	bool vbus_rising;
+	bool usb_pluged;
 	struct smb_irq_data *data;
 	struct storm_watch *wdata;
 
@@ -6788,7 +6793,8 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 		}
 		if (last_vbus_present != chg->vbus_present) {
 			op_handle_usb_removal(chg);
-			if (chg->hw_detect) {
+			usb_pluged = gpio_get_value(g_chg->plug_irq) ? false : true;
+			if (usb_pluged && chg->tried_fastchg) {
 				chg->icon_debounce = true;
 				schedule_delayed_work(&chg->icon_debounce_unplug_check,
 					msecs_to_jiffies(TIME_1000MS));
@@ -9797,8 +9803,10 @@ static void set_usb_switch(struct smb_charger *chg, bool enable)
 		if (!chg->re_trigr_dash_done)
 			schedule_delayed_work(&chg->rechk_sw_dsh_work,
 					msecs_to_jiffies(retrger_time));
+/*
 		if (!chg->swarp_online)
 			chg->tried_fastchg = true;
+*/
 	} else {
 		pr_err("switch off fastchg\n");
 		chg->switch_on_fastchg = false;
