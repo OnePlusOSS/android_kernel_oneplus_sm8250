@@ -8945,7 +8945,7 @@ static void op_set_pd_active_work(struct work_struct *work)
 void op_set_swarp_charger(struct smb_charger *chg)
 {
 	chg->real_charger_type = POWER_SUPPLY_TYPE_DASH;
-	chg->dash_present = true;
+	//chg->dash_present = true;
 	enhance_dash_type_set(CHARGER_SWARP_65W);
 }
 
@@ -9209,6 +9209,8 @@ bool is_fastchg_allowed(struct smb_charger *chg)
 		&& cap > DASH_VALID_CAPACITY_HIG_THRESHOLD
 		&& (get_boot_mode() != MSM_BOOT_MODE_CHARGE)) {
 		pr_err("capacity high, swarp adapter.");
+		// For show charge time countdown.
+		chg->dash_present = true;
 		return false;
 	}
 
@@ -9912,6 +9914,7 @@ static void retrigger_dash_work(struct work_struct *work)
 	pr_debug("chg->ck_dash_count=%d\n", chg->ck_dash_count);
 	if (chg->usb_enum_status)
 		return;
+
 	if (chg->dash_present) {
 		chg->ck_dash_count = 0;
 		return;
@@ -9967,8 +9970,10 @@ static void retrigger_dash_work(struct work_struct *work)
 			schedule_delayed_work(&chg->pd_status_check_work,
 					msecs_to_jiffies(2000));
 		}
-		if (chg->swarp_supported)
+		if (chg->swarp_supported) {
 			rerun_election(chg->usb_icl_votable);
+			recheck_asic_fw_status();
+		}
 		return;
 	}
 
