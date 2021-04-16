@@ -169,7 +169,7 @@ enum {
 
 #ifdef OPLUS_FEATURE_CHG_BASIC
 #define DCDC_OTG_CURRENT_LIMIT_1000MA_BIT	BIT(2)
-#endif /* VENDOR_EDIT */
+#endif
 
 #define DCDC_OTG_CFG_REG			(DCDC_BASE + 0x53)
 #define OTG_EN_SRC_CFG_BIT			BIT(1)

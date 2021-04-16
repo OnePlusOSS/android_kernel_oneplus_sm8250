@@ -182,6 +182,9 @@ struct task_struct init_task
 #ifdef CONFIG_SECURITY
 	.security	= NULL,
 #endif
+#ifdef CONFIG_RATP
+	.cpus_suggested = CPU_MASK_ALL,
+#endif
 };
 EXPORT_SYMBOL(init_task);
 

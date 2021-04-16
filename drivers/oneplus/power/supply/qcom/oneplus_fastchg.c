@@ -534,7 +534,7 @@ void usb_sw_gpio_set(int value)
 		gpio_direction_output(fastchg_di->usb_sw_2_gpio, 0);
 	}
 	fastchg_di->fast_chg_allow = value;
-	/* david@bsp add log */
+
 	pr_info("get usb_sw_gpio=%d&%d\n"
 		, gpio_get_value(fastchg_di->usb_sw_1_gpio)
 		, gpio_get_value(fastchg_di->usb_sw_2_gpio));
@@ -900,7 +900,6 @@ static int set_property_on_smbcharger(
 		}
 	}
 	ret = power_supply_set_property(psy, prop, &value);
-	/* david@bsp modified */
 	if (ret)
 		return -EINVAL;
 
@@ -2344,7 +2343,7 @@ static void dashchg_fw_update(struct work_struct *work)
 		__pm_relax(di->fastchg_update_fireware_lock);
 		set_property_on_smbcharger(POWER_SUPPLY_PROP_SWITCH_DASH, true);
 		di->dash_firmware_ok = 1;
-		pr_info("FW check success\n"); /* david@bsp add log */
+		pr_info("FW check success\n");
 		return;
 	}
 #ifdef OP_SWARP_SUPPORTED

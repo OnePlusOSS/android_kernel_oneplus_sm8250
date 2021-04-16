@@ -26,11 +26,9 @@
 #include <linux/usb/usbpd.h>
 #include "usbpd.h"
 
-#ifdef VENDOR_EDIT
 static bool usb_compliance_mode;
 module_param(usb_compliance_mode, bool, 0644);
 MODULE_PARM_DESC(usb_compliance_mode, "USB3.1 compliance testing");
-#endif
 
 enum usbpd_state {
 	PE_UNKNOWN,
@@ -387,9 +385,7 @@ struct usbpd {
 	struct workqueue_struct	*wq;
 	struct work_struct	sm_work;
 	struct work_struct	start_periph_work;
-#ifdef VENDOR_EDIT
 	struct delayed_work	vbus_work;
-#endif
 	struct hrtimer		timer;
 	bool			sm_queued;
 
@@ -412,9 +408,7 @@ struct usbpd {
 	int			requested_current;	/* mA */
 	bool			pd_connected;
 	bool			in_explicit_contract;
-#ifdef VENDOR_EDIT
 	bool			in_good_connect;
-#endif
 	bool			peer_usb_comm;
 	bool			peer_pr_swap;
 	bool			peer_dr_swap;
@@ -495,11 +489,9 @@ struct usbpd {
 };
 
 static LIST_HEAD(_usbpd);	/* useful for debugging */
-#ifdef VENDOR_EDIT
 static int peripheral_enabled = 1;
 int oplus_usbpd_send_svdm(u16 svid, u8 cmd, enum usbpd_svdm_cmd_type cmd_type,
 		int obj_pos, const u32 *vdos, int num_vdos);
-#endif
 
 static const unsigned int usbpd_extcon_cable[] = {
 	EXTCON_USB,
@@ -589,11 +581,9 @@ static inline void start_usb_peripheral(struct usbpd *pd)
 {
 	enum plug_orientation cc = usbpd_get_plug_orientation(pd);
 	union extcon_property_value val;
-#ifdef VENDOR_EDIT
 	if (peripheral_enabled == 0) {
 		return;
 	}
-#endif
 	val.intval = (cc == ORIENTATION_CC2);
 	extcon_set_property(pd->extcon, EXTCON_USB,
 			EXTCON_PROP_USB_TYPEC_POLARITY, val);
@@ -885,9 +875,7 @@ static int pd_select_pdo(struct usbpd *pd, int pdo_pos, int uv, int ua)
 	return 0;
 }
 
-#ifdef VENDOR_EDIT
 extern void oplus_set_opluschg_pd_sdp(bool value);
-#endif
 
 static int pd_eval_src_caps(struct usbpd *pd)
 {
@@ -927,12 +915,10 @@ static int pd_eval_src_caps(struct usbpd *pd)
 	power_supply_set_property(pd->usb_psy,
 			POWER_SUPPLY_PROP_PD_ACTIVE, &val);
 
-#ifdef VENDOR_EDIT
 	if (pd->peer_usb_comm && pd->current_dr == DR_UFP && !pd->pd_connected) {
 			printk("set opluschg_pd_sdp = true\n");
 			oplus_set_opluschg_pd_sdp(true);
 	}
-#endif
 	/* First time connecting to a PD source and it supports USB data */
 	if (pd->peer_usb_comm && pd->current_dr == DR_UFP && !pd->pd_connected)
 		start_usb_peripheral(pd);
@@ -1387,13 +1373,11 @@ int usbpd_send_vdm(struct usbpd *pd, u32 vdm_hdr, const u32 *vdos, int num_vdos)
 		kfree(pd->vdm_tx);
 		pd->vdm_tx = NULL;
 	}
-#ifdef VENDOR_EDIT
 	if (pd->current_state != PE_SRC_READY &&
 		pd->current_state != PE_SNK_READY) {
 		usbpd_err(&pd->dev, "VDM not allowed: PD not in Ready state\n");
 		return -EAGAIN;
 	}
-#endif
 
 	vdm_tx = kzalloc(sizeof(*vdm_tx), GFP_KERNEL);
 	if (!vdm_tx)
@@ -1982,12 +1966,10 @@ static void vconn_swap(struct usbpd *pd)
 
 		pd->vconn_enabled = true;
 
-#ifndef VENDOR_EDIT
-#else
+
 		pd_phy_update_frame_filter(FRAME_FILTER_EN_SOP |
 					   FRAME_FILTER_EN_SOPI |
 					   FRAME_FILTER_EN_HARD_RESET);
-#endif
 		/*
 		 * Small delay to ensure Vconn has ramped up. This is well
 		 * below tVCONNSourceOn (100ms) so we still send PS_RDY within
@@ -2154,8 +2136,7 @@ static int usbpd_startup_common(struct usbpd *pd,
 		phy_params->data_role = pd->current_dr;
 		phy_params->power_role = pd->current_pr;
 
-#ifndef VENDOR_EDIT
-#endif
+
 
 		ret = pd_phy_open(phy_params);
 		if (ret) {
@@ -2552,9 +2533,7 @@ static void enter_state_hard_reset(struct usbpd *pd)
 
 	pd_send_hard_reset(pd);
 	pd->in_explicit_contract = false;
-#ifdef VENDOR_EDIT
 			pd->in_good_connect = false;
-#endif
 	pd->rdo = 0;
 	rx_msg_cleanup(pd);
 	reset_vdm_state(pd);
@@ -2879,11 +2858,9 @@ static void handle_state_snk_transition_sink(struct usbpd *pd,
 static void enter_state_snk_ready(struct usbpd *pd)
 {
 	pd->in_explicit_contract = true;
-#ifdef VENDOR_EDIT
 	pd->in_good_connect = true;
 	oplus_usbpd_send_svdm(USBPD_SID, USBPD_SVDM_DISCOVER_SVIDS,
 		SVDM_CMD_TYPE_INITIATOR, 0, NULL, 0);
-#endif
 
 	if (pd->vdm_tx)
 		kick_sm(pd, 0);
@@ -3483,9 +3460,7 @@ static void handle_disconnect(struct usbpd *pd)
 	pd->in_pr_swap = false;
 	pd->pd_connected = false;
 	pd->in_explicit_contract = false;
-#ifdef VENDOR_EDIT
 	pd->in_good_connect = false;
-#endif
 	pd->hard_reset_recvd = false;
 	pd->caps_count = 0;
 	pd->hard_reset_count = 0;
@@ -3577,9 +3552,7 @@ static void handle_hard_reset(struct usbpd *pd)
 			POWER_SUPPLY_PROP_PR_SWAP, &val);
 
 	pd->in_explicit_contract = false;
-#ifdef VENDOR_EDIT
 	pd->in_good_connect = false;
-#endif
 	pd->selected_pdo = pd->requested_pdo = 0;
 	pd->rdo = 0;
 	rx_msg_cleanup(pd);
@@ -3758,9 +3731,7 @@ static int usbpd_process_typec_mode(struct usbpd *pd,
 
 	return 1; /* kick state machine */
 }
-#ifdef VENDOR_EDIT
 static int pre_real_charger_type = -1;
-#endif
 static int psy_changed(struct notifier_block *nb, unsigned long evt, void *ptr)
 {
 	struct usbpd *pd = container_of(nb, struct usbpd, psy_nb);
@@ -3798,7 +3769,6 @@ static int psy_changed(struct notifier_block *nb, unsigned long evt, void *ptr)
 					ret);
 			return ret;
 		}
-#ifdef VENDOR_EDIT
 		if (val.intval == POWER_SUPPLY_TYPE_USB ||
 			val.intval == POWER_SUPPLY_TYPE_USB_CDP ||
 			val.intval == POWER_SUPPLY_TYPE_USB_FLOAT ||
@@ -3808,31 +3778,17 @@ static int psy_changed(struct notifier_block *nb, unsigned long evt, void *ptr)
 			pd->typec_mode = typec_mode;
 			queue_work(pd->wq, &pd->start_periph_work);
 		}
-#else
-		if (val.intval == POWER_SUPPLY_TYPE_USB ||
-			val.intval == POWER_SUPPLY_TYPE_USB_CDP ||
-			val.intval == POWER_SUPPLY_TYPE_USB_FLOAT) {
-			usbpd_dbg(&pd->dev, "typec mode:%d type:%d\n",
-				typec_mode, val.intval);
-			pd->typec_mode = typec_mode;
-			queue_work(pd->wq, &pd->start_periph_work);
-		}
-#endif
-#ifdef VENDOR_EDIT
 		else if ((val.intval == POWER_SUPPLY_TYPE_USB_DCP) && (pre_real_charger_type == POWER_SUPPLY_TYPE_USB)) {
 			stop_usb_peripheral(pd);
 		}
 		pre_real_charger_type = val.intval;
-#endif
 		return 0;
 	}
 
-#ifdef VENDOR_EDIT
 	if (usb_compliance_mode) {
 		usbpd_err(&pd->dev, "start usb peripheral for testing");
 		///start_usb_peripheral(pd);
 	}
-#endif
 
 	ret = power_supply_get_property(pd->usb_psy,
 			POWER_SUPPLY_PROP_PRESENT, &val);
@@ -4584,7 +4540,6 @@ static ssize_t get_battery_status_show(struct device *dev,
 	return scnprintf(buf, PAGE_SIZE, "0x%08x\n", pd->battery_sts_dobj);
 }
 static DEVICE_ATTR_RW(get_battery_status);
-#ifdef VENDOR_EDIT
 struct usbpd *pd_lobal;
 unsigned int pd_vbus_ctrl;
 
@@ -4662,7 +4617,6 @@ static ssize_t pd_vbus_store(struct device *dev,
 	return size;
 }
 static DEVICE_ATTR_RW(pd_vbus);
-#endif
 
 static struct attribute *usbpd_attrs[] = {
 	&dev_attr_contract.attr,
@@ -4688,9 +4642,7 @@ static struct attribute *usbpd_attrs[] = {
 	&dev_attr_get_pps_status.attr,
 	&dev_attr_get_battery_cap.attr,
 	&dev_attr_get_battery_status.attr,
-#ifdef VENDOR_EDIT
 	&dev_attr_pd_vbus.attr,
-#endif
 	NULL,
 };
 ATTRIBUTE_GROUPS(usbpd);
@@ -4767,7 +4719,6 @@ static void usbpd_release(struct device *dev)
 
 	kfree(pd);
 }
-#ifdef VENDOR_EDIT
 struct usbpd *pd_lobal;
 int oplus_usbpd_send_svdm(u16 svid, u8 cmd, enum usbpd_svdm_cmd_type cmd_type,
 		int obj_pos, const u32 *vdos, int num_vdos)
@@ -4873,7 +4824,6 @@ out:
 	return rc;
 }
 EXPORT_SYMBOL(oplus_pdo_select);
-#endif /*VENDOR_EDIT*/
 
 static int num_pd_instances;
 
@@ -5059,9 +5009,7 @@ struct usbpd *usbpd_create(struct device *parent)
 	/* force read initial power_supply values */
 	psy_changed(&pd->psy_nb, PSY_EVENT_PROP_CHANGED, pd->usb_psy);
 
-#ifdef VENDOR_EDIT
 	pd_lobal = pd;
-#endif
 
 	return pd;
 

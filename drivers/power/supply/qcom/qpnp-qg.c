@@ -41,7 +41,6 @@
 #include "qg-battery-profile.h"
 #include "qg-defs.h"
 #include <linux/proc_fs.h>
-#ifdef VENDOR_EDIT
 #include "../../../oneplus/power/oplus_chg/oplus_gauge.h"
 #include "../../../oneplus/power/oplus_chg/oplus_charger.h"
 #include <linux/oem/boot_mode.h>
@@ -49,13 +48,11 @@
 
 static bool use_qpnp_qg = true;
 static struct qpnp_qg *the_chip;
-#endif
-#ifdef VENDOR_EDIT
 bool is_batt_id_valid(struct qpnp_qg *chip);
 
 extern int oplus_chg_get_ffc_status(void);
 extern bool oplus_warp_get_fastchg_ing(void);
-#endif
+
 
 #ifdef OEM_TARGET_PRODUCT_EBBA
 #include <linux/hardware_info.h>
@@ -169,11 +166,6 @@ static bool is_battery_present(struct qpnp_qg *chip)
 #define DEBUG_BATT_ID_HIGH	8500
 static bool is_debug_batt_id(struct qpnp_qg *chip)
 {
-#ifndef VENDOR_EDIT
-	if (is_between(DEBUG_BATT_ID_LOW, DEBUG_BATT_ID_HIGH,
-					chip->batt_id_ohm))
-		return true;
-#endif
 	return false;
 }
 
@@ -2653,14 +2645,12 @@ static int qg_battery_status_update(struct qpnp_qg *chip)
 		pr_err("Failed to get battery-present, rc=%d\n", rc);
 		goto done;
 	}
-#ifdef VENDOR_EDIT
 	if (prop.intval) {
 		//battery present
 		if (!is_batt_id_valid(chip)) {
 			prop.intval = 0;
 		}
 	}
-#endif
 	if (chip->battery_missing && prop.intval) {
 		pr_warn("Battery inserted!\n");
 		rc = qg_handle_battery_insertion(chip);
@@ -3057,7 +3047,6 @@ static int get_batt_id_ohm(struct qpnp_qg *chip, u32 *batt_id_ohm)
 
 	return 0;
 }
-#ifdef VENDOR_EDIT
 static int get_batt_id_voltage(struct qpnp_qg *chip)
 {
 	int rc, batt_id_mv;
@@ -3125,7 +3114,6 @@ bool is_batt_id_valid(struct qpnp_qg *chip)
 	else
 		return true;
 }
-#endif
 static int qg_load_battery_profile(struct qpnp_qg *chip)
 {
 	struct device_node *node = chip->dev->of_node;
@@ -4818,7 +4806,6 @@ static const struct dev_pm_ops qpnp_qg_pm_ops = {
 	.suspend	= qpnp_qg_suspend,
 	.resume		= qpnp_qg_resume,
 };
-#ifdef VENDOR_EDIT
 #define DEFAULT_BATT_TEMP			-400
 #define DEFAULT_BATT_VOLT			3800
 #define DEFAULT_BATT_SOC			 50
@@ -5113,16 +5100,13 @@ void bq27541_force_update_current(bool enable)
 	pr_info("houston force update current.");
 }
 #endif
-#endif
 
 static int qpnp_qg_probe(struct platform_device *pdev)
 {
 	int rc = 0, soc = 0, nom_cap_uah;
 	struct qpnp_qg *chip;
 
-#ifdef VENDOR_EDIT
 	struct oplus_gauge_chip *the_oplus_gauge_chip = NULL;
-#endif
 	chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
 		return -ENOMEM;
@@ -5315,7 +5299,6 @@ static int qpnp_qg_probe(struct platform_device *pdev)
 		pr_err("Failed in qg_post_init rc=%d\n", rc);
 		goto fail_votable;
 	}
-#ifdef VENDOR_EDIT
 	the_chip = chip;
 	if (use_qpnp_qg) {
 		the_oplus_gauge_chip = devm_kzalloc(chip->dev,
@@ -5331,7 +5314,6 @@ static int qpnp_qg_probe(struct platform_device *pdev)
 		}
 	}
 	init_proc_qg_vbat();
-#endif
 
 	rc = sysfs_create_groups(&chip->dev->kobj, qg_groups);
 	if (rc < 0) {

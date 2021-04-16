@@ -363,10 +363,9 @@ int qg_write_monotonic_soc(struct qpnp_qg *chip, int msoc)
 
 	return rc;
 }
-#ifdef VENDOR_EDIT
+
 int g_oplus_qg_ibta;
 extern bool is_batt_id_valid(struct qpnp_qg *chip);
-#endif
 int qg_get_battery_temp(struct qpnp_qg *chip, int *temp)
 {
 	int rc = 0;

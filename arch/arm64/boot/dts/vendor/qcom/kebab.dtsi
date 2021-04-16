@@ -203,7 +203,6 @@
 		};
 	};
 };
-/* @bsp, Battery & Charging config STRAT */
 &qupv3_se16_i2c {
 	oneplus_fastchg@0a{
 		op,swarp_supported;
@@ -314,9 +313,7 @@
 &kona_mtp_batterydata {
 	#include "OP-fg-batterydata-4500mah.dtsi"
 };
-/* @bsp, Battery & Charging config EDN */
 
-/* @bsp, 2019/09/24 usb config START*/
 &usb2_phy0 {
 	qcom,param-override-seq =
 		<0x67 0x6c/*Disconnection voltage +21.56%*/
@@ -480,4 +477,3 @@
 		status = "disabled";
 	};
 };
-/* @bsp, 2019/09/24 usb config END*/

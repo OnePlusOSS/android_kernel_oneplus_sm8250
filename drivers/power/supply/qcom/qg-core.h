@@ -6,13 +6,12 @@
 #ifndef __QG_CORE_H__
 #define __QG_CORE_H__
 
-#ifdef VENDOR_EDIT
 #define qg_debug(fmt, ...) \
 		printk(KERN_NOTICE "[OPLUS_CHG][%s]"fmt, __func__, ##__VA_ARGS__)
 
 #define qg_err(fmt, ...) \
 		printk(KERN_ERR "[OPLUS_CHG][%s]"fmt, __func__, ##__VA_ARGS__)
-#endif
+
 #include <linux/kernel.h>
 #include "fg-alg.h"
 #include "qg-defs.h"
@@ -150,9 +149,7 @@ struct qpnp_qg {
 	bool			charge_full;
 	bool			force_soc;
 	bool			fvss_active;
-#ifdef VENDOR_EDIT
 	bool			enable_qpnp_qg;
-#endif
 	bool			tcss_active;
 	bool			bass_active;
 	int			charge_status;
@@ -216,11 +213,7 @@ struct qpnp_qg {
 	/* ttf */
 	struct ttf		*ttf;
 
-#ifdef VENDOR_EDIT
 	int skip_scale_soc_count;
-#endif
-
-#ifdef VENDOR_EDIT
 	int			atl_4_45_battery_id_low;
 	int			atl_4_45_battery_id_high;
 	int			atl_4_4_battery_id_low;
@@ -233,14 +226,11 @@ struct qpnp_qg {
 	int			lw_battery_id_high;
 	int			cl_battery_id_low;
 	int			cl_battery_id_high;
-#endif
 
-#ifdef VENDOR_EDIT
 	int			batt_info[6];
 	int			batt_info_id;
 	bool		*batt_range_ocv;
 	int			*batt_range_pct;
-#endif
 
 };
 

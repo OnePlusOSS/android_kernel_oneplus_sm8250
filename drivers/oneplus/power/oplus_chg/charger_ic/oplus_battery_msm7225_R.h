@@ -15,23 +15,14 @@
 #include <linux/regulator/consumer.h>
 #include <linux/extcon-provider.h>
 
-/****************************************************/
-#ifndef VENDOR_EDIT
-#define VENDOR_EDIT "VENDOR_EDIT"
-#endif
-/**************************************************/
-#ifdef VENDOR_EDIT
 #include "storm-watch.h"
 #include "battery.h"
 #include <linux/usb/typec.h>
 #include <linux/usb/usbpd.h>
-#endif
 
-#ifdef VENDOR_EDIT
 #include <linux/time.h>
 #include <linux/jiffies.h>
 #include <linux/sched/clock.h>
-#endif
 
 enum print_reason {
 	PR_INTERRUPT	= BIT(0),
@@ -72,16 +63,10 @@ enum print_reason {
 #define PL_FCC_LOW_VOTER		"PL_FCC_LOW_VOTER"
 #define WBC_VOTER			"WBC_VOTER"
 #define HW_LIMIT_VOTER			"HW_LIMIT_VOTER"
-#ifdef VENDOR_EDIT
 #define DIVIDER_SET_VOTER			"DIVIDER_SET_VOTER"
-#endif
 
-#ifdef VENDOR_EDIT
 #define PD_DIS_VOTER			"PD_DIS_VOTER"
-#endif
-#ifdef VENDOR_EDIT
 #define SWARP_OTG_VOTER		"SWARP_OTG_VOTER"
-#endif
 #define PL_SMB_EN_VOTER			"PL_SMB_EN_VOTER"
 #define FORCE_RECHARGE_VOTER		"FORCE_RECHARGE_VOTER"
 #define LPD_VOTER			"LPD_VOTER"
@@ -107,11 +92,7 @@ enum print_reason {
 #define OVERHEAT_LIMIT_VOTER		"OVERHEAT_LIMIT_VOTER"
 
 #define BOOST_BACK_STORM_COUNT	3
-#ifdef VENDOR_EDIT
 #define WEAK_CHG_STORM_COUNT	3
-#else
-#define WEAK_CHG_STORM_COUNT	8
-#endif
 
 #define VBAT_TO_VRAW_ADC(v)		div_u64((u64)v * 1000000UL, 194637UL)
 
@@ -119,22 +100,16 @@ enum print_reason {
 #define ITERM_LIMITS_PM8150B_MA		10000
 #define ADC_CHG_ITERM_MASK		32767
 
-#ifdef VENDOR_EDIT
 #define USB_TEMP_HIGH	0x01//bit0
 #define USB_WATER_DETECT	0x02//bit1
 #define USB_RESERVE2	0x04//bit2
 #define USB_RESERVE3	0x08//bit3
 #define USB_RESERVE4	0x10//bit4
 #define USB_DONOT_USE	0x80000000//bit31
-#endif
 #define SDP_100_MA			100000
 #define SDP_CURRENT_UA			500000
 #define CDP_CURRENT_UA			1500000
-#ifndef VENDOR_EDIT
-#define DCP_CURRENT_UA			1500000
-#else
 #define DCP_CURRENT_UA			3000000
-#endif
 #define HVDCP_CURRENT_UA		3000000
 #define TYPEC_DEFAULT_CURRENT_UA	900000
 #define TYPEC_MEDIUM_CURRENT_UA		1500000
@@ -406,10 +381,8 @@ struct smb_iio {
 	struct iio_channel	*connector_temp_chan;
 	struct iio_channel	*sbux_chan;
 	struct iio_channel	*vph_v_chan;
-#ifdef VENDOR_EDIT
 	struct iio_channel	*usbtemp_v_chan;
 	struct iio_channel	*usbtemp_sup_v_chan;
-#endif
 	struct iio_channel	*die_temp_chan;
 	struct iio_channel	*skin_temp_chan;
 	struct iio_channel	*smb_temp_chan;
@@ -446,9 +419,7 @@ struct smb_charger {
 	struct power_supply		*dc_psy;
 	struct power_supply		*bms_psy;
 	struct power_supply		*usb_main_psy;
-#ifdef VENDOR_EDIT
 	struct power_supply		*ac_psy;
-#endif
 	struct power_supply		*usb_port_psy;
 	struct power_supply		*wls_psy;
 	struct power_supply		*cp_psy;
@@ -523,13 +494,8 @@ struct smb_charger {
 	int			sec_chg_selected;
 	int			cp_reason;
 	int			cp_topo;
-#ifdef VENDOR_EDIT
 	struct delayed_work chg_monitor_work;
-#endif
-#ifdef VENDOR_EDIT
 	struct delayed_work typec_disable_cmd_work;
-#endif
-#ifdef VENDOR_EDIT
 	unsigned long long hvdcp_detect_time;
 	unsigned long long hvdcp_detach_time;
 	bool hvdcp_detect_ok;
@@ -538,7 +504,6 @@ struct smb_charger {
 	struct delayed_work reset_mcu_work;
 	struct delayed_work delay_reset_dummy_fastchg_work;
 	struct delayed_work regist_pd;
-#endif
 
 	/* pd */
 	int			voltage_min_uv;
@@ -551,11 +516,9 @@ struct smb_charger {
 	bool			ok_to_pd;
 	bool			typec_legacy;
 	bool			typec_irq_en;
-#ifdef VENDOR_EDIT
 	struct usbpd  *oplus_pd;
 	struct usbpd_svid_handler oplus_svid_handler;
 	bool			typec_role_swap_failed;
-#endif
 	/* cached status */
 	bool			system_suspend_supported;
 	int			boost_threshold_ua;
@@ -644,10 +607,8 @@ struct smb_charger {
 	int                     qc2_max_pulses;
 	enum qc2_non_comp_voltage qc2_unsupported_voltage;
 	bool			dbc_usbov;
-#ifdef VENDOR_EDIT
 	bool			fake_typec_insertion;
 	bool			fake_usb_insertion;
-#endif
 
 	/* extcon for VBUS / ID notification to USB for uUSB */
 	struct extcon_dev	*extcon;
@@ -671,39 +632,29 @@ struct smb_charger {
 	u32			irq_status;
 
 	/* wireless */
-#ifdef VENDOR_EDIT
 	int			pre_current_ma;
 	bool		is_dpdm_on_usb;
 	struct delayed_work	divider_set_work;
 	struct work_struct	dpdm_set_work;
-#endif
 	int			dcin_uv_count;
-#ifdef VENDOR_EDIT
 	struct work_struct	chargerid_switch_work;
 	struct mutex pinctrl_mutex;
 	struct pinctrl		*usbtemp_gpio1_adc_pinctrl;
 	struct pinctrl		*usbtemp_gpio12_adc_pinctrl;
 	struct pinctrl_state	*usbtemp_gpio1_default;
 	struct pinctrl_state	*usbtemp_gpio12_default;
-#endif
-#ifdef VENDOR_EDIT
 	int			shipmode_id_gpio;
 	struct pinctrl		*shipmode_id_pinctrl;
 	struct pinctrl_state	*shipmode_id_active;
-#endif
-#ifdef VENDOR_EDIT
 	int 			batt_info[6];
 	int 			batt_info_id;
 	bool			*batt_range_ocv;
 	int 			*batt_range_pct;
 	int 			soc_reporting_ready;
-#endif
 
 	ktime_t			dcin_uv_last_time;
 	int			last_wls_vout;
 };
-
-#ifdef VENDOR_EDIT
 struct smb_dt_props {
 	int			usb_icl_ua;
 	struct device_node	*revid_dev_node;
@@ -758,7 +709,6 @@ struct qcom_pmic {
 	bool			hc_mode_flag;
 	/* copy form msm8976_pmic end */
 };
-#endif
 
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val);
 int smblib_masked_write(struct smb_charger *chg, u16 addr, u8 mask, u8 val);

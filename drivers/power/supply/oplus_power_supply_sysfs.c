@@ -442,10 +442,8 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(parallel_disable),
 	POWER_SUPPLY_ATTR(pe_start),
 	POWER_SUPPLY_ATTR(soc_reporting_ready),
-#ifdef VENDOR_EDIT
 		POWER_SUPPLY_ATTR(soc_notify_ready),
 		POWER_SUPPLY_ATTR(restore_soc),
-#endif
 	POWER_SUPPLY_ATTR(debug_battery),
 	POWER_SUPPLY_ATTR(fcc_delta),
 	POWER_SUPPLY_ATTR(icl_reduction),

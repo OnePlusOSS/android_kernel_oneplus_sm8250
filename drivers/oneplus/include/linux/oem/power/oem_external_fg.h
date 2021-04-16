@@ -77,7 +77,6 @@ struct external_battery_gauge {
 	int (*fast_chg_started_status)(bool status);
 	bool (*get_fastchg_firmware_already_updated)(void);
 	int (*get_device_type)(void);
-	/* david.liu@bsp, 20161025 Add BQ27411 dash charging */
 	int (*wlchg_started_status)(bool status);
 	int (*get_time_to_full)(void);
 };

@@ -769,7 +769,6 @@
       };
 };
 
-/* @bsp, 2019/07/08 Battery & Charging porting STRAT */
 &qupv3_se16_i2c {
 	qcom,clk-freq-out = <100000>;
 	status = "ok";
@@ -1262,7 +1261,6 @@
 		};
 	};
 };
-/* @bsp, 2019/07/08 Battery & Charging porting END */
 
 &spmi_bus {
 	qcom,pm8150@0 {
@@ -1317,10 +1315,6 @@
 	qca,bt-vdd-rfa1-voltage-level = <1900000 2040000>;
 };
 
-/* @bsp, usb config START */
-/* @bsp, As QRD-DVT have this config, keep the same config
- * for ldo18 power suspend
- */
 &usb_qmp_dp_phy {
 	vdd-supply = <&pm8150_l18>;
 	qcom,vdd-voltage-level = <0 912000 912000>;
@@ -1335,7 +1329,6 @@
 		};
 	};
 };
-/* @bsp, usb config END */
 
 &wdog{
 	qcom,bark-time = <15000>;

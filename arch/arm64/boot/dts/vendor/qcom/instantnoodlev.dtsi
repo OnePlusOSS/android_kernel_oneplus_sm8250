@@ -1,7 +1,6 @@
 /*this is for different project dtsi*/
 #include "instantnoodle.dtsi"
 #include "kona-thermal.dtsi"
-/* @bsp, Battery & Charging config STRAT */
 &qupv3_se16_i2c {
 	oneplus_fastchg@26{
 		op,4300mAh_4p45_support;
@@ -102,7 +101,6 @@
 &kona_mtp_batterydata {
 	#include "OP-fg-batterydata-4300mah.dtsi"
 };
-/* @bsp, Battery & Charging config STRAT */
 
 /delete-node/ &skin_therm_19821;
 /delete-node/ &msm_therm_19821;

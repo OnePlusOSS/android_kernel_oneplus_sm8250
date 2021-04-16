@@ -421,7 +421,6 @@ enum power_supply_property {
 
 	POWER_SUPPLY_PROP_ADAPTER_SID,
 
-/* @bsp, 2020/03/22 No need to show in sysfs */
 	POWER_SUPPLY_PROP_VBATDET,
 	POWER_SUPPLY_PROP_OTG_OCL,
 	POWER_SUPPLY_PROP_HWTERM,

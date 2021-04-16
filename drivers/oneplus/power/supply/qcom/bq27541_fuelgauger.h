@@ -1,6 +1,6 @@
 #ifndef __OP_BQ27541_H__
 #define __OP_BQ27541_H__
-/* david.liu@bsp, 20161004 Add BQ27411 support */
+
 #define CONFIG_GAUGE_BQ27411		1
 #define DEVICE_TYPE_BQ27541		0x0541
 #define DEVICE_TYPE_BQ27411		0x0421
@@ -50,8 +50,6 @@
 #define BQ27541_CS_SS		    BIT(13)
 
 #ifdef CONFIG_GAUGE_BQ27411
-/* david.liu@bsp, 20161004 Add BQ27411 support */
-/* Bq27411 standard data commands */
 #define BQ27411_REG_TEMP                0x02
 #define BQ27411_REG_VOLT                0x04
 #define BQ27411_REG_RM                  0x0A
@@ -192,7 +190,6 @@
 #define ERROR_BATT_VOL  (3800 * 1000)
 
 #ifdef CONFIG_GAUGE_BQ27411
-/* david.liu@bsp, 20161004 Add BQ27411 support */
 struct cmd_address {
 	u8	reg_temp;
 	u8	reg_volt;
@@ -254,10 +251,8 @@ struct bq27541_device_info {
 	bool disable_calib_soc;
 	unsigned long	lcd_off_time;
 	unsigned long	soc_pre_time;
-	/* david.liu@oneplus.tw, 2016/05/16  Fix capacity won't udate */
 	unsigned long	soc_store_time;
 #ifdef CONFIG_GAUGE_BQ27411
-	/* david.liu@bsp, 20161004 Add BQ27411 support */
 	int device_type;
 	struct cmd_address cmd_addr;
 	bool modify_soc_smooth;
