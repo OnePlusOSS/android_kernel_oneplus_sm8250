@@ -674,7 +674,7 @@ ENTRY(__boot_cpu_mode)
  * with MMU turned off.
  */
 ENTRY(__early_cpu_boot_status)
-	.quad 	0
+	.long 	0
 
 	.popsection
 

@@ -10,6 +10,7 @@
 #include "../oplus_warp.h"
 
 
+#ifdef VENDOR_EDIT
 #define USB_20C 20
 #define USB_30C 30
 #define USB_40C	40
@@ -435,4 +436,5 @@ int oplus_usbtemp_monitor_common(void *data)
 	return 0;
 }
 EXPORT_SYMBOL(oplus_usbtemp_monitor_common);
+#endif
 

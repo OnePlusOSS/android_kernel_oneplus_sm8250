@@ -76,11 +76,11 @@ struct pm_qos_request pm_qos_req_vb;
 #define ABS(x)		((x) < 0 ? (-x) : (x))
 
 #ifdef CONFIG_ARCH_LITO
-#define AW8697_LONG_INDEX_HEAD         108
-#define FACTORY_MODE_AT_MODE_RTP_NUMBER  133
+#define AW8697_LONG_INDEX_HEAD         94
+#define FACTORY_MODE_AT_MODE_RTP_NUMBER  119
 #else
-#define AW8697_LONG_INDEX_HEAD		113
-#define FACTORY_MODE_AT_MODE_RTP_NUMBER  138
+#define AW8697_LONG_INDEX_HEAD		100
+#define FACTORY_MODE_AT_MODE_RTP_NUMBER  125
 #endif
 
 #define HAL_FACTORY_MODE_NORMAL_RTP_NUMBER  888
@@ -91,9 +91,9 @@ struct pm_qos_request pm_qos_req_vb;
 *
 ******************************************************/
 #ifdef CONFIG_ARCH_LITO
-  #define FACTORY_MODE_EFFECT_NUMBER 97
+  #define FACTORY_MODE_EFFECT_NUMBER 84
 #else
-  #define FACTORY_MODE_EFFECT_NUMBER 102
+  #define FACTORY_MODE_EFFECT_NUMBER 89
 #endif
 
 #ifdef CONFIG_ARCH_LITO
@@ -232,19 +232,6 @@ static char aw8697_rtp_name[][AW8697_RTP_NAME_MAX] = {
 	{"alarm_tactfully_RTP.bin"},
 	{"alarm_The_wind_RTP.bin"},
 	{"alarm_Walking_in_the_rain_RTP.bin"},
-  	{"BoHaoPanAnJian.bin"},
-  	{"BoHaoPanAnNiu.bin"},
- 	{"BoHaoPanKuaiJie.bin"},
- 	{"DianHuaGuaDuan.bin"},
-  	{"DianJinMoShiQieHuan.bin"},
-  	{"HuaDongTiaoZhenDong.bin"},
-  	{"LeiShen.bin"},
- 	{"XuanZhongYouXi.bin"},
-  	{"YeJianMoShiDaZi.bin"},
-  	{"YouXiSheZhiKuang.bin"},
-  	{"ZhuanYeMoShi.bin"},
-  	{"Climber_RTP.bin"},//alarm Climber_RTP
-  	{"Chase_RTP.bin"},//alarm chase
 #ifdef CONFIG_ARCH_LITO
 	{"alarm_Dawn_RTP.bin"},
 #else

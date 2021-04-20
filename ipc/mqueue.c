@@ -76,7 +76,6 @@ struct mqueue_inode_info {
 
 	struct sigevent notify;
 	struct pid *notify_owner;
-	u32 notify_self_exec_id;
 	struct user_namespace *notify_user_ns;
 	struct user_struct *user;	/* user who created, for accounting */
 	struct sock *notify_sock;
@@ -663,44 +662,28 @@ static void __do_notify(struct mqueue_inode_info *info)
 	 * synchronously. */
 	if (info->notify_owner &&
 	    info->attr.mq_curmsgs == 1) {
+		struct siginfo sig_i;
 		switch (info->notify.sigev_notify) {
 		case SIGEV_NONE:
 			break;
-		case SIGEV_SIGNAL: {
-			struct siginfo sig_i;
-			struct task_struct *task;
-
-			/* do_mq_notify() accepts sigev_signo == 0, why?? */
-			if (!info->notify.sigev_signo)
-				break;
+		case SIGEV_SIGNAL:
+			/* sends signal */
 
 			clear_siginfo(&sig_i);
 			sig_i.si_signo = info->notify.sigev_signo;
 			sig_i.si_errno = 0;
 			sig_i.si_code = SI_MESGQ;
 			sig_i.si_value = info->notify.sigev_value;
-			rcu_read_lock();
 			/* map current pid/uid into info->owner's namespaces */
+			rcu_read_lock();
 			sig_i.si_pid = task_tgid_nr_ns(current,
 						ns_of_pid(info->notify_owner));
-			sig_i.si_uid = from_kuid_munged(info->notify_user_ns,
-						current_uid());
-			/*
-			 * We can't use kill_pid_info(), this signal should
-			 * bypass check_kill_permission(). It is from kernel
-			 * but si_fromuser() can't know this.
-			 * We do check the self_exec_id, to avoid sending
-			 * signals to programs that don't expect them.
-			 */
-			task = pid_task(info->notify_owner, PIDTYPE_TGID);
-			if (task && task->self_exec_id ==
-						info->notify_self_exec_id) {
-				do_send_sig_info(info->notify.sigev_signo,
-						&sig_i, task, PIDTYPE_TGID);
-			}
+			sig_i.si_uid = from_kuid_munged(info->notify_user_ns, current_uid());
 			rcu_read_unlock();
+
+			kill_pid_info(info->notify.sigev_signo,
+				      &sig_i, info->notify_owner);
 			break;
-		}
 		case SIGEV_THREAD:
 			set_cookie(info->notify_cookie, NOTIFY_WOKENUP);
 			netlink_sendskb(info->notify_sock, info->notify_cookie);
@@ -1290,7 +1273,6 @@ retry:
 			info->notify.sigev_signo = notification->sigev_signo;
 			info->notify.sigev_value = notification->sigev_value;
 			info->notify.sigev_notify = SIGEV_SIGNAL;
-			info->notify_self_exec_id = current->self_exec_id;
 			break;
 		}
 

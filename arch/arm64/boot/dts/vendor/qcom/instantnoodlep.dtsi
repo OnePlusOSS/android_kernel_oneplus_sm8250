@@ -1,4 +1,5 @@
 /*this is for different project dtsi*/
+/* @bsp, 2019/09/10 Wireless Charging porting STRAT */
 &op_wlchg {
 	status = "okay";
 	op,max-voltage-mv = <4550>;
@@ -103,6 +104,7 @@
 	otg_en-gpio = <&pm8150l_gpios 4 0x00>;
 	vbus-gpio = <&tlmm 172 0x00>;
 };
+/* @bsp, 2019/09/10 Wireless Charging porting END */
 &qupv3_se13_i2c {
 	status = "ok";
 	sec-s6sy761@48 {
@@ -121,6 +123,7 @@
 	};
 };
 
+/* @bsp, Battery & Charging config STRAT */
 &qupv3_se16_i2c {
 	oneplus_fastchg@26{
 		op,4510mAh_4p45_support;
@@ -220,7 +223,9 @@
 &kona_mtp_batterydata {
 	#include "OP-fg-batterydata-4510mah.dtsi"
 };
+/* @bsp, Battery & Charging config END */
 
+/* @bsp, 2019/10/08 usb config START*/
 &usb2_phy0 {
 	qcom,param-override-seq =
 		<0x67 0x6c/*Disconnection voltage +21.56%*/
@@ -381,3 +386,4 @@
 		status = "disabled";
 	};
 };
+/* @bsp, 2019/10/08 usb config END*/
