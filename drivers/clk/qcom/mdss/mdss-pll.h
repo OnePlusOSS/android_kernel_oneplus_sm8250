@@ -53,18 +53,11 @@ enum {
 };
 
 #define DFPS_MAX_NUM_OF_FRAME_RATES 16
-#ifdef CONFIG_FB_MSM_MDSS
-#define PLL_TRIM_CODES_SIZE 2
-#else
-#define PLL_TRIM_CODES_SIZE 3
-#endif
 
 struct dfps_pll_codes {
 	uint32_t pll_codes_1;
 	uint32_t pll_codes_2;
-#ifndef CONFIG_FB_MSM_MDSS
 	uint32_t pll_codes_3;
-#endif
 };
 
 struct dfps_codes_info {
@@ -150,7 +143,7 @@ struct mdss_pll_resources {
 	/*
 	 * caching the pll trim codes in the case of dynamic refresh
 	 */
-	int		cache_pll_trim_codes[PLL_TRIM_CODES_SIZE];
+	int		cache_pll_trim_codes[3];
 
 	/*
 	 * for maintaining the status of saving trim codes

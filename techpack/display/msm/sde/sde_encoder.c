@@ -943,29 +943,6 @@ bool sde_encoder_in_clone_mode(struct drm_encoder *drm_enc)
 	return false;
 }
 
-bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
-	struct drm_crtc *crtc)
-{
-	struct sde_encoder_virt *sde_enc;
-	int i;
-
-	if (!drm_enc)
-		return false;
-
-	sde_enc = to_sde_encoder_virt(drm_enc);
-	if (sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL)
-		return false;
-
-	for (i = 0; i < sde_enc->num_phys_encs; i++) {
-		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
-
-		if (sde_encoder_phys_is_cwb_disabling(phys, crtc))
-			return true;
-	}
-
-	return false;
-}
-
 static int _sde_encoder_atomic_check_phys_enc(struct sde_encoder_virt *sde_enc,
 	struct drm_crtc_state *crtc_state,
 	struct drm_connector_state *conn_state)
@@ -2038,13 +2015,8 @@ static int _sde_encoder_update_rsc_client(
 		qsync_mode = sde_connector_get_qsync_mode(
 				sde_enc->cur_master->connector);
 
-	/* left primary encoder keep vote */
-	if (sde_encoder_in_clone_mode(drm_enc)) {
-		SDE_EVT32(rsc_state, SDE_EVTLOG_FUNC_CASE1);
-		return 0;
-	}
-
-	if ((disp_info->display_type != SDE_CONNECTOR_PRIMARY) ||
+	if (sde_encoder_in_clone_mode(drm_enc) ||
+			(disp_info->display_type != SDE_CONNECTOR_PRIMARY) ||
 			(disp_info->display_type && qsync_mode))
 		rsc_state = enable ? SDE_RSC_CLK_STATE : SDE_RSC_IDLE_STATE;
 	else if (sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE))

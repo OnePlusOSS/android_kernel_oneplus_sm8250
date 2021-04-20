@@ -13,9 +13,6 @@
 #include <linux/irq.h>
 #include <linux/delay.h>
 #include <linux/scs.h>
-#ifdef CONFIG_UXCHAIN_V2
-#include <linux/rwsem.h>
-#endif
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -27,7 +24,6 @@
 
 #include "pelt.h"
 #include "walt.h"
-/*2020-06-20 [OSP-5970] add for healthinfo*/
 #ifdef CONFIG_ONEPLUS_HEALTHINFO
 #include <linux/oem/oneplus_healthinfo.h>
 #endif/*CONFIG_ONEPLUS_HEALTHINFO*/
@@ -40,14 +36,10 @@
 #include <linux/oem/im.h>
 #endif
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
-
 #define TRACE_DEBUG 0
-static inline void tracing_mark_write(int serial, char *name, unsigned int value)
-{
-#if TRACE_DEBUG
-	trace_printk("C|%d|%s|%u\n", 99990+serial, name, value);
+#ifdef TRACE_DEBUG
+#define SYSTRACE_MAGIC 99990
 #endif
-}
 
 #if defined(CONFIG_SCHED_DEBUG) && defined(CONFIG_JUMP_LABEL)
 /*
@@ -1216,8 +1208,17 @@ static void uclamp_fork(struct task_struct *p)
 		return;
 
 	for_each_clamp_id(clamp_id) {
-		uclamp_se_set(&p->uclamp_req[clamp_id],
-			      uclamp_none(clamp_id), false);
+		unsigned int clamp_value = uclamp_none(clamp_id);
+
+		/* By default, RT tasks always get 100% boost */
+		if (sched_feat(SUGOV_RT_MAX_FREQ) &&
+			       unlikely(rt_task(p) &&
+			       clamp_id == UCLAMP_MIN)) {
+
+			clamp_value = uclamp_none(UCLAMP_MAX);
+		}
+
+		uclamp_se_set(&p->uclamp_req[clamp_id], clamp_value, false);
 	}
 }
 
@@ -1485,14 +1486,6 @@ void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 		!(p->flags & PF_WQ_WORKER) && !task_has_rt_policy(p))
 		return;
 #endif
-#ifdef CONFIG_UXCHAIN_V2
-	if (sysctl_uxchain_v2 &&
-		wallclock - rq->curr->get_mmlock_ts < PREEMPT_DISABLE_RWSEM &&
-		rq->curr->get_mmlock &&
-		!(p->flags & PF_WQ_WORKER) && !task_has_rt_policy(p))
-		return;
-#endif
-
 	if (p->sched_class == rq->curr->sched_class) {
 		rq->curr->sched_class->check_preempt_curr(rq, p, flags);
 	} else {
@@ -3151,11 +3144,6 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	plist_node_init(&p->pushable_tasks, MAX_PRIO);
 	RB_CLEAR_NODE(&p->pushable_dl_tasks);
 #endif
-
-#ifdef CONFIG_UXCHAIN_V2
-	if (current->static_ux && sysctl_uxchain_v2 && sysctl_launcher_boost_enabled)
-		p->fork_by_static_ux = 1;
-#endif
 	return 0;
 }
 
@@ -4339,7 +4327,6 @@ static void __sched notrace __schedule(bool preempt)
 		 *   is a RELEASE barrier),
 		 */
 		++*switch_count;
-/*2020-06-20 [OSP-5970]  add for healthinfo*/
 #ifdef CONFIG_ONEPLUS_HEALTHINFO
 		if (prev->sched_class == &rt_sched_class && ohm_rtinfo_ctrl == true)
 			rt_thresh_times_record(prev, cpu);
@@ -5854,7 +5841,6 @@ out_put_task:
 	put_task_struct(p);
 	return retval;
 }
-EXPORT_SYMBOL_GPL(sched_setaffinity);
 
 char sched_lib_name[LIB_PATH_LENGTH];
 unsigned int sched_lib_mask_force;
@@ -6903,6 +6889,15 @@ int sched_isolate_count(const cpumask_t *mask, bool include_offline)
 	}
 
 	return cpumask_weight(&count_mask);
+}
+
+static inline void tracing_mark_write(int serial, char *name, unsigned int value)
+{
+#ifdef TRACE_DEBUG
+	trace_printk("C|%d|%s|%u\n", SYSTRACE_MAGIC+serial, name, value);
+#else
+	pr_info("trace func:%s cpu:%d value:%d\n", name, serial, value);
+#endif
 }
 
 /*

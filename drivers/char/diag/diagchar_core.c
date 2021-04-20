@@ -1815,7 +1815,7 @@ static int diag_switch_logging_proc(struct diag_logging_mode_param_t *param,
 				DIAG_LOG(DIAG_DEBUG_USERSPACE,
 					"not switching modes c: %d n: %d\n",
 					curr_mode, new_mode);
-				continue;
+				return 0;
 			}
 
 			diag_ws_reset(DIAG_WS_MUX);

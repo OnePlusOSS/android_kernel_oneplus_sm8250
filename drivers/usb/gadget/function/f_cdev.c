@@ -49,7 +49,7 @@
 #define BRIDGE_RX_QUEUE_SIZE	8
 #define BRIDGE_RX_BUF_SIZE	2048
 #define BRIDGE_TX_QUEUE_SIZE	8
-#define BRIDGE_TX_BUF_SIZE	2048
+#define BRIDGE_TX_BUF_SIZE	(50 * 1024)
 
 #define GS_LOG2_NOTIFY_INTERVAL		5  /* 1 << 5 == 32 msec */
 #define GS_NOTIFY_MAXPACKET		10 /* notification + 2 bytes */
@@ -953,7 +953,10 @@ static void usb_cser_start_rx(struct f_cdev *port)
 		if (ret) {
 			pr_err("port(%d):%pK usb ep(%s) queue failed\n",
 					port->port_num, port, ep->name);
-			list_add(&req->list, pool);
+			if (port->is_connected)
+				list_add(&req->list, &port->read_pool);
+			else
+				usb_cser_free_req(port->port_usb.out, req);
 			break;
 		}
 	}

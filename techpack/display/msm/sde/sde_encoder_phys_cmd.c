@@ -1771,11 +1771,8 @@ static void _sde_encoder_autorefresh_disable_seq1(
 
 	do {
 #if defined(PXLW_IRIS_DUAL)
-		if (iris_is_dual_supported())
-			usleep_range(AUTOREFRESH_SEQ1_POLL_TIME,
-				AUTOREFRESH_SEQ1_POLL_TIME + 1);
-		else
-			udelay(AUTOREFRESH_SEQ1_POLL_TIME);
+		usleep_range(AUTOREFRESH_SEQ1_POLL_TIME,
+			AUTOREFRESH_SEQ1_POLL_TIME + 1);
 #else
 		udelay(AUTOREFRESH_SEQ1_POLL_TIME);
 #endif

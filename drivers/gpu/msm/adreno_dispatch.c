@@ -1185,11 +1185,7 @@ static inline int _wait_for_room_in_context_queue(
 		spin_lock(&drawctxt->lock);
 		trace_adreno_drawctxt_wake(drawctxt);
 
-		if (ret >= 1) {
-			ret = _check_context_state(&drawctxt->base);
-			if (ret)
-				return ret;
-		} else
+		if (ret <= 0)
 			return (ret == 0) ? -ETIMEDOUT : (int) ret;
 	}
 
@@ -1204,7 +1200,15 @@ static unsigned int _check_context_state_to_queue_cmds(
 	if (ret)
 		return ret;
 
-	return _wait_for_room_in_context_queue(drawctxt);
+	ret = _wait_for_room_in_context_queue(drawctxt);
+	if (ret)
+		return ret;
+
+	/*
+	 * Account for the possiblity that the context got invalidated
+	 * while we were sleeping
+	 */
+	return _check_context_state(&drawctxt->base);
 }
 
 static void _queue_drawobj(struct adreno_context *drawctxt,
@@ -1751,25 +1755,6 @@ void adreno_fault_skipcmd_detached(struct adreno_device *adreno_dev,
 	}
 }
 
-static void kgsl_send_uevent_cmd_notify(struct kgsl_device *desc, int contextId,
-		int timestamp)
-{
-	char *envp[4];
-	char *title = "GPU_CMD_PAGE_FAULT";
-
-	if (!desc)
-		return;
-
-	envp[0] = kasprintf(GFP_KERNEL, "title=%s", title);
-	envp[1] = kasprintf(GFP_KERNEL, "cntId=%d", contextId);
-	envp[2] = kasprintf(GFP_KERNEL, "timestamp=%d", timestamp);
-	envp[3] = NULL;
-	kobject_uevent_env(&desc->dev->kobj, KOBJ_CHANGE, envp);
-	kfree(envp[0]);
-	kfree(envp[1]);
-	kfree(envp[2]);
-}
-
 /**
  * process_cmdobj_fault() - Process a cmdobj for fault policies
  * @device: Device on which the cmdobj caused a fault
@@ -1940,7 +1925,6 @@ static void process_cmdobj_fault(struct kgsl_device *device,
 
 	pr_context(device, drawobj->context, "gpu %s ctx %d ts %d\n",
 		state, drawobj->context->id, drawobj->timestamp);
-	kgsl_send_uevent_cmd_notify(device, drawobj->context->id, drawobj->timestamp);
 
 	/* Mark the context as failed */
 	mark_guilty_context(device, drawobj->context->id);

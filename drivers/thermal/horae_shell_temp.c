@@ -28,10 +28,6 @@
 #include <linux/idr.h>
 #include <linux/spinlock.h>
 
-#ifdef CONFIG_HOUSTON
-#include <oneplus/houston/houston_helper.h>
-#endif
-
 enum {
 	SHELL_FRONT = 0,
 	SHELL_FRAME,
@@ -104,9 +100,6 @@ static int horae_shell_probe(struct platform_device *pdev)
 		ret = -ENODEV;
 		goto err_remove_id;
 	}
-#ifdef CONFIG_HOUSTON
-	ht_register_thermal_zone_device(tz_dev);
-#endif
 	hst->tzd = tz_dev;
 
 	platform_set_drvdata(pdev, hst);

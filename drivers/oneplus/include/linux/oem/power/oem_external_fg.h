@@ -138,16 +138,6 @@ enum batt_status_type {
 	BATT_STATUS_INVALID_v1 = BATT_STATUS_REMOVED,
 	BATT_STATUS_INVALID
 };
-
-enum connected_charger_type {
-	UNKNOWN_CHARGER = 0,
-	CDP_CHARGER,
-	SDP_CHARGER,
-	DCP_CHARGER,
-	OCP_CHARGER,
-	FLOAT_CHARGER,
-	QC_CHARGER
-};
 void op_pm8998_regmap_register(struct regmap *regmap);
 void op_pm8150_regmap_register(struct regmap *regmap);
 void op_sdram_regmap_register(struct regmap *regmap);
@@ -188,8 +178,5 @@ bool check_call_on_status(void);
 bool check_video_call_on_status(void);
 bool check_lcd_on_status(void);
 void update_fast_switch_off_status(void);
-void update_disconnect_pd_status(bool en);
 int opchg_mcu_action(enum mcu_action_mode mode);
-int op_get_cool_down_value(void);
-int op_get_allowed_current_max(void);
 #endif

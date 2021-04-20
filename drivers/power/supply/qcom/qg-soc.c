@@ -8,11 +8,7 @@
 #include <linux/alarmtimer.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#ifdef CONFIG_OPLUS_CHARGER
-#include <linux/oem/power_supply.h>
-#else
 #include <linux/power_supply.h>
-#endif
 #include <uapi/linux/qg.h>
 #include <uapi/linux/qg-profile.h>
 #include "fg-alg.h"
@@ -301,12 +297,8 @@ static int qg_process_tcss_soc(struct qpnp_qg *chip, int sys_soc)
 					QG_MAX_SOC,
 					qg_iterm_ua,
 					chip->prev_fifo_i_ua);
-#ifdef OPLUS_FEATURE_CHG_BASIC
-	if (chip->prev_fifo_i_ua >= qg_iterm_ua)
-		soc_ibat = QG_MAX_SOC;
-#endif
 	soc_ibat = CAP(QG_MIN_SOC, QG_MAX_SOC, soc_ibat);
-#ifndef OPLUS_FEATURE_CHG_BASIC
+
 	wt_ibat = qg_linear_interpolate(1, chip->soc_tcss_entry,
 					10000, 10000, soc_ibat);
 	wt_ibat = CAP(QG_MIN_SOC, QG_MAX_SOC, wt_ibat);
@@ -315,9 +307,6 @@ static int qg_process_tcss_soc(struct qpnp_qg *chip, int sys_soc)
 	chip->soc_tcss = DIV_ROUND_CLOSEST((soc_ibat * wt_ibat) +
 					(wt_sys * sys_soc), 10000);
 	chip->soc_tcss = CAP(QG_MIN_SOC, QG_MAX_SOC, chip->soc_tcss);
-#else
-	chip->soc_tcss = soc_ibat;
-#endif
 
 	qg_dbg(chip, QG_DEBUG_SOC,
 		"TCSS: fifo_i=%d prev_fifo_i=%d ibatt_tcss_entry=%d qg_term=%d soc_tcss_entry=%d sys_soc=%d soc_ibat=%d wt_ibat=%d wt_sys=%d soc_tcss=%d\n",
@@ -343,13 +332,14 @@ skip_entry_count:
 static int qg_process_bass_soc(struct qpnp_qg *chip, int sys_soc)
 {
 	int bass_soc = sys_soc, msoc = chip->msoc;
+	int batt_soc = CAP(0, 100, DIV_ROUND_CLOSEST(chip->batt_soc, 100));
 
 	if (!chip->dt.bass_enable && !(qg_ss_feature & QG_BASS))
 		goto exit_soc_scale;
 
 	qg_dbg(chip, QG_DEBUG_SOC, "BASS Entry: fifo_i=%d sys_soc=%d msoc=%d batt_soc=%d fvss_active=%d\n",
 			chip->last_fifo_i_ua, sys_soc, msoc,
-			chip->batt_soc, chip->fvss_active);
+			batt_soc, chip->fvss_active);
 
 	/* Skip BASS if FVSS is active */
 	if (chip->fvss_active)
@@ -361,11 +351,11 @@ static int qg_process_bass_soc(struct qpnp_qg *chip, int sys_soc)
 
 	if (!chip->bass_active) {
 		chip->bass_active = true;
-		chip->bsoc_bass_entry = chip->batt_soc;
+		chip->bsoc_bass_entry = batt_soc;
 	}
 
 	/* Drop the sys_soc by 1% if batt_soc has dropped */
-	if ((chip->bsoc_bass_entry - chip->batt_soc) >= 100) {
+	if ((chip->bsoc_bass_entry - batt_soc) >= 1) {
 		bass_soc = (msoc > 0) ? msoc - 1 : 0;
 		chip->bass_active = false;
 	}
@@ -394,18 +384,8 @@ int qg_adjust_sys_soc(struct qpnp_qg *chip)
 
 	/* TCSS */
 	chip->sys_soc = qg_process_tcss_soc(chip, chip->sys_soc);
-#ifdef OPLUS_FEATURE_CHG_BASIC
-	if (chip->sys_soc <= 50) { /* 0.5% */
-		/* Hold SOC to 1% of VBAT has not dropped below cutoff */
-		rc = qg_get_battery_voltage(chip, &vbat_uv);
-		if (!rc && vbat_uv >= (vcutoff_uv + VBAT_LOW_HYST_UV))
-			soc = 1;
-		else
-			soc = 0;
-	} else if (chip->sys_soc == QG_MAX_SOC) {
-#else
+
 	if (chip->sys_soc == QG_MAX_SOC) {
-#endif
 		soc = FULL_SOC;
 	} else if (chip->sys_soc >= (QG_MAX_SOC - 100)) {
 		/* Hold SOC to 100% if we are dropping from 100 to 99 */
@@ -483,17 +463,7 @@ static void get_next_update_time(struct qpnp_qg *chip)
 static bool is_scaling_required(struct qpnp_qg *chip)
 {
 	bool input_present = is_input_present(chip);
-#ifdef OPLUS_FEATURE_CHG_BASIC
-	int ibat = 0;
-	int rc;
 
-	rc = qg_get_battery_current(chip, &ibat);
-	if (!rc) {
-		if (chip->catch_up_soc < chip->msoc
-			&& is_usb_present(chip) && ibat < 0)
-		return false;
-	}
-#endif
 	if (!chip->profile_loaded)
 		return false;
 

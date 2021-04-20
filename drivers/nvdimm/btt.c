@@ -541,9 +541,9 @@ static int arena_clear_freelist_error(struct arena_info *arena, u32 lane)
 
 static int btt_freelist_init(struct arena_info *arena)
 {
-	int new, ret;
-	struct log_entry log_new;
-	u32 i, map_entry, log_oldmap, log_newmap;
+	int old, new, ret;
+	u32 i, map_entry;
+	struct log_entry log_new, log_old;
 
 	arena->freelist = kcalloc(arena->nfree, sizeof(struct free_entry),
 					GFP_KERNEL);
@@ -551,26 +551,24 @@ static int btt_freelist_init(struct arena_info *arena)
 		return -ENOMEM;
 
 	for (i = 0; i < arena->nfree; i++) {
+		old = btt_log_read(arena, i, &log_old, LOG_OLD_ENT);
+		if (old < 0)
+			return old;
+
 		new = btt_log_read(arena, i, &log_new, LOG_NEW_ENT);
 		if (new < 0)
 			return new;
 
-		/* old and new map entries with any flags stripped out */
-		log_oldmap = ent_lba(le32_to_cpu(log_new.old_map));
-		log_newmap = ent_lba(le32_to_cpu(log_new.new_map));
-
 		/* sub points to the next one to be overwritten */
 		arena->freelist[i].sub = 1 - new;
 		arena->freelist[i].seq = nd_inc_seq(le32_to_cpu(log_new.seq));
-		arena->freelist[i].block = log_oldmap;
+		arena->freelist[i].block = le32_to_cpu(log_new.old_map);
 
 		/*
 		 * FIXME: if error clearing fails during init, we want to make
 		 * the BTT read-only
 		 */
-		if (ent_e_flag(log_new.old_map) &&
-				!ent_normal(log_new.old_map)) {
-			arena->freelist[i].has_err = 1;
+		if (ent_e_flag(log_new.old_map)) {
 			ret = arena_clear_freelist_error(arena, i);
 			if (ret)
 				dev_err_ratelimited(to_dev(arena),
@@ -578,7 +576,7 @@ static int btt_freelist_init(struct arena_info *arena)
 		}
 
 		/* This implies a newly created or untouched flog entry */
-		if (log_oldmap == log_newmap)
+		if (log_new.old_map == log_new.new_map)
 			continue;
 
 		/* Check if map recovery is needed */
@@ -586,8 +584,8 @@ static int btt_freelist_init(struct arena_info *arena)
 				NULL, NULL, 0);
 		if (ret)
 			return ret;
-
-		if ((log_newmap != map_entry) && (log_oldmap == map_entry)) {
+		if ((le32_to_cpu(log_new.new_map) != map_entry) &&
+				(le32_to_cpu(log_new.old_map) == map_entry)) {
 			/*
 			 * Last transaction wrote the flog, but wasn't able
 			 * to complete the map write. So fix up the map.

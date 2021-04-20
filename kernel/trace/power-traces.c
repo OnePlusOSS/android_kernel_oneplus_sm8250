@@ -22,4 +22,3 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(powernv_throttle);
 EXPORT_TRACEPOINT_SYMBOL_GPL(cpu_frequency_select);
 #endif
 
-EXPORT_TRACEPOINT_SYMBOL_GPL(clock_set_rate);

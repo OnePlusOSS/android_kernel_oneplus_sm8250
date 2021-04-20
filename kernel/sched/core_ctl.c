@@ -770,11 +770,16 @@ static bool adjustment_possible(const struct cluster_data *cluster,
 						cluster->nr_isolated_cpus));
 }
 #define TRACE_DEBUG 0
+#ifdef TRACE_DEBUG
+#define SYSTRACE_MAGIC 99990
+#endif
 
 static inline void tracing_mark_write(int serial, char *name, unsigned int value)
 {
-#if TRACE_DEBUG
-	trace_printk("C|%d|%s|%u\n", 99990+serial, name, value);
+#ifdef TRACE_DEBUG
+	trace_printk("C|%d|%s|%u\n", SYSTRACE_MAGIC+serial, name, value);
+#else
+	pr_info("trace func:%s value:%d\n", name, value);
 #endif
 }
 

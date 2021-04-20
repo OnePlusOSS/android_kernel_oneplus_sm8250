@@ -165,44 +165,29 @@ static void sctp_clear_owner_w(struct sctp_chunk *chunk)
 	skb_orphan(chunk->skb);
 }
 
-#define traverse_and_process()	\
-do {				\
-	msg = chunk->msg;	\
-	if (msg == prev_msg)	\
-		continue;	\
-	list_for_each_entry(c, &msg->chunks, frag_list) {	\
-		if ((clear && asoc->base.sk == c->skb->sk) ||	\
-		    (!clear && asoc->base.sk != c->skb->sk))	\
-			cb(c);	\
-	}			\
-	prev_msg = msg;		\
-} while (0)
-
 static void sctp_for_each_tx_datachunk(struct sctp_association *asoc,
-				       bool clear,
 				       void (*cb)(struct sctp_chunk *))
 
 {
-	struct sctp_datamsg *msg, *prev_msg = NULL;
 	struct sctp_outq *q = &asoc->outqueue;
-	struct sctp_chunk *chunk, *c;
 	struct sctp_transport *t;
+	struct sctp_chunk *chunk;
 
 	list_for_each_entry(t, &asoc->peer.transport_addr_list, transports)
 		list_for_each_entry(chunk, &t->transmitted, transmitted_list)
-			traverse_and_process();
+			cb(chunk);
 
 	list_for_each_entry(chunk, &q->retransmit, transmitted_list)
-		traverse_and_process();
+		cb(chunk);
 
 	list_for_each_entry(chunk, &q->sacked, transmitted_list)
-		traverse_and_process();
+		cb(chunk);
 
 	list_for_each_entry(chunk, &q->abandoned, transmitted_list)
-		traverse_and_process();
+		cb(chunk);
 
 	list_for_each_entry(chunk, &q->out_chunk_list, list)
-		traverse_and_process();
+		cb(chunk);
 }
 
 static void sctp_for_each_rx_skb(struct sctp_association *asoc, struct sock *sk,
@@ -8914,9 +8899,9 @@ static void sctp_sock_migrate(struct sock *oldsk, struct sock *newsk,
 	 * paths won't try to lock it and then oldsk.
 	 */
 	lock_sock_nested(newsk, SINGLE_DEPTH_NESTING);
-	sctp_for_each_tx_datachunk(assoc, true, sctp_clear_owner_w);
+	sctp_for_each_tx_datachunk(assoc, sctp_clear_owner_w);
 	sctp_assoc_migrate(assoc, newsk);
-	sctp_for_each_tx_datachunk(assoc, false, sctp_set_owner_w);
+	sctp_for_each_tx_datachunk(assoc, sctp_set_owner_w);
 
 	/* If the association on the newsk is already closed before accept()
 	 * is called, set RCV_SHUTDOWN flag.

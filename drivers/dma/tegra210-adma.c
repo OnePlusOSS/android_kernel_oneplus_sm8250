@@ -793,7 +793,7 @@ static int tegra_adma_probe(struct platform_device *pdev)
 	ret = dma_async_device_register(&tdma->dma_dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "ADMA registration failed: %d\n", ret);
-		goto rpm_put;
+		goto irq_dispose;
 	}
 
 	ret = of_dma_controller_register(pdev->dev.of_node,

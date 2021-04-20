@@ -43,7 +43,6 @@ struct bootloader_log_ram_zone_t {
 
 static int bootloader_log_proc_show(struct seq_file *m, void *v)
 {
-	bootloader_log_ram_zone.buffer[bootloader_log_ram_zone.size - 1] = '\0';
 	seq_printf(m, "%s\n", bootloader_log_ram_zone.buffer);
 	return 0;
 }

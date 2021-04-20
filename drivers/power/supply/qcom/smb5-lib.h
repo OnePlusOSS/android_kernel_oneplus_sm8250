@@ -140,8 +140,7 @@ enum print_reason {
 
 #define SDP_100_MA			100000
 #define SDP_CURRENT_UA			500000
-#define CDP_CURRENT_UA			1500000
-#define CDP_DUAL_CELL_CURRENT_UA	1400000
+#define CDP_CURRENT_UA			1400000
 #define DCP_CURRENT_UA			1500000
 #define HVDCP_CURRENT_UA		3000000
 #define TYPEC_DEFAULT_CURRENT_UA	900000
@@ -561,7 +560,6 @@ struct smb_charger {
 	struct delayed_work connecter_check_work;
 	struct delayed_work connecter_recovery_work;
 	struct delayed_work pd_status_check_work;
-	struct work_struct  op_pd_active_work;
 	struct delayed_work reset_rd_work;
 	struct delayed_work run_sw_aicl_work;
 	struct delayed_work disable_chg_flag_work;
@@ -582,7 +580,6 @@ struct smb_charger {
 	struct delayed_work	pr_swap_detach_work;
 	struct delayed_work	pr_lock_clear_work;
 	struct delayed_work	role_reversal_check;
-	struct delayed_work icon_debounce_unplug_check;
 
 	struct alarm		lpd_recheck_timer;
 	struct alarm		moisture_protection_alarm;
@@ -691,7 +688,6 @@ struct smb_charger {
 	bool				disallow_fast_bad_vol;
 	bool				warp_charging_dual_cell;
 	bool				hw_term_enabled;
-	bool				need_check_icl_lcdon;
 #endif
 	bool				ignore_irq_flag;
 	bool				oem_lcd_is_on;
@@ -704,7 +700,6 @@ struct smb_charger {
 	bool				revert_boost_trigger;
 	bool               switch_on_fastchg;
 	bool				probe_done;
-	bool				disconnect_pd;
 	int				ffc_count;
 #ifdef OP_SWARP_SUPPORTED
 	int				ffc_fv_count;
@@ -932,11 +927,6 @@ struct smb_charger {
 	int			qcpd_9v_vbat_thr;
 	unsigned int		adapter_sid;
 	unsigned long		lcd_st_debounce_expire;
-	int			cool_down;
-	bool		en_temp_ctrl_center;
-	int			reconnect_count;
-	bool		tried_fastchg;
-	bool		icon_debounce;
 };
 
 struct op_pps {
@@ -1228,6 +1218,5 @@ extern void op_release_usb_lock(void);
 bool is_op_chg_available(struct smb_charger *chg);
 bool is_charger_not_match(struct smb_charger *chg);
 #endif
-void op_smart_charge_by_cool_down(struct smb_charger *chg, int val);
 
 #endif /* __SMB5_CHARGER_H */

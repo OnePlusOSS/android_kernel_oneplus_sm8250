@@ -2,7 +2,3 @@
 #
 source "drivers/oneplus/power/supply/qcom/Kconfig"
 source "drivers/oneplus/power/supply/wlchg/Kconfig"
-
-config OP_POWER_SUPPLY
-	default y
-	bool "Enable/Disable oneplus power related drivers"

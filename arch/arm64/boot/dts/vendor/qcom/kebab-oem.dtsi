@@ -271,38 +271,6 @@
 		panel = <&dsi_boe_nt37800_fhd_dsc_cmd &dsi_samsung_dd305_dsc_cmd &dsi_samsung_amb655x_dsc_cmd>;
 	};
 };
-&qupv3_se13_i2c {
-	status = "ok";
-	goodix-gt9897@5D {
-		compatible = "Goodix-brl";
-		reg = <0x5D>;
-		project-name = "19805";
-		chip-name = "GT9897";
-		module_id = <7>;
-		reset-gpio = <&tlmm 38 0x00>;
-		irq-gpio = <&tlmm 39 0x2002>;
-		vdd_2v8-supply = <&pm8150_l13>;
-		vdd_2v8_volt = <3008000>;
-		vcc_1v8-supply = <&pm8150a_l1>;
-		touchpanel,display-coords = <1080 2400>;
-		touchpanel,panel-coords = <1080 2400>;
-		touchpanel,tx-rx-num = <17 38>;
-		black_gesture_support = <1>;
-		game_switch_support = <1>;
-		charge_detect_support = <1>;
-		touch_hold_support = <1>;
-		touchpanel,max-num-support = <10>;
-		pinctrl-names = "pin_set_high", "pin_set_low";
-		pinctrl-0 = <&tp_irq_active &tp_rst_active>;
-		pinctrl-1 = <&tp_rst_suspend>;
-		goodix,panel-max-x = <1080>;
-		goodix,panel-max-y = <2400>;
-		goodix,panel-max-w = <255>;
-		goodix,panel-max-p = <4096>;
-		panel = <&dsi_samsung_amb655x_dsc_cmd>;
-	};
-};
-
 &tlmm {
 	tp_irq_active: tp_irq_active {
 		mux {
@@ -596,7 +564,7 @@
      oem_serial_pinctrl {
         compatible = "oem,oem_serial_pinctrl";
         pinctrl-names = "uart_pinctrl_active","uart_pinctrl_deactive";
-        pinctrl-0 = <&qupv3_se12_2uart_oem_sleep>;
+        pinctrl-0 = <&qupv3_se12_2uart_active>;
         pinctrl-1 = <&qupv3_se12_2uart_oem_sleep>;
     };
 
@@ -699,7 +667,6 @@
         config {
             pins = "gpio34", "gpio35";
             drive-strength = <2>;
-            input-enable;
             bias-pull-down;
         };
     };

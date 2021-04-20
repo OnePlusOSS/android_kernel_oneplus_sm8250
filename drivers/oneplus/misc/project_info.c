@@ -515,7 +515,6 @@ struct cpu_list cpu_list_msm[] = {
     {321, "SDM845 "},
     {339, "SM8150 "},
     {356, "SM8250 "},
-    {400, "SM7250 "},
     {0, "Unknown"},
 };
 

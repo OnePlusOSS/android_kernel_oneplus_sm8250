@@ -81,82 +81,85 @@ static int set_gpio_by_pinctrl(void)
 		extcon_data->set_state);
 }
 /*op add to fix GCE-7551 begin*/
-//extern int aw8697_op_haptic_stop(void);
+extern int aw8697_op_haptic_stop(void);
 /*op add to fix GCE-7551 end*/
 
 static void extcon_dev_work(struct work_struct *work)
 {
 	int key[3] = {0, 0, 0};
+	int hw_version = 0;
 	/*op add to fix ISTRACKING-34823 begin*/
 	static int pre_key0, pre_key1, pre_key2;
 	/*op add to fix ISTRACKING-34823 end*/
 	/*hw 13 use special tri state key no use key2*/
 	//hw_version=get_hw_version();
-	key[0] = gpio_get_value(extcon_data->key1_gpio);
-	key[1] = gpio_get_value(extcon_data->key2_gpio);
-	key[2] = gpio_get_value(extcon_data->key3_gpio);
-	KEY_LOG("key[0]=%d,key[1]=%d,key[2]=%d\n",
-		key[0], key[1], key[2]);
-	/*op add to fix ISTRACKING-34823 begin*/
-	if (!key[0] || !key[1] || !key[2]) {
-		if (pre_key0 == key[0] && pre_key1 == key[1]
-				&& pre_key2 == key[2]) {
-			pre_key0 = key[0];
-			pre_key1 = key[1];
-			pre_key2 = key[2];
-			return;
-		}
-	}
-	/*op add to fix ISTRACKING-34823 end*/
-	/*op add to fix GCE-7551 begin*/
-	if (key[0] && key[1] && key[2]) {
-		KEY_LOG("key[0]=%d,key[1]=%d,key[2]=%d***pre_key0=%d, pre_key1=%d, pre_key2=%d\n",
-		key[0], key[1], key[2],pre_key0,pre_key1,pre_key2);
-		if (pre_key0 ==1 && pre_key1==1 && pre_key2 == 0)
-			return;
-		if (pre_key0 && pre_key1 && pre_key2) {
-			KEY_LOG("Debounce timeout: Set the extconstate to 0,1,1\n");
+	KEY_LOG("hw_version=%d\n", hw_version);
+	if (hw_version == 13) {
+		key[0] = gpio_get_value(extcon_data->key1_gpio);
+		key[2] = gpio_get_value(extcon_data->key3_gpio);
+
+		KEY_LOG("key[0]=%d,key[1]=%d,key[2]=%d\n",
+			 key[0], key[1], key[2]);
+		if (key[0] == 1 && key[2] == 1) {
+			extcon_set_state_sync(extcon_data->edev, 1, 1);
+			extcon_set_state_sync(extcon_data->edev, 2, 0);
+			extcon_set_state_sync(extcon_data->edev, 3, 1);
+		} else if (key[0] == 0 && key[2] == 1) {
 			extcon_set_state_sync(extcon_data->edev, 1, 0);
 			extcon_set_state_sync(extcon_data->edev, 2, 1);
 			extcon_set_state_sync(extcon_data->edev, 3, 1);
-		} else {
-			mod_timer(&extcon_data->s_timer, jiffies + HZ/5);
+		} else if (key[0] == 1 && key[2] == 0) {
+			extcon_set_state_sync(extcon_data->edev, 1, 1);
+			extcon_set_state_sync(extcon_data->edev, 2, 1);
+			extcon_set_state_sync(extcon_data->edev, 3, 0);
+		}
+	} else {
+		key[0] = gpio_get_value(extcon_data->key1_gpio);
+		key[1] = gpio_get_value(extcon_data->key2_gpio);
+		key[2] = gpio_get_value(extcon_data->key3_gpio);
+		KEY_LOG("key[0]=%d,key[1]=%d,key[2]=%d\n",
+			key[0], key[1], key[2]);
+		/*op add to fix ISTRACKING-34823 begin*/
+		if (!key[0] || !key[1] || !key[2]) {
+			if (pre_key0 == key[0] && pre_key1 == key[1]
+					&& pre_key2 == key[2]) {
+				pre_key0 = key[0];
+				pre_key1 = key[1];
+				pre_key2 = key[2];
+				return;
+			}
+		}
+		/*op add to fix ISTRACKING-34823 end*/
+		/*op add to fix GCE-7551 begin*/
+		if (key[0] && key[1] && key[2])
+			return;
+		if (!key[0] && !key[1] && !key[2])
+			return;
+		if (!key[0] && !key[1] && key[2])
+			return;
+		if (!key[0] && key[1] && !key[2])
+			return;
+		if (key[0] && !key[1] && !key[2])
+			return;
+		/*op add to fix GCE-7551 end*/
+		extcon_set_state_sync(
+				extcon_data->edev, 1, key[0]);
+		extcon_set_state_sync(
+				extcon_data->edev, 2, key[1]);
+		extcon_set_state_sync(
+				extcon_data->edev, 3, key[2]);
+		/*op add to fix GCE-7551 begin*/
+		if (!key[2] ||  !key[1])
+			aw8697_op_haptic_stop();
+		/*op add to fix GCE-7551 end*/
+		/*op add to fix ISTRACKING-34823 begin*/
+		if (!key[0] || !key[1] || !key[2]) {
 			pre_key0 = key[0];
 			pre_key1 = key[1];
 			pre_key2 = key[2];
-			KEY_LOG("Wait for debounce timeout\n");
 		}
-		return;
-	} else {
-		if (!del_timer(&extcon_data->s_timer))
-			KEY_LOG("timer already expired for Floating state\n");
+		/*op add to fix ISTRACKING-34823 end*/
 	}
-	if (!key[0] && !key[1] && !key[2])
-		return;
-	if (!key[0] && !key[1] && key[2])
-		return;
-	if (!key[0] && key[1] && !key[2])
-		return;
-	if (key[0] && !key[1] && !key[2])
-		return;
-	/*op add to fix GCE-7551 end*/
-	extcon_set_state_sync(
-			extcon_data->edev, 1, key[0]);
-	extcon_set_state_sync(
-			extcon_data->edev, 2, key[1]);
-	extcon_set_state_sync(
-			extcon_data->edev, 3, key[2]);
-	/*op add to fix GCE-7551 begin*/
-	//if (!key[2] ||  !key[1])
-	//	aw8697_op_haptic_stop();
-	/*op add to fix GCE-7551 end*/
-	/*op add to fix ISTRACKING-34823 begin*/
-	if (!key[0] || !key[1] || !key[2]) {
-		pre_key0 = key[0];
-		pre_key1 = key[1];
-		pre_key2 = key[2];
-	}
-	/*op add to fix ISTRACKING-34823 end*/
 }
 
 
@@ -166,7 +169,7 @@ static irqreturn_t extcon_dev_interrupt(int irq, void *_dev)
 	return IRQ_HANDLED;
 }
 
-static void timer_handle(struct timer_list *t)
+static void timer_handle(unsigned long arg)
 {
 	schedule_work(&extcon_data->work);
 }
@@ -214,7 +217,6 @@ static int tristate_dev_probe(struct platform_device *pdev)
 	struct device *dev;
 	int ret = 0;
 	KEY_LOG("SYSY\n");
-	KEY_LOG("TRI_STATE_KEY :******************PROBE CALL****\n");
 	dev = &pdev->dev;
 
 	extcon_data = kzalloc(sizeof(struct extcon_dev_data), GFP_KERNEL);
@@ -320,9 +322,8 @@ static int tristate_dev_probe(struct platform_device *pdev)
 
 	INIT_WORK(&extcon_data->work, extcon_dev_work);
 
-	//init_timer(&extcon_data->s_timer);
-	__init_timer(&extcon_data->s_timer, timer_handle, 0);
-	//extcon_data->s_timer.function = &timer_handle;
+	init_timer(&extcon_data->s_timer);
+	extcon_data->s_timer.function = &timer_handle;
 	extcon_data->s_timer.expires = jiffies + 5*HZ;
 
 	add_timer(&extcon_data->s_timer);
@@ -360,7 +361,7 @@ static int tristate_dev_remove(struct platform_device *pdev)
 }
 #ifdef CONFIG_OF
 static const struct of_device_id tristate_dev_of_match[] = {
-	{ .compatible = "oneplus,tri-state-key", },
+	{ .compatible = "oneplus, tri-state-key", },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, tristate_dev_of_match);

@@ -3077,7 +3077,7 @@ qla24xx_abort_command(srb_t *sp)
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x108c,
 	    "Entered %s.\n", __func__);
 
-	if (sp->qpair)
+	if (vha->flags.qpairs_available && sp->qpair)
 		req = sp->qpair->req;
 
 	if (ql2xasynctmfenable)

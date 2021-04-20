@@ -231,16 +231,10 @@ static int mbigen_irq_domain_alloc(struct irq_domain *domain,
 	return 0;
 }
 
-static void mbigen_irq_domain_free(struct irq_domain *domain, unsigned int virq,
-				   unsigned int nr_irqs)
-{
-	platform_msi_domain_free(domain, virq, nr_irqs);
-}
-
 static const struct irq_domain_ops mbigen_domain_ops = {
 	.translate	= mbigen_domain_translate,
 	.alloc		= mbigen_irq_domain_alloc,
-	.free		= mbigen_irq_domain_free,
+	.free		= irq_domain_free_irqs_common,
 };
 
 static int mbigen_of_create_domain(struct platform_device *pdev,

@@ -732,9 +732,8 @@ int msm_camera_register_irq(struct platform_device *pdev,
 		return -EINVAL;
 	}
 
-	rc =  request_threaded_irq(irq->start, handler, NULL,
+	rc = devm_request_irq(&pdev->dev, irq->start, handler,
 		irqflags, irq_name, dev_id);
-
 	if (rc < 0) {
 		pr_err("irq request fail\n");
 		rc = -EINVAL;
@@ -798,7 +797,6 @@ int msm_camera_unregister_irq(struct platform_device *pdev,
 	}
 
 	CDBG("Un Registering irq for [resource - %pK]\n", irq);
-	free_irq(irq->start, dev_id);
 
 	return 0;
 }

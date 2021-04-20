@@ -352,6 +352,8 @@ enum dsi_cmd_set_type {
 	DSI_CMD_LOADING_EFFECT_OFF,
 	DSI_CMD_SET_MCA_SETTING_MODE_1,
 	DSI_CMD_SET_MCA_SETTING_MODE_0,
+	DSI_CMD_SET_DIMMING_SETTING_MODE_1,
+	DSI_CMD_SET_DIMMING_SETTING_MODE_0,
 	DSI_CMD_SET_GAMMA_FLASH_PRE_READ_1,
 	DSI_CMD_SET_GAMMA_FLASH_PRE_READ_2,
 	DSI_CMD_SET_GAMMA_OTP_READ_C8_SMRPS,
@@ -368,8 +370,6 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_REGISTER_READ,
 	DSI_CMD_SET_LEVEL2_KEY_ENABLE,
 	DSI_CMD_SET_LEVEL2_KEY_DISABLE,
-	DSI_CMD_LOADING_EFFECT_ON_1,
-	DSI_CMD_LOADING_EFFECT_OFF_NEW,
 #if defined(CONFIG_PXLW_IRIS)
 	DSI_CMD_SET_ABYP,
 #endif
@@ -571,7 +571,6 @@ struct dsi_host_common_cfg {
 	bool bit_swap_blue;
 	u32 t_clk_post;
 	u32 t_clk_pre;
-	bool t_clk_pre_extend;
 	bool ignore_rx_eot;
 	bool append_tx_eot;
 	bool ext_bridge_mode;

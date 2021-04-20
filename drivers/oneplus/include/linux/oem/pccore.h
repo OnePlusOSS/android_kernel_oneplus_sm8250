@@ -31,7 +31,7 @@
 #define pcc_loge(fmt...) pr_err(PCC_TAG fmt)
 #define pcc_logd(fmt...) pr_debug(PCC_TAG fmt)
 
-static unsigned int cluster_pd[NR_CLU] = {17, 18, 21};
+static unsigned int cluster_pd[NR_CLU] = {17, 18, 20};
 static unsigned int cpufreq_pd_0[17] = {
 	0,//300000
 	0,//403200
@@ -73,7 +73,7 @@ static unsigned int cpufreq_pd_1[18] = {
 	8 //2419200
 };
 
-static unsigned int cpufreq_pd_2[21] = {
+static unsigned int cpufreq_pd_2[20] = {
 	0,// 844800
 	1,// 960000
 	1,//1075200
@@ -93,8 +93,7 @@ static unsigned int cpufreq_pd_2[21] = {
 	8,//2553600
 	8,//2649600
 	8,//2745600
-	8,//2841600
-	8//3187200
+	8//2841600
 };
 
 #endif // __INCLUDE_PCCORE__

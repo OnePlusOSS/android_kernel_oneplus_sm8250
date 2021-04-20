@@ -26,7 +26,6 @@
 #include <linux/sched/prio.h>
 #include <linux/signal_types.h>
 #include <linux/mm_types_task.h>
-#include <linux/mm_event.h>
 #include <linux/task_io_accounting.h>
 #include <linux/rseq.h>
 
@@ -135,7 +134,6 @@ enum fps {
 	FPS60 = 60,
 	FPS90 = 90,
 	FPS120 = 120,
-	FPS144 = 144,
 };
 
 #ifdef CONFIG_UXCHAIN
@@ -996,10 +994,6 @@ struct task_struct {
 	cpumask_t			cpus_allowed;
 	cpumask_t			cpus_requested;
 
-#ifdef CONFIG_RATP
-	cpumask_t			cpus_suggested;
-#endif
-
 #ifdef CONFIG_PREEMPT_RCU
 	int				rcu_read_lock_nesting;
 	union rcu_special		rcu_read_unlock_special;
@@ -1235,8 +1229,8 @@ struct task_struct {
 	struct seccomp			seccomp;
 
 	/* Thread group tracking: */
-	u64				parent_exec_id;
-	u64				self_exec_id;
+	u32				parent_exec_id;
+	u32				self_exec_id;
 
 	/* Protection against (de-)allocation: mm, files, fs, tty, keyrings, mems_allowed, mempolicy: */
 	spinlock_t			alloc_lock;
@@ -1254,10 +1248,7 @@ struct task_struct {
 	/* Deadlock detection and priority inheritance handling: */
 	struct rt_mutex_waiter		*pi_blocked_on;
 #endif
-#ifdef CONFIG_MM_EVENT_STAT
-	struct mm_event_task	mm_event[MM_TYPE_NUM];
-	unsigned long		next_period;
-#endif
+
 #ifdef CONFIG_DEBUG_MUTEXES
 	/* Mutex deadlock detection: */
 	struct mutex_waiter		*blocked_on;
@@ -1615,24 +1606,13 @@ struct task_struct {
 	int	saved_flag;
 #endif
 
-#ifdef CONFIG_UXCHAIN_V2
-	int fork_by_static_ux;
-	int ux_once;
-	u64 get_mmlock_ts;
-	int get_mmlock;
-#endif
-
 #ifdef CONFIG_IM
 	int im_flag;
-#endif
-#ifdef CONFIG_TPP
-	int tpp_flag;
 #endif
 
 #ifdef CONFIG_TPD
 	int tpd;
-	int dtpd; /* dynamic tpd task */
-	int dtpdg; /* dynamic tpd task group */
+	int dtpd;
 #endif
 
 #ifdef CONFIG_HOUSTON

@@ -284,8 +284,6 @@ static int sdcardfs_open(struct inode *inode, struct file *file)
 				fp->filp = file;
 				get_file(file);
 			}
-			if (iname)
-				__putname(iname);
 		}
 	}
 

@@ -14,7 +14,6 @@
 #include "cam_res_mgr_api.h"
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
-#include "cam_trace.h"
 
 #include "onsemi_fw/fw_download_interface.h"
 
@@ -703,7 +702,6 @@ static int cam_ois_pkt_parse(struct cam_ois_ctrl_t *o_ctrl, void *arg)
 			o_ctrl->cam_ois_state = CAM_OIS_CONFIG;
 		}
 
-		trace_begin("%d_%d_%s Download FW", o_ctrl->cci_num, o_ctrl->cci_i2c_master, o_ctrl->ois_name);
 		if (o_ctrl->ois_fw_flag) {
 			if (strstr(o_ctrl->ois_name, "lc898")) {
 				o_ctrl->ois_module_vendor = (o_ctrl->opcode.pheripheral & 0xFF00) >> 8;
@@ -728,7 +726,6 @@ static int cam_ois_pkt_parse(struct cam_ois_ctrl_t *o_ctrl, void *arg)
                                         mutex_unlock(&(o_ctrl->do_ioctl_ois));
                                 }
 				CAM_ERR(CAM_OIS, "Failed OIS FW Download");
-				trace_end();
 				goto pwr_dwn;
 			}
                         if(o_ctrl->cam_ois_download_fw_in_advance){
@@ -736,7 +733,6 @@ static int cam_ois_pkt_parse(struct cam_ois_ctrl_t *o_ctrl, void *arg)
                                 mutex_unlock(&(o_ctrl->do_ioctl_ois));
                         }
 		}
-		trace_end();
 
 		rc = cam_ois_apply_settings(o_ctrl, &o_ctrl->i2c_init_data);
 		if ((rc == -EAGAIN) &&

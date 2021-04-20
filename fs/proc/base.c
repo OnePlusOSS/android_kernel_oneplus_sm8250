@@ -917,7 +917,6 @@ static const struct file_operations proc_mem_operations = {
 };
 
 #ifdef CONFIG_ONEPLUS_HEALTHINFO
-/*2020-06-17, add for stuck monitor*/
 static int proc_stuck_trace_show(struct seq_file *m, void *v)
 {
 	struct inode *inode = m->private;
@@ -1196,6 +1195,7 @@ static ssize_t oom_adj_read(struct file *file, char __user *buf, size_t count,
 
 static int __set_oom_adj(struct file *file, int oom_adj, bool legacy)
 {
+	static DEFINE_MUTEX(oom_adj_mutex);
 	struct mm_struct *mm = NULL;
 	struct task_struct *task;
 	int err = 0;
@@ -1235,7 +1235,7 @@ static int __set_oom_adj(struct file *file, int oom_adj, bool legacy)
 		struct task_struct *p = find_lock_task_mm(task);
 
 		if (p) {
-			if (test_bit(MMF_MULTIPROCESS, &p->mm->flags)) {
+			if (atomic_read(&p->mm->mm_users) > 1) {
 				mm = p->mm;
 				mmgrab(mm);
 			}
@@ -3957,7 +3957,6 @@ static const struct pid_entry tgid_base_stuff[] = {
 	ONE("time_in_state", 0444, proc_time_in_state_show),
 #endif
 #ifdef CONFIG_ONEPLUS_HEALTHINFO
-/*2020-06-19, add for stuck monitor*/
 	REG("stuck_info", 0666, proc_stuck_trace_operations),
 #endif /*CONFIG_ONEPLUS_HEALTHINFO*/
 #ifdef CONFIG_IM

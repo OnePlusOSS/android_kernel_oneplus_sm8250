@@ -190,7 +190,6 @@ static void __cam_req_mgr_find_dev_name(
 {
 	int i = 0;
 	struct cam_req_mgr_connected_device *dev = NULL;
-	char trace[64] = {0};
 
 	for (i = 0; i < link->num_devs; i++) {
 		dev = &link->l_dev[i];
@@ -202,12 +201,6 @@ static void __cam_req_mgr_find_dev_name(
 				"Skip Frame: req: %lld not ready on link: 0x%x for pd: %d dev: %s open_req count: %d",
 				req_id, link->link_hdl, pd, dev->dev_info.name,
 				link->open_req_cnt);
-			snprintf(trace, sizeof(trace), "KMD %d_4 Skip Frame", link->link_hdl);
-			trace_int(trace, req_id);
-			trace_int(trace, 0);
-			trace_begin_end("Skip Frame: req: %lld not ready on link: 0x%x for pd: %d dev: %d_%d_%s open_req count: %d",
-				req_id, link->link_hdl, pd,
-				dev->dev_info.dev_id, dev->dev_info.dev_hdl, dev->dev_info.name, link->open_req_cnt);
 		}
 	}
 }
@@ -740,7 +733,6 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 	struct cam_req_mgr_apply_request     apply_req;
 	struct cam_req_mgr_link_evt_data     evt_data;
 	struct cam_req_mgr_tbl_slot          *slot = NULL;
-	char trace[64] = {0};
 
 	apply_req.link_hdl = link->link_hdl;
 	apply_req.report_if_bubble = 0;
@@ -832,9 +824,6 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 				}
 			}
 			trace_cam_req_mgr_apply_request(link, &apply_req, dev);
-			snprintf(trace, sizeof(trace), "KMD %d_5 ApplyRequest %d_%s", apply_req.link_hdl, dev->dev_info.dev_id, dev->dev_info.name);
-			trace_int(trace, apply_req.request_id);
-			trace_int(trace, 0);
 		}
 	}
 	if (rc < 0) {
@@ -1391,7 +1380,6 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 	struct cam_req_mgr_req_queue        *in_q;
 	struct cam_req_mgr_core_session     *session;
 	struct cam_req_mgr_connected_device *dev;
-	char trace[64] = {0};
 
 	in_q = link->req.in_q;
 	session = (struct cam_req_mgr_core_session *)link->parent;
@@ -1408,10 +1396,6 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 		in_q->slot[in_q->rd_idx].req_id, in_q->rd_idx,
 		in_q->slot[in_q->rd_idx].status, link->link_hdl,
 		in_q->slot[in_q->rd_idx].additional_timeout);
-
-	snprintf(trace, sizeof(trace), "KMD %d_3 Process Request %d", link->link_hdl, trigger);
-	trace_int(trace, in_q->slot[in_q->rd_idx].req_id);
-	trace_int(trace, 0);
 
 	slot = &in_q->slot[in_q->rd_idx];
 	if (slot->status == CRM_SLOT_STATUS_NO_REQ) {
@@ -2321,7 +2305,6 @@ int cam_req_mgr_process_add_req(void *priv, void *data)
 	struct cam_req_mgr_req_tbl          *tbl = NULL;
 	struct cam_req_mgr_tbl_slot         *slot = NULL;
 	struct crm_task_payload             *task_data = NULL;
-	char trace[64] = {0};
 
 	if (!data || !priv) {
 		CAM_ERR(CAM_CRM, "input args NULL %pK %pK", data, priv);
@@ -2395,9 +2378,6 @@ int cam_req_mgr_process_add_req(void *priv, void *data)
 		slot->req_ready_map);
 
 	trace_cam_req_mgr_add_req(link, idx, add_req, tbl, device);
-	snprintf(trace, sizeof(trace), "KMD %d_2 AddRequest %d_%s", add_req->link_hdl, device->dev_info.dev_id, device->dev_info.name);
-	trace_int(trace, add_req->req_id);
-	trace_int(trace, 0);
 
 	if (slot->req_ready_map == tbl->dev_mask) {
 		CAM_DBG(CAM_REQ,
@@ -2684,10 +2664,6 @@ static int cam_req_mgr_cb_add_req(struct cam_req_mgr_add_request *add_req)
 	CAM_DBG(CAM_REQ, "dev name %s dev_hdl %d dev req %lld",
 		__cam_req_mgr_dev_handle_to_name(add_req->dev_hdl, link),
 		add_req->dev_hdl, add_req->req_id);
-	trace_begin_end("ReqMgr AddRequest dev name %s dev_hdl %d dev req %lld, skip_before_applying %d link_state %d",
-		__cam_req_mgr_dev_handle_to_name(add_req->dev_hdl, link),
-		add_req->dev_hdl, add_req->req_id, add_req->skip_before_applying,
-		link->state);
 
 	mutex_lock(&link->lock);
 	spin_lock_bh(&link->link_state_spin_lock);
@@ -3573,7 +3549,6 @@ int cam_req_mgr_schedule_request(
 	struct cam_req_mgr_core_session  *session = NULL;
 	struct cam_req_mgr_sched_request *sched;
 	struct crm_task_payload           task_data;
-	char trace[64] = {0};
 
 	if (!sched_req) {
 		CAM_ERR(CAM_CRM, "csl_req is NULL");
@@ -3627,9 +3602,6 @@ int cam_req_mgr_schedule_request(
 
 	CAM_DBG(CAM_REQ, "Open req %lld on link 0x%x with sync_mode %d",
 		sched_req->req_id, sched_req->link_hdl, sched_req->sync_mode);
-	snprintf(trace, sizeof(trace), "KMD %d_1 OpenRequest", sched_req->link_hdl);
-	trace_int(trace, sched_req->req_id);
-	trace_int(trace, 0);
 end:
 	mutex_unlock(&g_crm_core_dev->crm_lock);
 	return rc;

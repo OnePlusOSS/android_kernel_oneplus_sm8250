@@ -20,7 +20,6 @@
 #include <net/genetlink.h>
 #include <net/sock.h>
 #include <net/gro_cells.h>
-#include <linux/if_arp.h>
 
 #include <uapi/linux/if_macsec.h>
 
@@ -1313,7 +1312,7 @@ static struct crypto_aead *macsec_alloc_tfm(char *key, int key_len, int icv_len)
 	struct crypto_aead *tfm;
 	int ret;
 
-	tfm = crypto_alloc_aead("gcm(aes)", 0, CRYPTO_ALG_ASYNC);
+	tfm = crypto_alloc_aead("gcm(aes)", 0, 0);
 
 	if (IS_ERR(tfm))
 		return tfm;
@@ -3238,19 +3237,17 @@ static int macsec_newlink(struct net *net, struct net_device *dev,
 			  struct netlink_ext_ack *extack)
 {
 	struct macsec_dev *macsec = macsec_priv(dev);
-	rx_handler_func_t *rx_handler;
-	u8 icv_len = DEFAULT_ICV_LEN;
 	struct net_device *real_dev;
-	int err, mtu;
+	int err;
 	sci_t sci;
+	u8 icv_len = DEFAULT_ICV_LEN;
+	rx_handler_func_t *rx_handler;
 
 	if (!tb[IFLA_LINK])
 		return -EINVAL;
 	real_dev = __dev_get_by_index(net, nla_get_u32(tb[IFLA_LINK]));
 	if (!real_dev)
 		return -ENODEV;
-	if (real_dev->type != ARPHRD_ETHER)
-		return -EINVAL;
 
 	dev->priv_flags |= IFF_MACSEC;
 
@@ -3258,11 +3255,7 @@ static int macsec_newlink(struct net *net, struct net_device *dev,
 
 	if (data && data[IFLA_MACSEC_ICV_LEN])
 		icv_len = nla_get_u8(data[IFLA_MACSEC_ICV_LEN]);
-	mtu = real_dev->mtu - icv_len - macsec_extra_len(true);
-	if (mtu < 0)
-		dev->mtu = 0;
-	else
-		dev->mtu = mtu;
+	dev->mtu = real_dev->mtu - icv_len - macsec_extra_len(true);
 
 	rx_handler = rtnl_dereference(real_dev->rx_handler);
 	if (rx_handler && rx_handler != macsec_handle_frame)

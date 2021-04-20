@@ -815,6 +815,7 @@ int mhi_queue_state_transition(struct mhi_controller *mhi_cntrl,
 	MHI_LOG("%s state to :%s\n", __func__,
 		TO_MHI_STATE_TRANS_STR(item->state));
 	queue_work(mhi_cntrl->wq, &mhi_cntrl->st_worker);
+
 	return 0;
 }
 
@@ -975,7 +976,6 @@ int mhi_async_power_up(struct mhi_controller *mhi_cntrl)
 	if (val >= mhi_cntrl->len) {
 		write_unlock_irq(&mhi_cntrl->pm_lock);
 		MHI_ERR("Invalid bhi offset:%x\n", val);
-		ret = -EINVAL;
 		goto error_bhi_offset;
 	}
 
@@ -993,7 +993,6 @@ int mhi_async_power_up(struct mhi_controller *mhi_cntrl)
 		if (val >= mhi_cntrl->len) {
 			write_unlock_irq(&mhi_cntrl->pm_lock);
 			MHI_ERR("Invalid bhie offset:%x\n", val);
-			ret = -EINVAL;
 			goto error_bhi_offset;
 		}
 
@@ -1670,8 +1669,7 @@ int mhi_device_get_sync(struct mhi_device *mhi_dev, int vote)
 }
 EXPORT_SYMBOL(mhi_device_get_sync);
 
-int mhi_device_get_sync_atomic(struct mhi_device *mhi_dev, int timeout_us,
-			       bool in_panic)
+int mhi_device_get_sync_atomic(struct mhi_device *mhi_dev, int timeout_us)
 {
 	struct mhi_controller *mhi_cntrl = mhi_dev->mhi_cntrl;
 
@@ -1697,20 +1695,11 @@ int mhi_device_get_sync_atomic(struct mhi_device *mhi_dev, int timeout_us,
 		return 0;
 	}
 
-	if (in_panic) {
-		while (mhi_get_mhi_state(mhi_cntrl) != MHI_STATE_M0 &&
-		       !MHI_PM_IN_ERROR_STATE(mhi_cntrl->pm_state) &&
-		       timeout_us > 0) {
-			udelay(MHI_FORCE_WAKE_DELAY_US);
-			timeout_us -= MHI_FORCE_WAKE_DELAY_US;
-		}
-	} else {
-		while (mhi_cntrl->pm_state != MHI_PM_M0 &&
-		       !MHI_PM_IN_ERROR_STATE(mhi_cntrl->pm_state) &&
-		       timeout_us > 0) {
-			udelay(MHI_FORCE_WAKE_DELAY_US);
-			timeout_us -= MHI_FORCE_WAKE_DELAY_US;
-		}
+	while (mhi_cntrl->pm_state != MHI_PM_M0 &&
+			!MHI_PM_IN_ERROR_STATE(mhi_cntrl->pm_state) &&
+			timeout_us > 0) {
+		udelay(MHI_FORCE_WAKE_DELAY_US);
+		timeout_us -= MHI_FORCE_WAKE_DELAY_US;
 	}
 
 	if (MHI_PM_IN_ERROR_STATE(mhi_cntrl->pm_state) || timeout_us <= 0) {

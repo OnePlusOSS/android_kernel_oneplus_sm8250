@@ -133,7 +133,6 @@ void plist_del(struct plist_node *node, struct plist_head *head)
 
 	plist_check_head(head);
 }
-EXPORT_SYMBOL_GPL(plist_del);
 
 /**
  * plist_requeue - Requeue @node at end of same-prio entries.

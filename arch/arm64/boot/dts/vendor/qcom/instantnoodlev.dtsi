@@ -116,13 +116,13 @@
 		wake-capable-sensor;
 		trips {
 			skin_therm_usr_trip0: skin_therm_usr_trip0 {
-				temperature = <52000>;
-				hysteresis = <6000>;
+				temperature = <50000>;
+				hysteresis = <7000>;
 				type = "passive";
 			};
 			skin_therm_usr_trip1: skin_therm_usr_trip1 {
 				temperature = <54000>;
-				hysteresis = <7000>;
+				hysteresis = <9000>;
 				type = "passive";
 			};
 			skin_therm_usr_trip3: skin_therm_usr_trip3 {
@@ -132,13 +132,13 @@
 			};
 		};
 		cooling-maps {
-			modem_skin_lvl0 {
+			modem_Tj_lvl1 {
 				trip = <&skin_therm_usr_trip0>;
-				cooling-device = <&modem_skin 1 1>;
+				cooling-device = <&modem_tj 1 1>;
 			};
 			modem_skin_lvl1 {
 				trip = <&skin_therm_usr_trip1>;
-				cooling-device = <&modem_skin 2 2>;
+				cooling-device = <&modem_skin 1 1>;
 			};
 			modem_skin_lvl3 {
 				trip = <&skin_therm_usr_trip3>;

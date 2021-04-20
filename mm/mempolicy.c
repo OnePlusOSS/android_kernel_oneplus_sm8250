@@ -2861,8 +2861,6 @@ int mpol_parse_str(char *str, struct mempolicy **mpol)
 				rest++;
 			if (*rest)
 				goto out;
-			if (nodes_empty(nodes))
-				goto out;
 		}
 		break;
 	case MPOL_INTERLEAVE:

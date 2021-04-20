@@ -1391,6 +1391,7 @@ int ubifs_update_time(struct inode *inode, struct timespec64 *time,
 	struct ubifs_info *c = inode->i_sb->s_fs_info;
 	struct ubifs_budget_req req = { .dirtied_ino = 1,
 			.dirtied_ino_d = ALIGN(ui->data_len, 8) };
+	int iflags = I_DIRTY_TIME;
 	int err, release;
 
 	err = ubifs_budget_space(c, &req);
@@ -1405,8 +1406,11 @@ int ubifs_update_time(struct inode *inode, struct timespec64 *time,
 	if (flags & S_MTIME)
 		inode->i_mtime = *time;
 
+	if (!(inode->i_sb->s_flags & SB_LAZYTIME))
+		iflags |= I_DIRTY_SYNC;
+
 	release = ui->dirty;
-	__mark_inode_dirty(inode, I_DIRTY_SYNC);
+	__mark_inode_dirty(inode, iflags);
 	mutex_unlock(&ui->ui_mutex);
 	if (release)
 		ubifs_release_budget(c, &req);

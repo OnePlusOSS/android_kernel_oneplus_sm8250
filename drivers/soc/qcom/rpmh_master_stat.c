@@ -307,8 +307,7 @@ ssize_t master_stats_show(struct kobject *kobj,
 						(arch_counter_get_cntvct()
 						- record->last_entered);
 
-			if ((sizeof(stats_buf) - strlen(stats_buf)) > 0) {
-				snprintf(stats_buf + strlen(stats_buf), sizeof(stats_buf) - strlen(stats_buf),
+			snprintf(stats_buf + strlen(stats_buf), sizeof(stats_buf),
 					"%s\n\tVersion:0x%x\n"
 					"\tSleep Count:0x%x\n"
 					"\tSleep Last Entered At:0x%llx\n"
@@ -317,7 +316,6 @@ ssize_t master_stats_show(struct kobject *kobj,
 					rpmh_masters[i].master_name, record->version_id,
 					record->counts, record->last_entered,
 					record->last_exited, temp_accumulated_duration);
-			}
 		}
 	}
 

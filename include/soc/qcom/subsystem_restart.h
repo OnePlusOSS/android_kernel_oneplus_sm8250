@@ -91,7 +91,6 @@ struct subsys_desc {
 
 	int (*shutdown)(const struct subsys_desc *desc, bool force_stop);
 	int (*powerup)(const struct subsys_desc *desc);
-	void (*force_reset)(const struct subsys_desc *desc);
 	void (*crash_shutdown)(const struct subsys_desc *desc);
 	int (*ramdump)(int, const struct subsys_desc *desc);
 	void (*free_memory)(const struct subsys_desc *desc);

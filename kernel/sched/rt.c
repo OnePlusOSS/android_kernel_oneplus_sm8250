@@ -9,8 +9,6 @@
 
 #include <linux/interrupt.h>
 
-#include <trace/events/sched.h>
-
 #include "walt.h"
 #ifdef CONFIG_CONTROL_CENTER
 #include <linux/oem/control_center.h>
@@ -1875,15 +1873,15 @@ retry:
 				continue;
 #endif
 
-			trace_sched_cpu_util(cpu);
-
 			if (cpu_isolated(cpu))
 				continue;
 
 			if (sched_cpu_high_irqload(cpu))
 				continue;
 
-			if (__cpu_overutilized(cpu, tutil))
+			util = cpu_util(cpu);
+
+			if (__cpu_overutilized(cpu, util + tutil))
 				continue;
 #ifdef CONFIG_OPCHAIN
 			if (best_cpu_is_claimed) {
@@ -1895,9 +1893,6 @@ retry:
 				continue;
 			}
 #endif
-
-			util = cpu_util(cpu);
-
 			/* Find the least loaded CPU */
 			if (util > best_cpu_util)
 				continue;

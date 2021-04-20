@@ -145,11 +145,11 @@ static struct clk_alpha_pll npu_cc_pll0 = {
 	},
 };
 
-/* 1500MHz Configuration */
+/* 300MHz Configuration */
 static struct alpha_pll_config npu_cc_pll1_config = {
-	.l = 0x4E,
+	.l = 0xF,
 	.cal_l = 0x33,
-	.alpha = 0x2000,
+	.alpha = 0xA000,
 	.config_ctl_val = 0x20485699,
 	.config_ctl_hi_val = 0x00002067,
 	.test_ctl_val = 0x40000000,
@@ -181,11 +181,11 @@ static struct clk_alpha_pll npu_cc_pll1 = {
 	},
 };
 
-/* 600MHz Configuration */
+/* 250MHz Configuration */
 static struct alpha_pll_config npu_q6ss_pll_config = {
-	.l = 0x1F,
-	.cal_l = 0x1E,
-	.alpha = 0x4000,
+	.l = 0xD,
+	.cal_l = 0x3F,
+	.alpha = 0x555,
 	.config_ctl_val = 0x20485699,
 	.config_ctl_hi_val = 0x00002067,
 	.test_ctl_val = 0x40000000,
