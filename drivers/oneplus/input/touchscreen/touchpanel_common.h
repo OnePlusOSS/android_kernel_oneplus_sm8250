@@ -146,6 +146,7 @@ typedef enum {
 	MODE_REVERSE_WIRELESS_CHARGE,
 	MODE_WET_DETECT,
 	MODE_TP_DELTA_PRINT,
+	MODE_GLASS,
 }work_mode;
 
 typedef enum {
@@ -481,6 +482,8 @@ struct touchpanel_data {
 	bool reverse_charge_status;							/*reverse charge status*/
 	bool wet_mode_status;								/*wet mode status*/
 	bool report_flow_unlock_support;						/*report flow is unlock, need to lock when all touch release*/
+	bool game_mode_status;
+	bool glass_mode_status;
 #if defined(TPD_USE_EINT)
 	struct hrtimer         timer;                       /*using polling instead of IRQ*/
 #endif

@@ -64,6 +64,7 @@ struct fastchg_device_info {
 	struct pinctrl_state *pinctrl_mcu_id_pull_down;
 	bool is_swarp_supported;
 	bool warp_normal_path_need_config;
+	bool fw_ver_not_match;
 	int asic_hw_id;
 #endif
 	bool is_4300mAh_4p45_support;
@@ -74,6 +75,7 @@ struct fastchg_device_info {
 	int skin_med_curr_max;
 	int skin_hi_lcdoff_curr_max;
 	int skin_med_lcdoff_curr_max;
+	int current_max_val;
 	int dash_firmware_ok;
 	int mcu_reset_ahead;
 	int erase_count;
@@ -134,6 +136,7 @@ static void oneplus_notify_dash_charger_type(enum fast_charger_type type);
 #endif
 static void oneplus_notify_adapter_sid(unsigned int sid);
 void switch_mode_to_normal(void);
+extern void msm_cpuidle_set_sleep_disable(bool disable);
 
 static int is_usb_pluged(void)
 {
@@ -504,7 +507,6 @@ void usb_sw_gpio_set(int value)
 		gpio_direction_output(fastchg_di->usb_sw_2_gpio, 0);
 	}
 	fastchg_di->fast_chg_allow = value;
-	/* david@bsp add log */
 	pr_info("get usb_sw_gpio=%d&%d\n"
 		, gpio_get_value(fastchg_di->usb_sw_1_gpio)
 		, gpio_get_value(fastchg_di->usb_sw_2_gpio));
@@ -870,7 +872,6 @@ static int set_property_on_smbcharger(
 		}
 	}
 	ret = power_supply_set_property(psy, prop, &value);
-	/* david@bsp modified */
 	if (ret)
 		return -EINVAL;
 
@@ -1192,6 +1193,9 @@ static bool rk826_fw_check(struct fastchg_device_info *chip)
 		pr_info("the read compare data: %02x, target:%02x\n", data_buf[0], dashchg_firmware_data[i]);
 		if (data_buf[0] != dashchg_firmware_data[i]) {
 			//pr_err("rk826_fw_data check fail\n");
+			if ((i == chip->dashchg_fw_ver_count - 5)
+				|| (i == chip->dashchg_fw_ver_count - 4))
+				chip->fw_ver_not_match = true;
 			goto fw_update_check_err;
 		}
 	}
@@ -1289,6 +1293,149 @@ int WriteSram(struct fastchg_device_info *chip, const u8 *buf, u32 size)
 	return 0;
 }
 
+int rk826_download_erase_byte(struct fastchg_device_info *chip, const u8 byte)
+{
+	u8 transfer_buf[TRANSFER_LIMIT];
+	u32 onetime_size = TRANSFER_LIMIT - 8;
+	u32 index = 0;
+	int ret = 0;
+	int size=16384;
+
+	pr_info("size: %d\n", size);
+	pr_err("erase_rk826_%02x  start\n", byte);
+	do {
+		memset(transfer_buf, byte, TRANSFER_LIMIT);
+
+		if (size >= onetime_size) {
+			size-= onetime_size;
+		} else {
+			size = 0;
+		}
+		*((u32 *)(transfer_buf + onetime_size)) = index;
+		*((u32 *)(transfer_buf + onetime_size + 4)) = js_hash(transfer_buf, onetime_size + 4);
+
+		ret = WriteSram(chip, transfer_buf, TRANSFER_LIMIT);
+		if (ret != 0) {
+			return ret;
+		}
+		pr_info("index: %d\n", index);
+		index++;
+	} while (size);
+	pr_err("erase_rk826_%02x end\n", byte);
+	return 0;
+}
+
+static int rk826_erase_fw_by_byte(struct fastchg_device_info *chip, const u8 byte)
+{
+	int ret = 0;
+	int iTryCount = 3;
+	struct_req req = {0};
+	u32 sync_flag = cpu_to_le32(SYNC_FLAG);
+	u32 force_update_flag = cpu_to_le32(FORCE_UPDATE_FLAG);
+	u32 sw_reset_flag = cpu_to_le32(SW_RESET_FLAG);
+	u32 rec_01_flag = cpu_to_le32(REC_01_FLAG);
+	u8 read_buf[4] = {0};
+
+	oneplus_u16_i2c_write(chip->client, REG_SYS0, 4, (u8 *)(&force_update_flag));
+	msleep(10);
+	oneplus_u16_i2c_write(chip->client, REG_RESET, 4, (u8 *)(&sw_reset_flag));
+	while (iTryCount) {
+		msleep(10);
+		ret = oneplus_u16_i2c_write(chip->client, REG_HOST, 4, (u8 *)(&sync_flag));
+		if (ret < 0) {
+			pr_err("write sync failed!");
+			goto update_fw_err;
+		}
+
+		msleep(10);
+		ret = oneplus_u16_i2c_read(chip->client, REG_HOST, 4, read_buf);
+		pr_info("the data: %x, %x, %x, %x\n", read_buf[0], read_buf[1], read_buf[2], read_buf[3]);
+		pr_info("the data: %x, %x, %x, %x\n", *(u8 *)(&sync_flag), *((u8 *)(&sync_flag) + 1), *((u8 *)(&sync_flag) + 2), *((u8 *)(&sync_flag) + 3));
+
+		if (ret < 0) {
+			pr_err("read sync failed!");
+			goto update_fw_err;
+		}
+		if (*(u32 *)read_buf != NOT_SYNC_FLAG) {
+			pr_err("check ~sync failed!");
+			iTryCount--;
+			msleep(50);
+			continue;
+		}
+		break;
+	}
+
+	if (iTryCount == 0) {
+		pr_err("Failed to sync!");
+		goto update_fw_err;
+	}
+
+	ret = oneplus_u16_i2c_write(chip->client, REG_HOST, 4, (u8 *)(&rec_01_flag));
+	if (ret < 0) {
+		pr_err("write rec_01 flag failed!");
+		goto update_fw_err;
+	}
+	msleep(10);
+
+	ret = oneplus_u16_i2c_read(chip->client, REG_STATE, 4, read_buf);
+	if (ret<0) {
+		pr_err("write rec_01 flag failed!");
+		goto update_fw_err;
+	}
+	if (*(u32 *)read_buf != STATE_REQUEST) {
+		pr_err("Failed to go into request_state!");
+		goto update_fw_err;
+	}
+
+	req.tag = 0x51455220;
+	req.ram_offset = 0;
+	req.length =  16384;//for erase
+	req.timeout = 0;
+	if (byte == 0x00)
+		req.fw_crc = 0xd55e99fb;//for crc hash
+	else if (byte == 0xff)
+		req.fw_crc = 0x8d8369dd;
+	req.header_crc = js_hash((const u8*)&req, sizeof(req) - 4);
+	if ((ret = WriteSram(chip, (const u8* )&req, sizeof(req))) != 0) {
+		pr_err("failed to send request!err=%d\n", ret);
+		goto update_fw_err;
+	}
+	msleep(10);
+
+	ret = oneplus_u16_i2c_read(chip->client, REG_STATE, 4, read_buf);
+	pr_info("read state firwware: %x\n", *(u32 *)read_buf);
+	if (ret < 0) {
+		pr_err("write REG_STATE flag failed!");
+		goto update_fw_err;
+	}
+	if (*(u32 *)read_buf != STATE_FIRMWARE) {
+		pr_err("Failed to go into firmware_state");
+		goto update_fw_err;
+	}
+
+	if ((ret = rk826_download_erase_byte(chip, byte)) != 0) {
+		pr_err("failed to send firmware");
+		goto update_fw_err;
+	}
+
+	ret = oneplus_u16_i2c_read(chip->client, REG_STATE, 4, read_buf);
+	if (ret < 0) {
+		pr_err("write REG_STATE flag failed!");
+		goto update_fw_err;
+	}
+	if (*(u32 *)read_buf != STATE_FINISH) {
+		pr_err("Failed to go into finish_state");
+		goto update_fw_err;
+	}
+	oneplus_u16_i2c_write(chip->client, REG_RESET, 4, (u8 *)(&sw_reset_flag));
+	pr_info("success\n");
+	return 0;
+
+update_fw_err:
+	pr_err("fail\n");
+	return 1;
+}
+
 int DownloadFirmware(struct fastchg_device_info *chip, const u8 *buf, u32 size)
 {
 	u8 transfer_buf[TRANSFER_LIMIT];
@@ -1330,6 +1477,7 @@ static int rk826_fw_write(struct fastchg_device_info *chip,
 	struct_req req = {0};
 	u32 sync_flag = cpu_to_le32(SYNC_FLAG);
 	u32 force_update_flag = cpu_to_le32(FORCE_UPDATE_FLAG);
+	u32 force_dis_update_flag = 0x00000000;
 	u32 sw_reset_flag = cpu_to_le32(SW_RESET_FLAG);
 	u32 rec_01_flag = cpu_to_le32(REC_01_FLAG);
 	u8 read_buf[4] = {0};
@@ -1428,6 +1576,9 @@ static int rk826_fw_write(struct fastchg_device_info *chip,
 		pr_err("Failed to go into finish_state");
 		goto update_fw_err;
 	}
+	msleep(10);
+	oneplus_u16_i2c_write(chip->client, REG_SYS0, 4, (u8 *)(&force_dis_update_flag));
+	msleep(2);
 	oneplus_u16_i2c_write(chip->client, REG_RESET, 4, (u8 *)(&sw_reset_flag));
 	pr_info("success\n");
 	return 0;
@@ -2119,9 +2270,11 @@ static void dashchg_fw_update(struct work_struct *work)
 	unsigned char zero_buf[1] = {0};
 	unsigned char addr_buf[2] = {0x88, 0x00};
 	unsigned char temp_buf[1] = {0};
+	u8 value_buf[2] = {0};
 	int i, rc = 0;
 	unsigned int addr;
 	int download_again = 0;
+	int fw_check_err = 0;
 	struct fastchg_device_info *di = container_of(work,
 			struct fastchg_device_info,
 			update_firmware.work);
@@ -2154,13 +2307,22 @@ static void dashchg_fw_update(struct work_struct *work)
 		__pm_relax(di->fastchg_update_fireware_lock);
 		set_property_on_smbcharger(POWER_SUPPLY_PROP_SWITCH_DASH, true);
 		di->dash_firmware_ok = 1;
-		pr_info("FW check success\n"); /* david@bsp add log */
+		pr_info("FW check success\n");
 		return;
 	}
 #ifdef OP_SWARP_SUPPORTED
 update_asic_fw:
 	if (di->is_swarp_supported) {
 		if (di->asic_hw_id == ROCKCHIP_RK826) {
+			if (!download_again && !fw_check_err
+				&& di->fw_ver_not_match) {
+				rk826_erase_fw_by_byte(di, 0x00);
+				msleep(10);
+				rk826_erase_fw_by_byte(di, 0xff);
+				msleep(10);
+				rk826_erase_fw_by_byte(di, 0x00);
+				msleep(10);
+			}
 			rc = rk826_fw_write(di, dashchg_firmware_data, 0, di->dashchg_fw_ver_count);
 		} else if (di->asic_hw_id == RICHTEK_RT5125) {
 			rc = rt5125_fw_update(di);
@@ -2173,6 +2335,24 @@ update_asic_fw:
 			msleep(1000);
 			pr_err("fw download fail, download fw again\n");
 			goto update_asic_fw;
+		} else {
+			if (di->asic_hw_id == ROCKCHIP_RK826) {
+				usleep_range(100000, 100001);
+				rc = oneplus_u16_i2c_read(di->client, 0x52f8, 2, value_buf);
+				if (rc < 0) {
+					pr_err("rk826 read register 0x52f8 fail, rc = %d\n", rc);
+					pr_info("rk826 fw upgrade check ok.");
+				} else {
+					pr_info("read 0x52f8 success 0x%x", value_buf[0] | (value_buf[1] << 8));
+					fw_check_err++;
+					if (fw_check_err > 3)
+						goto update_fw_err;
+					(void)opchg_mcu_action(ACTION_MODE_SWITCH_UPGRADE);
+					msleep(1000);
+					pr_err("fw download fail(time:%d), download fw again\n", fw_check_err);
+					goto update_asic_fw;
+				}
+			}
 		}
 		goto update_done;
 	}
@@ -2249,7 +2429,7 @@ update_fw_err:
 	reset_mcu_and_request_irq(di);
 #ifdef OP_SWARP_SUPPORTED
 	if (di->is_swarp_supported)
-		(void)opchg_mcu_action(ACTION_MODE_ENABLE);
+		(void)opchg_mcu_action(ACTION_MODE_RESET_SLEEP);
 #endif
 	__pm_relax(di->fastchg_update_fireware_lock);
 	set_property_on_smbcharger(POWER_SUPPLY_PROP_SWITCH_DASH, true);
@@ -2326,6 +2506,7 @@ static void clean_status(void)
 		fastchg_di->fast_chg_started = false;
 		fastchg_di->fast_chg_ing = false;
 		update_fast_chg_started();
+		msm_cpuidle_set_sleep_disable(false);
 	}
 }
 static void disable_mcu_work_func(struct work_struct *work)
@@ -2600,7 +2781,8 @@ void switch_mode_to_normal(void)
 		mcu_en_gpio_set(1);
 		op_check_charger_collapse_rerun_aicl();
 	}
-	//update_disconnect_pd_status(false);
+	msm_cpuidle_set_sleep_disable(false);
+	update_disconnect_pd_status(false);
 }
 
 static void request_mcu_irq(struct fastchg_device_info *di)
@@ -2672,9 +2854,9 @@ void di_watchdog(struct timer_list *t)
 	di->fast_normal_to_warm = false;
 	di->fast_chg_ing = false;
 	di->fast_chg_error = false;
+	pr_err("ap_data_status=%d", gpio_get_value(di->ap_data));
 	schedule_work(&di->charger_present_status_work);
 	pr_err("switch off fastchg\n");
-
 	__pm_relax(di->fastchg_wake_lock);
 }
 
@@ -2898,6 +3080,11 @@ void op_adapter_init(struct op_adapter_chip *chip)
 #endif
 #define DASH_NOTIFY_UPDATE_ADAPTER_SID _IOW(DASH_IOC_MAGIC, 17, int)
 
+int __weak op_get_allowed_current_max(void)
+{
+	return CURRENT_LIMIT_6;
+}
+
 static long  dash_dev_ioctl(struct file *filp, unsigned int cmd,
 		unsigned long arg)
 {
@@ -2915,9 +3102,11 @@ static long  dash_dev_ioctl(struct file *filp, unsigned int cmd,
 	bool is_video_call_on = false;
 	bool is_lcd_on = false;
 	static int lcd_on_msg;
+	static int allow_iic_counter;
 
 		switch (cmd) {
 		case DASH_NOTIFY_FIRMWARE_UPDATE:
+			di->fw_ver_not_match = false;
 			schedule_delayed_work(&di->update_firmware,
 					msecs_to_jiffies(2200));
 			break;
@@ -2940,6 +3129,13 @@ static long  dash_dev_ioctl(struct file *filp, unsigned int cmd,
 				di->fast_chg_error = false;
 				dash_write_4bits(di, ALLOW_DATA);
 				di->fast_chg_started = true;
+				msm_cpuidle_set_sleep_disable(true);
+				if (di->is_swarp_supported) {
+					di->current_max_val = op_get_allowed_current_max();
+					// all skin_thermal limit current should not greater than max.
+					di->skin_med_lcdoff_curr_max = di->current_max_val;
+					allow_iic_counter = 0;
+				}
 			}
 			break;
 		case DASH_NOTIFY_FAST_ABSENT:
@@ -3008,11 +3204,11 @@ static long  dash_dev_ioctl(struct file *filp, unsigned int cmd,
 					if (is_skin_temp_high)
 						lcd_on_msg = is_lcd_on ? di->skin_hi_curr_max : di->skin_hi_lcdoff_curr_max;
 					else if (is_skin_temp_warm)
-						lcd_on_msg = is_lcd_on ? di->skin_wrm_curr_max : CURRENT_LIMIT_6;
+						lcd_on_msg = is_lcd_on ? di->skin_wrm_curr_max : di->current_max_val;
 					else if (is_skin_thermal_medium)
-						lcd_on_msg = is_lcd_on ? di->skin_med_curr_max : CURRENT_LIMIT_6;
+						lcd_on_msg = is_lcd_on ? di->skin_med_curr_max : di->skin_med_lcdoff_curr_max;
 					else
-						lcd_on_msg = CURRENT_LIMIT_6;
+						lcd_on_msg = di->current_max_val;
 				}
 				if (!di->is_swarp_supported)
 					dash_write_4bits(di, lcd_on_msg);
@@ -3021,12 +3217,18 @@ static long  dash_dev_ioctl(struct file *filp, unsigned int cmd,
 				need_send_msg = arg & 0xff;
 				if (need_send_msg < CURRENT_LIMIT_1 || need_send_msg > CURRENT_LIMIT_6) {
 					pr_err("dashd give an invalid msg(0x%02x).", need_send_msg);
-					need_send_msg = CURRENT_LIMIT_6;
+					need_send_msg = di->current_max_val;
 				}
-				need_send_msg = need_send_msg <= lcd_on_msg ? need_send_msg : lcd_on_msg;
+				if (allow_iic_counter > 0)
+					need_send_msg = need_send_msg <= lcd_on_msg ? need_send_msg : lcd_on_msg;
+				else {
+					// first msg not affected by temperature.
+					allow_iic_counter++;
+					need_send_msg = di->current_max_val;
+				}
 				pr_info("send msg(0x%02x) to asic.", need_send_msg);
 				dash_write_4bits(di, need_send_msg);
-				lcd_on_msg = CURRENT_LIMIT_6; // reset lcd_on_msg
+				lcd_on_msg = di->current_max_val; // reset lcd_on_msg
 #endif
 			}
 			break;
@@ -3754,12 +3956,12 @@ static int dash_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		di->asic_hw_id = -1;
 		schedule_delayed_work(&di->get_asic_hwid_work,
 					msecs_to_jiffies(1000));
+#endif
 		di->skin_hi_curr_max = CURRENT_LIMIT_2;
 		di->skin_wrm_curr_max = CURRENT_LIMIT_1;
 		di->skin_med_curr_max = CURRENT_LIMIT_3;
 		di->skin_hi_lcdoff_curr_max = CURRENT_LIMIT_2;
 		di->skin_med_lcdoff_curr_max = CURRENT_LIMIT_6;
-#endif
 	} else {
 		di->skin_hi_curr_max = CURRENT_LIMIT_2;
 		di->skin_wrm_curr_max = CURRENT_LIMIT_1;
@@ -3767,6 +3969,7 @@ static int dash_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		di->skin_hi_lcdoff_curr_max = CURRENT_LIMIT_1;
 		di->skin_med_lcdoff_curr_max = CURRENT_LIMIT_6;
 	}
+	di->current_max_val = CURRENT_LIMIT_6;
 #endif
 	check_4p45_support(di);
 	init_enhance_dash_exist_node();

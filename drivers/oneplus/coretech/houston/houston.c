@@ -56,8 +56,7 @@ static const char *ht_monitor_case[HT_MONITOR_SIZE] = {
 	"cpu-0-0-usr", "cpu-0-1-usr", "cpu-0-2-usr", "cpu-0-3-usr",
 	"cpu-1-0-usr", "cpu-1-1-usr", "cpu-1-2-usr", "cpu-1-3-usr",
 	"cpu-1-4-usr", "cpu-1-5-usr", "cpu-1-6-usr", "cpu-1-7-usr",
-	//"modem-ambient-usr", "skin-msm-therm-usr",
-	"skin-therm-usr", "msm-therm",
+	"shell_front", "shell_frame", "shell_back",
 	"util-0", "util-1", "util-2", "util-3", "util-4",
 	"util-5", "util-6", "util-7",
 	"process name", "layer name", "pid", "fps_align", "actualFps",
@@ -80,6 +79,10 @@ module_param_named(log_lv, ht_log_lv, int, 0664);
 /* ais */
 static int ais_enable = 0;
 module_param_named(ais_enable, ais_enable, int, 0664);
+
+static DEFINE_SPINLOCK(egl_buf_lock);
+#define EGL_BUF_MAX (128)
+static char egl_buf[EGL_BUF_MAX] = {0};
 
 static int ai_on = 1;
 module_param_named(ai_on, ai_on, int, 0664);
@@ -380,8 +383,10 @@ static inline const char* ht_ioctl_str(unsigned int cmd)
 	case HT_IOC_COLLECT: return "HT_IOC_COLLECT";
 	case HT_IOC_SCHEDSTAT: return "HT_IOC_SCHEDSTAT";
 	case HT_IOC_CPU_LOAD: return "HT_IOC_CPU_LOAD";
+	case HT_IOC_FPS_STABILIZER_UPDATE: return "HT_IOC_FPS_STABILIZER_UPDATE";
+	case HT_IOC_FPS_PARTIAL_SYS_INFO: return "HT_IOC_FPS_PARTIAL_SYS_INFO";
 	}
-	return "NONE";
+	return "UNKNOWN";
 }
 
 static inline int ht_get_temp(int monitor_idx)
@@ -488,7 +493,7 @@ static unsigned int ht_get_temp_delay(int idx)
 	static unsigned int temps[HT_MONITOR_SIZE] = {0};
 
 	/* only allow for reading sensor data */
-	if (unlikely(idx < HT_CPU_0 || idx > HT_THERM_1))
+	if (unlikely(idx < HT_CPU_0 || idx > HT_THERM_2))
 		return 0;
 
 	/* update */
@@ -583,6 +588,73 @@ static struct kernel_param_ops perf_ready_ops = {
 };
 module_param_cb(perf_ready, &perf_ready_ops, NULL, 0664);
 
+static int egl_buf_store(const char *buf, const struct kernel_param *kp)
+{
+	char _buf[EGL_BUF_MAX] = {0};
+
+	if (strlen(buf) >= EGL_BUF_MAX)
+		return 0;
+
+	if (sscanf(buf, "%s\n", _buf) <= 0)
+		return 0;
+
+	spin_lock(&egl_buf_lock);
+	memcpy(egl_buf, _buf, EGL_BUF_MAX);
+	egl_buf[EGL_BUF_MAX - 1] = '\0';
+	spin_unlock(&egl_buf_lock);
+
+	return 0;
+}
+
+static int egl_buf_show(char *buf, const struct kernel_param *kp)
+{
+	char _buf[EGL_BUF_MAX] = {0};
+
+	spin_lock(&egl_buf_lock);
+	memcpy(_buf, egl_buf, EGL_BUF_MAX);
+	_buf[EGL_BUF_MAX - 1] = '\0';
+	spin_unlock(&egl_buf_lock);
+
+	return snprintf(buf, PAGE_SIZE, "%s\n", _buf);
+}
+
+static struct kernel_param_ops egl_buf_ops = {
+	.set = egl_buf_store,
+	.get = egl_buf_show,
+};
+module_param_cb(egl_buf, &egl_buf_ops, NULL, 0664);
+
+static int efps_max = -1;
+static int efps_pid = 0;
+static int expectfps = -1;
+static int efps_max_store(const char *buf, const struct kernel_param *kp)
+{
+	int val;
+	int pid;
+	int eval;
+	int ret;
+
+	ret = sscanf(buf, "%d,%d,%d\n", &pid, &val, &eval);
+	if (ret < 2)
+		return 0;
+
+	efps_pid = pid;
+	efps_max = val;
+	expectfps = (ret == 3) ? eval : -1;
+	return 0;
+}
+
+static int efps_max_show(char *buf, const struct kernel_param *kp)
+{
+	return snprintf(buf, PAGE_SIZE, "%d,%d,%d\n", efps_pid, efps_max, expectfps);
+}
+
+static struct kernel_param_ops efps_max_ops = {
+	.set = efps_max_store,
+	.get = efps_max_show,
+};
+module_param_cb(efps_max, &efps_max_ops, NULL, 0664);
+
 /* fps boost strategy (fbs) */
 static int fbs_pid = -1;
 static int fbs_lv = -1;
@@ -609,6 +681,32 @@ static struct kernel_param_ops fps_boost_strategy_ops = {
 	.get = fps_boost_strategy_show,
 };
 module_param_cb(fps_boost_strategy, &fps_boost_strategy_ops, NULL, 0664);
+
+static DECLARE_WAIT_QUEUE_HEAD(ht_fps_stabilizer_waitq);
+static char ht_online_config_buf[PAGE_SIZE];
+static bool ht_disable_fps_stabilizer_bat = true;
+module_param_named(disable_fps_stabilizer_bat, ht_disable_fps_stabilizer_bat, bool, 0664);
+
+static int ht_online_config_update_store(const char *buf, const struct kernel_param *kp)
+{
+	int ret;
+
+	ret = sscanf(buf, "%s\n", ht_online_config_buf);
+	ht_logi("fpsst: %d, %s\n", ret, ht_online_config_buf);
+	wake_up(&ht_fps_stabilizer_waitq);
+	return 0;
+}
+
+static int ht_online_config_update_show(char *buf, const struct kernel_param *kp)
+{
+	return snprintf(buf, PAGE_SIZE, "%s\n", ht_online_config_buf);
+}
+
+static struct kernel_param_ops ht_online_config_update_ops = {
+	.set = ht_online_config_update_store,
+	.get = ht_online_config_update_show,
+};
+module_param_cb(ht_online_config_update, &ht_online_config_update_ops, NULL, 0664);
 
 static inline void __ht_perf_event_enable(struct task_struct *task, int event_id)
 {
@@ -1475,9 +1573,9 @@ void ht_register_thermal_zone_device(struct thermal_zone_device *tzd)
 	ht_logi("tzd: %s id: %d\n", tzd->type, tzd->id);
 	idx = ht_mapping_tags(tzd->type);
 
-	if (idx > HT_THERM_1)
+	if (idx > HT_THERM_2)
 		return;
-	if (ht_tzd_idx <= HT_THERM_1) {
+	if (ht_tzd_idx <= HT_THERM_2 && !monitor.tzd[idx]) {
 		++ht_tzd_idx;
 		monitor.tzd[idx] = tzd;
 	}
@@ -1536,7 +1634,7 @@ static int ht_fps_data_sync_store(const char *buf, const struct kernel_param *kp
 	 * cached_fps should be always updated
 	 * rounding up
 	 */
-	atomic_set(&cached_fps[0], (fps_data[0] + 5)/ 10);
+	atomic_set(&cached_fps[0], (fps_data[7]));
 	atomic_set(&cached_fps[1], (fps_data[1] + 5)/ 10);
 
 	atomic64_set(&fps_align_ns, fps_align);
@@ -1819,6 +1917,60 @@ static long ht_ctl_ioctl(struct file *file, unsigned int cmd, unsigned long __us
 			return 0;
 		break;
 	}
+	case HT_IOC_FPS_STABILIZER_UPDATE:
+	{
+		DEFINE_WAIT(wait);
+		prepare_to_wait(&ht_fps_stabilizer_waitq, &wait, TASK_INTERRUPTIBLE);
+		schedule();
+		finish_wait(&ht_fps_stabilizer_waitq, &wait);
+
+		ht_logi("fpsst: %s\n", ht_online_config_buf);
+
+		if (ht_online_config_buf[0] == '\0') {
+			char empty[] = "{}";
+			copy_to_user((struct ht_fps_stabilizer_buf __user *) arg, &empty, strlen(empty));
+		} else {
+			copy_to_user((struct ht_fps_stabilizer_buf __user *) arg, &ht_online_config_buf, PAGE_SIZE);
+		}
+		break;
+	}
+	case HT_IOC_FPS_PARTIAL_SYS_INFO:
+	{
+		struct ht_partial_sys_info data;
+		union power_supply_propval prop = {0, };
+		int ret;
+
+		if (ht_disable_fps_stabilizer_bat) {
+			data.volt = data.curr = 0;
+		} else {
+			ht_update_battery();
+			ret = power_supply_get_property(monitor.psy, POWER_SUPPLY_PROP_VOLTAGE_NOW, &prop);
+			data.volt = ret >= 0? prop.intval: 0;
+			ret = power_supply_get_property(monitor.psy, POWER_SUPPLY_PROP_CURRENT_NOW, &prop);
+			data.curr = ret >= 0? prop.intval: 0;
+		}
+
+		data.utils[0] = ht_utils[0].utils[0]? (u64) *(ht_utils[0].utils[0]): 0;
+		data.utils[1] = ht_utils[0].utils[1]? (u64) *(ht_utils[0].utils[1]): 0;
+		data.utils[2] = ht_utils[0].utils[2]? (u64) *(ht_utils[0].utils[2]): 0;
+		data.utils[3] = ht_utils[0].utils[3]? (u64) *(ht_utils[0].utils[3]): 0;
+		data.utils[4] = ht_utils[1].utils[0]? (u64) *(ht_utils[1].utils[0]): 0;
+		data.utils[5] = ht_utils[1].utils[1]? (u64) *(ht_utils[1].utils[1]): 0;
+		data.utils[6] = ht_utils[1].utils[2]? (u64) *(ht_utils[1].utils[2]): 0;
+		data.utils[7] = ht_utils[2].utils[0]? (u64) *(ht_utils[2].utils[0]): 0;
+
+		data.skin_temp = max(ht_get_temp_delay(HT_THERM_0),
+							max(ht_get_temp_delay(HT_THERM_1),
+								ht_get_temp_delay(HT_THERM_2)));
+
+		if (copy_to_user((struct ht_partial_sys_info __user *) arg, &data, sizeof(struct ht_partial_sys_info)))
+			return 0;
+		break;
+	}
+	default:
+	{
+		return -1;
+	}
 	}
 	return 0;
 }
@@ -1870,6 +2022,7 @@ static void ht_collect_data(void)
 	monitor.buf->data[idx][HT_CPU_7_1] = ht_get_temp(HT_CPU_7_1);
 	monitor.buf->data[idx][HT_THERM_0] = ht_get_temp(HT_THERM_0);
 	monitor.buf->data[idx][HT_THERM_1] = ht_get_temp(HT_THERM_1);
+	monitor.buf->data[idx][HT_THERM_2] = ht_get_temp(HT_THERM_2);
 
 	/* cpu part */
 	pol = cpufreq_cpu_get(CLUS_0_IDX);
@@ -1954,7 +2107,7 @@ static int ht_registered_show(char* buf, const struct kernel_param *kp)
 	if (ht_tzd_idx == 0)
 		return 0;
 
-	for (i = 0; i <= HT_THERM_1; ++i) {
+	for (i = 0; i <= HT_THERM_2; ++i) {
 		tzd = monitor.tzd[i];
 		if (tzd)
 			offset += snprintf(buf + offset, PAGE_SIZE - offset, "%s, id: %d\n", tzd->type, tzd->id);
@@ -2417,7 +2570,7 @@ static int ht_init(void)
 	atomic64_set(&fps_align_ns, 0);
 
 	for (i = 0; i < HT_MONITOR_SIZE; ++i)
-		report_div[i] = (i >= HT_CPU_0 && i <= HT_THERM_1)? 100: 1;
+		report_div[i] = (i >= HT_CPU_0 && i <= HT_THERM_2)? 100: 1;
 
 	ht_set_all_mask();
 

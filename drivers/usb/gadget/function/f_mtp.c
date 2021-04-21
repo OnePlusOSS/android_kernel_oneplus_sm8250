@@ -2018,8 +2018,6 @@ static int mtp_ctrlreq_configfs(struct usb_function *f,
 
 static void mtp_free(struct usb_function *f)
 {
-	/*NO-OP: no function specific resource allocation in mtp_alloc*/
-/* @bsp, 2019/09/18 usb & PD porting */
 	struct mtp_instance *fi_mtp;
 
 	fi_mtp = container_of(f->fi, struct mtp_instance, func_inst);

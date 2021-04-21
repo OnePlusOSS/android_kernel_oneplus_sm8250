@@ -4560,7 +4560,7 @@ static int fg_psy_get_property(struct power_supply *psy,
 		} else
 			pval->intval = -400;
 		break;
-	case POWER_SUPPLY_PROP_BATTERY_HEALTH:
+	case POWER_SUPPLY_PROP_BATTERY_H:
 		if (get_extern_fg_regist_done() && fg->use_external_fg && external_fg
 				&& external_fg->get_batt_health)
 			pval->intval = external_fg->get_batt_health();
@@ -4942,7 +4942,7 @@ static enum power_supply_property fg_psy_props[] = {
 	POWER_SUPPLY_PROP_VBAT_CELL_MAX,
 	POWER_SUPPLY_PROP_VBAT_CELL_MIN,
 	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
-	POWER_SUPPLY_PROP_BATTERY_HEALTH,
+	POWER_SUPPLY_PROP_BATTERY_H,
 };
 
 static const struct power_supply_desc fg_psy_desc = {
@@ -5090,7 +5090,6 @@ static int fg_delta_bsoc_irq_en_cb(struct votable *votable, void *data,
 	return 0;
 }
 
-static bool esr_irq_is_en;
 static int fg_gen4_delta_esr_irq_en_cb(struct votable *votable, void *data,
 					int enable, const char *client)
 {
@@ -5100,17 +5099,11 @@ static int fg_gen4_delta_esr_irq_en_cb(struct votable *votable, void *data,
 		return 0;
 
 	if (enable) {
-		if (!esr_irq_is_en) {
-			esr_irq_is_en = true;
-			enable_irq(fg->irqs[ESR_DELTA_IRQ].irq);
-			enable_irq_wake(fg->irqs[ESR_DELTA_IRQ].irq);
-		}
+		enable_irq(fg->irqs[ESR_DELTA_IRQ].irq);
+		enable_irq_wake(fg->irqs[ESR_DELTA_IRQ].irq);
 	} else {
-		if (esr_irq_is_en) {
-			esr_irq_is_en = false;
-			disable_irq_wake(fg->irqs[ESR_DELTA_IRQ].irq);
-			disable_irq_nosync(fg->irqs[ESR_DELTA_IRQ].irq);
-		}
+		disable_irq_wake(fg->irqs[ESR_DELTA_IRQ].irq);
+		disable_irq_nosync(fg->irqs[ESR_DELTA_IRQ].irq);
 	}
 
 	return 0;

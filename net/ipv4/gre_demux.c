@@ -117,14 +117,8 @@ int gre_parse_header(struct sk_buff *skb, struct tnl_ptk_info *tpi,
 	 * - When dealing with WCCPv2, Skip extra 4 bytes in GRE header
 	 */
 	if (greh->flags == 0 && tpi->proto == htons(ETH_P_WCCP)) {
-		u8 _val, *val;
-
-		val = skb_header_pointer(skb, nhs + hdr_len,
-					 sizeof(_val), &_val);
-		if (!val)
-			return -EINVAL;
 		tpi->proto = proto;
-		if ((*val & 0xF0) != 0x40)
+		if ((*(u8 *)options & 0xF0) != 0x40)
 			hdr_len += 4;
 	}
 	tpi->hdr_len = hdr_len;

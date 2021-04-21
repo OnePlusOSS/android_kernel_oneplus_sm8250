@@ -603,8 +603,6 @@ static int smb5_parse_dt_misc(struct smb5 *chip, struct device_node *node)
 		chg->FFC_NOR_FCC, chg->FFC_WARM_FCC, chg->FFC_NORMAL_CUTOFF,
 		chg->FFC_WARM_CUTOFF, chg->FFC_VBAT_FULL);
 
-/* @bsp, 2019/07/05 Battery & Charging porting */
-	/* read ibatmax setting for different temp regions */
 	OF_PROP_READ(node, "ibatmax-little-cold-ma",
 			chg->ibatmax[BATT_TEMP_LITTLE_COLD], retval, 1);
 	OF_PROP_READ(node, "ibatmax-cool-ma",
@@ -799,14 +797,12 @@ static int smb5_parse_dt_misc(struct smb5 *chip, struct device_node *node)
 		chg->OTG_LOW_BAT,
 		chg->OTG_LOW_BAT_ICL,
 		chg->OTG_NORMAL_BAT_ICL);
-/* @bsp, 2018/07/26 enable stm6620 sheepmode */
 	chg->shipmode_en = of_get_named_gpio_flags(node,
 						"op,stm-ctrl-gpio", 0, &flags);
 	chg->vbus_ctrl = of_get_named_gpio_flags(node,
 					"op,vbus-ctrl-gpio", 0, &flags);
 	chg->plug_irq = of_get_named_gpio_flags(node,
 					"op,usb-check", 0, &flags);
-/* @bsp, 2019/06/28 vph sel set disable */
 	chg->vph_sel_disable = of_property_read_bool(node,
 					"vph-sel-disable");
 	/* read other settings */
@@ -1867,6 +1863,9 @@ static int smb5_usb_get_prop(struct power_supply *psy,
 			if (!rc)
 				val->intval = (buff[1] << 8 | buff[0]) * 1038;
 		}
+		break;
+	case POWER_SUPPLY_PROP_DISCONNECT_PD:
+		val->intval = chg->disconnect_pd;
 		break;
 	case POWER_SUPPLY_PROP_ADAPTER_SID:
 		val->intval = chg->adapter_sid;
@@ -3296,20 +3295,11 @@ static int smb5_configure_typec(struct smb_charger *chg)
 
 	smblib_apsd_enable(chg, true);
 
-	rc = smblib_read(chg, TYPE_C_SNK_STATUS_REG, &val);
+	rc = smblib_masked_write(chg, TYPE_C_CFG_REG,
+					BC1P2_START_ON_CC_BIT, 0);
 	if (rc < 0) {
-		dev_err(chg->dev, "failed to read TYPE_C_SNK_STATUS_REG rc=%d\n",
-				rc);
-
+		dev_err(chg->dev, "failed to write TYPE_C_CFG_REG rc=%d\n", rc);
 		return rc;
-	}
-	if (!(val & SNK_DAM_MASK)) {
-		rc = smblib_masked_write(chg, TYPE_C_CFG_REG,
-						BC1P2_START_ON_CC_BIT, 0);
-		if (rc < 0) {
-			dev_err(chg->dev, "failed to write TYPE_C_CFG_REG rc=%d\n", rc);
-			return rc;
-		}
 	}
 
 	rc = smblib_write(chg, DEBUG_ACCESS_SNK_CFG_REG, 0x7);
@@ -4674,7 +4664,6 @@ static void smb5_create_debugfs(struct smb5 *chip)
 
 #endif
 
-/* @bsp, 2020/06/05 Battery & Charging add for skin_thermal online config */
 static ssize_t proc_skin_threld_read(struct file *file, char __user *buf,
 					    size_t count, loff_t *ppos)
 {
@@ -4761,7 +4750,6 @@ static const struct file_operations proc_skin_threld_ops = {
 	.owner = THIS_MODULE,
 };
 
-/* @bsp, 2020/06/05 Battery & Charging add for skin_thermal online config */
 static ssize_t proc_skin_lcdoff_threld_read(struct file *file, char __user *buf,
 					    size_t count, loff_t *ppos)
 {
@@ -5032,7 +5020,6 @@ static int create_skin_thermal_proc(void)
 		pr_err("Failed to register norchg_lcdoff_thd proc interface\n");
 	return 0;
 }
-/* @bsp, 2019/07/06 Battery & Charging porting */
 #ifdef CONFIG_PROC_FS
 static ssize_t write_ship_mode(struct file *file, const char __user *buf,
 				   size_t count, loff_t *ppos)
@@ -5051,7 +5038,6 @@ static const struct file_operations proc_ship_mode_operations = {
 };
 #endif
 
-/* @bsp, 2018/07/26 Enable external stm6620 ship mode*/
 static int op_ship_mode_gpio_request(struct smb_charger *chip)
 {
 	int rc;
@@ -5094,7 +5080,6 @@ static int op_ship_mode_gpio_request(struct smb_charger *chip)
 
 }
 
-/* @bsp 2018/07/30 add usb connector temp detect and wr*/
 void requset_vbus_ctrl_gpio(struct smb_charger *chg)
 {
 	int ret;

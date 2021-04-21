@@ -338,8 +338,6 @@ static void macvlan_process_broadcast(struct work_struct *w)
 		if (src)
 			dev_put(src->dev);
 		kfree_skb(skb);
-
-		cond_resched();
 	}
 }
 

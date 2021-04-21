@@ -560,6 +560,7 @@ static void __unmap_buf(struct msm_cvp_inst *inst,
 		if (cbuf->smem.dma_buf == buf->dbuf &&
 			cbuf->buf.size == buf->size &&
 			cbuf->buf.offset == buf->offset) {
+			__msm_cvp_cache_operations(cbuf);
 			list_del(&cbuf->list);
 			print_internal_buffer(CVP_DBG, "unmap", inst, cbuf);
 			msm_cvp_smem_unmap_dma_buf(inst, &cbuf->smem);
@@ -2001,6 +2002,29 @@ static int msm_cvp_session_start(struct msm_cvp_inst *inst,
 	spin_unlock(&sq->lock);
 
 	return cvp_fence_thread_start(inst);
+}
+
+int msm_cvp_session_queue_stop(struct msm_cvp_inst *inst)
+{
+	struct cvp_session_queue *sq;
+
+	sq = &inst->session_queue;
+	spin_lock(&sq->lock);
+
+	if (sq->state == QUEUE_STOP) {
+		spin_unlock(&sq->lock);
+		return 0;
+	}
+	sq->state = QUEUE_STOP;
+
+	dprintk(CVP_ERR, "Stop session queue: %pK session_id = %d\n",
+		inst, hash32_ptr(inst->session));
+
+	spin_unlock(&sq->lock);
+
+	wake_up_all(&inst->session_queue.wq);
+
+	return cvp_fence_thread_stop(inst);
 }
 
 static int msm_cvp_session_stop(struct msm_cvp_inst *inst,

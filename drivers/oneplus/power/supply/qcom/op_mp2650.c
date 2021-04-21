@@ -269,11 +269,11 @@ static void mp2650_set_aicl_point(int vbatt_mv)
 
 	if(chip->hw_aicl_point == 4440 && vbatt_mv > 4140) {
 		chip->hw_aicl_point = 4520;
-		chip->sw_aicl_point = 4535;
+		chip->sw_aicl_point = 4650;
 		mp2650_set_vindpm_vol(chip->hw_aicl_point);
 	} else if(chip->hw_aicl_point == 4520 && vbatt_mv < 4000) {
 		chip->hw_aicl_point = 4440;
-		chip->sw_aicl_point = 4500;
+		chip->sw_aicl_point = 4650;
 		mp2650_set_vindpm_vol(chip->hw_aicl_point);
 	}
 
@@ -1073,7 +1073,7 @@ static int mp2650_input_current_limit_without_aicl(int current_ma)
 
 	return rc;
 }
-/*
+
 #define DEC_STEP 500
 #define INC_STEP 200
 static int mp2650_input_current_limit_sw_aicl(int current_ma)
@@ -1116,7 +1116,7 @@ static int mp2650_input_current_limit_sw_aicl(int current_ma)
 		msleep(25);
 	}
 
-	mp2650_set_vindpm_vol(4400);
+	//mp2650_set_vindpm_vol(4400);
 
 	step = (current_ma - tmp) / INC_STEP;
 	cur_now = tmp + (current_ma - tmp) % INC_STEP;
@@ -1143,7 +1143,7 @@ static int mp2650_input_current_limit_sw_aicl(int current_ma)
 	chg->sw_aicl_result_ma = tmp;
 	return rc;
 }
-*/
+
 int mp2650_parse_dt(void)
 {
 	return 0;
@@ -1157,7 +1157,7 @@ int mp2650_hardware_init(void)
 
 	//must be before set_vindpm_vol and set_input_current
 	chg->hw_aicl_point = 4440;
-	chg->sw_aicl_point = 4500;
+	chg->sw_aicl_point = 4650;
 	chg->sw_aicl_result_ma = 500;
 
 	mp2650_reset_charger();
@@ -1656,8 +1656,7 @@ static int mp2650_set_prop(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_SWAICL:
 		val_mx = val->intval / 1000; // ua to ma
-		//mp2650_input_current_limit_sw_aicl(val_mx);
-		mp2650_input_current_limit_without_aicl(val_mx);
+		mp2650_input_current_limit_sw_aicl(val_mx);
 		rc = 0;
 		break;
 	case POWER_SUPPLY_PROP_VSYS_THD:

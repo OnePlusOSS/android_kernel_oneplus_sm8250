@@ -4044,9 +4044,9 @@ static int __init clk_debug_init(void)
 		if (!d)
 			return -ENOMEM;
 
-	mutex_lock(&clk_debug_lock);
-	hlist_for_each_entry(core, &clk_debug_list, debug_node)
-		clk_debug_create_one(core, rootdir);
+		mutex_lock(&clk_debug_lock);
+		hlist_for_each_entry(core, &clk_debug_list, debug_node)
+			clk_debug_create_one(core, rootdir);
 
 		inited = 1;
 		mutex_unlock(&clk_debug_lock);

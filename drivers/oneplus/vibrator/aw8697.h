@@ -50,10 +50,16 @@
 #define LRA_0619
 
 #ifdef LRA_0619
+#ifdef CONFIG_ARCH_LITO
+#define AW8697_HAPTIC_F0_PRE                2350    /* 235Hz*/
+#define AW8697_HAPTIC_CONT_DRV_LVL          100   /* value*6.1/256*/
+#define AW8697_HAPTIC_CONT_DRV_LVL_OV       100   /* value*6.1/256*/
+#else
 #define AW8697_HAPTIC_F0_PRE                1700    /* 170Hz*/
-#define AW8697_HAPTIC_F0_CALI_PERCEN        7       /* -7%~7%*/
 #define AW8697_HAPTIC_CONT_DRV_LVL          54   /* value*6.1/256*/
 #define AW8697_HAPTIC_CONT_DRV_LVL_OV       54   /* value*6.1/256*/
+#endif
+#define AW8697_HAPTIC_F0_CALI_PERCEN        7       /* -7%~7%*/
 #define AW8697_HAPTIC_CONT_TD               0x009a
 #define AW8697_HAPTIC_CONT_ZC_THR           0x0ff1
 #define AW8697_HAPTIC_CONT_NUM_BRK          3

@@ -9,7 +9,6 @@
 #include <linux/rtnetlink.h>
 #include <uapi/linux/rtnetlink.h>
 #include <net/pkt_sched.h>
-#include <net/tcp.h>
 #include "qmi_rmnet_i.h"
 #include <trace/events/dfc.h>
 #include <linux/ip.h>
@@ -869,14 +868,16 @@ void qmi_rmnet_burst_fc_check(struct net_device *dev,
 }
 EXPORT_SYMBOL(qmi_rmnet_burst_fc_check);
 
-static bool _qmi_rmnet_is_tcp_ack(struct sk_buff *skb)
+static bool qmi_rmnet_is_tcp_ack(struct sk_buff *skb)
 {
+	unsigned int len = skb->len;
+
 	switch (skb->protocol) {
 	/* TCPv4 ACKs */
 	case htons(ETH_P_IP):
 		if ((ip_hdr(skb)->protocol == IPPROTO_TCP) &&
-		    (ntohs(ip_hdr(skb)->tot_len) - (ip_hdr(skb)->ihl << 2) ==
-		      tcp_hdr(skb)->doff << 2) &&
+		    (ip_hdr(skb)->ihl == 5) &&
+		    (len == 40 || len == 52) &&
 		    ((tcp_flag_word(tcp_hdr(skb)) &
 		      cpu_to_be32(0x00FF0000)) == TCP_FLAG_ACK))
 			return true;
@@ -885,26 +886,12 @@ static bool _qmi_rmnet_is_tcp_ack(struct sk_buff *skb)
 	/* TCPv6 ACKs */
 	case htons(ETH_P_IPV6):
 		if ((ipv6_hdr(skb)->nexthdr == IPPROTO_TCP) &&
-		    (ntohs(ipv6_hdr(skb)->payload_len) ==
-		      (tcp_hdr(skb)->doff) << 2) &&
+		    (len == 60 || len == 72) &&
 		    ((tcp_flag_word(tcp_hdr(skb)) &
 		      cpu_to_be32(0x00FF0000)) == TCP_FLAG_ACK))
 			return true;
 		break;
 	}
-
-	return false;
-}
-
-static inline bool qmi_rmnet_is_tcp_ack(struct sk_buff *skb)
-{
-	/* Locally generated TCP acks */
-	if (skb_is_tcp_pure_ack(skb))
-		return true;
-
-	/* Forwarded */
-	if (unlikely(_qmi_rmnet_is_tcp_ack(skb)))
-		return true;
 
 	return false;
 }

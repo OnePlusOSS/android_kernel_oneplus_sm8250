@@ -20,17 +20,13 @@
 
 #include <linux/moduleparam.h>
 
-int __read_mostly sct_mode;
+int __read_mostly sct_mode = 2;
 module_param(sct_mode, int, 0644);
 
 static char *__dentry_name(struct dentry *dentry, char *name)
 {
 	char *p = dentry_path_raw(dentry, name, PATH_MAX);
-	char *root;
-	size_t len;
 
-	root = dentry->d_sb->s_fs_info;
-	len = strlen(root);
 	if (IS_ERR(p)) {
 		__putname(name);
 		return NULL;
@@ -42,14 +38,8 @@ static char *__dentry_name(struct dentry *dentry, char *name)
 	 */
 	BUG_ON(p + strlen(p) + 1 != name + PATH_MAX);
 
-	strlcpy(name, root, PATH_MAX);
-	if (len > p - name) {
-		__putname(name);
-		return NULL;
-	}
-
-	if (p > name + len)
-		strlcat(name, p, PATH_MAX);
+	if (p > name)
+		strlcpy(name, p, PATH_MAX);
 
 	return name;
 }
@@ -113,7 +103,7 @@ void fuse_setup_shortcircuit(struct fuse_conn *fc, struct fuse_req *req)
 		return;
 
 	flags = open_out->open_flags;
-	if ((flags & FOPEN_DIRECT_IO) && !(flags & FOPEN_KEEP_CACHE)) {
+	if ((flags & FOPEN_DIRECT_IO) || !(flags & FOPEN_KEEP_CACHE)) {
 		pr_info("fuse bypass sct #flags:%d\n", flags);
 		return;
 	}
@@ -143,7 +133,7 @@ void fuse_setup_shortcircuit(struct fuse_conn *fc, struct fuse_req *req)
 		return;
 
 	req->private_lower_rw_file = rw_lower_file;
-	pr_info("fuse setup sct:%d, %d\n", fd, flags);
+	pr_debug("fuse setup sct:%d, %d\n", fd, flags);
 }
 
 static ssize_t fuse_shortcircuit_read_write_iter(struct kiocb *iocb,

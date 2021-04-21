@@ -953,10 +953,7 @@ static void usb_cser_start_rx(struct f_cdev *port)
 		if (ret) {
 			pr_err("port(%d):%pK usb ep(%s) queue failed\n",
 					port->port_num, port, ep->name);
-			if (port->is_connected)
-				list_add(&req->list, &port->read_pool);
-			else
-				usb_cser_free_req(port->port_usb.out, req);
+			list_add(&req->list, pool);
 			break;
 		}
 	}

@@ -930,7 +930,8 @@ error:
 	}
 
 	if ((gamma_read_flag < 2) && ((strcmp(dsi_display->panel->name, "samsung dsc cmd mode oneplus dsi panel") == 0)
-		|| (strcmp(dsi_display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0))) {
+		|| (strcmp(dsi_display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0)
+			|| (strcmp(dsi_display->panel->name, "samsung amb655x fhd cmd mode dsc dsi panel") == 0))) {
 		if (gamma_read_flag < 1) {
 			gamma_read_flag++;
 		}
@@ -1644,7 +1645,7 @@ static int dsi_display_status_reg_read(struct dsi_display *display)
 			}
 
 			DSI_ERR("0xE9 = %02x, %02x, %02x, %02x, 0x0A = %02x\n", register1[0], register1[1], register1[2], register1[3], register2[0]);
-			if (((register1[3] != 0x00) && (register1[3] != 0x02) && (register1[3] != 0x06)) || (register2[0] != 0x9C)) {
+			if (((register1[3] != 0x00) && (register1[3] != 0x02) && (register1[3] != 0x06) && (register1[3] != 0x04)) || (register2[0] != 0x9C)) {
 				if ((register1[3] == 0x10) || (register1[3] == 0x30) || (register1[3] == 0x32)
 					|| (register1[3] == 0x38) || (register1[3] == 0x18) || (register1[3] == 0x08))
 					DSI_ERR("ESD color dot error\n");
@@ -2109,6 +2110,11 @@ int dsi_display_set_power(struct drm_connector *connector,
 					display->panel->name, rc);
 			}
 		}
+		blank = DRM_PANEL_BLANK_AOD;
+		notifier_data.data = &blank;
+		DSI_ERR("DRM_PANEL_BLANK_AOD\n");
+		if (lcd_active_panel)
+			drm_panel_notifier_call_chain(lcd_active_panel, DRM_PANEL_EARLY_EVENT_BLANK, &notifier_data);
 	case SDE_MODE_DPMS_LP2:
 		DSI_ERR("SDE_MODE_DPMS_LP2\n");
 		rc = dsi_panel_set_lp2(display->panel);
@@ -4922,7 +4928,8 @@ static int dsi_display_res_init(struct dsi_display *display)
 	}
 
 	if ((strcmp(display->panel->name, "samsung dsc cmd mode oneplus dsi panel") == 0)
-			|| (strcmp(display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0)) {
+			|| (strcmp(display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0)
+				|| (strcmp(display->panel->name, "samsung amb655x fhd cmd mode dsc dsi panel") == 0)) {
 		INIT_DELAYED_WORK(&display->panel->gamma_read_work, dsi_display_gamma_read_work);
 		DSI_ERR("INIT_DELAYED_WORK: dsi_display_gamma_read_work\n");
 	}
@@ -9275,112 +9282,141 @@ int dsi_display_get_dimming_gamma_para(struct dsi_display *dsi_display, struct d
 
 	dsi_panel_acquire_panel_lock(panel);
 
+	if (strcmp(panel->name, "samsung ana6706 dsc cmd mode panel") == 0) {
+		count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_ENABLE].count;
+		if (!count) {
+			DSI_ERR("This panel does not support level2 key enable command\n");
+		} else {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_ENABLE);
+			if (rc) {
+				DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_ENABLE commands\n");
+				goto error;
+			}
+		}
+
+		payload = 0xA4;
+		rc = mipi_dsi_dcs_write(dsi, 0xB0, &payload, sizeof(payload));
+		if (rc < 0) {
+			DSI_ERR("Failed to write mipi dsi dcs cmd\n");
+			goto error;
+		}
+
+		rc = dsi_display_register_read(dsi_display, 0xC9, dimming_gamma_60hz, 5);
+		if (rc <= 0) {
+			DSI_ERR("Failed to read 0xC9 registers\n");
+			goto error;
+		}
+
+		count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_DISABLE].count;
+		if (!count) {
+			DSI_ERR("This panel does not support level2 key disable command\n");
+		} else {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_DISABLE);
+			if (rc) {
+				DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_DISABLE commands\n");
+				goto error;
+			}
+		}
+
+		count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_ENABLE].count;
+		if (!count) {
+			DSI_ERR("This panel does not support level2 key enable command\n");
+		} else {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_ENABLE);
+			if (rc) {
+				DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_ENABLE commands\n");
+				goto error;
+			}
+		}
+
+		payload = 0xA7;
+		rc = mipi_dsi_dcs_write(dsi, 0xB0, &payload, sizeof(payload));
+		if (rc < 0) {
+			DSI_ERR("Failed to write mipi dsi dcs cmd\n");
+			goto error;
+		}
+
+		rc = dsi_display_register_read(dsi_display, 0xC7, dimming_gamma_120hz, 5);
+		if (rc <= 0) {
+			DSI_ERR("Failed to read 0xC7 registers\n");
+			goto error;
+		}
+
+		count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_DISABLE].count;
+		if (!count) {
+			DSI_ERR("This panel does not support level2 key disable command\n");
+		} else {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_DISABLE);
+			if (rc) {
+				DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_DISABLE commands\n");
+				goto error;
+			}
+		}
+
+		count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_ENABLE].count;
+		if (!count) {
+			DSI_ERR("This panel does not support level2 key enable command\n");
+		} else {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_ENABLE);
+			if (rc) {
+				DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_ENABLE commands\n");
+				goto error;
+			}
+		}
+
+		payload = 0x17;
+		rc = mipi_dsi_dcs_write(dsi, 0xB0, &payload, sizeof(payload));
+		if (rc < 0) {
+			DSI_ERR("Failed to write mipi dsi dcs cmd\n");
+			goto error;
+		}
+
+		rc = dsi_display_register_read(dsi_display, 0xC9, &dimming_gamma_60hz[15], 5);
+		if (rc <= 0) {
+			DSI_ERR("Failed to read 0xC9 registers\n");
+			goto error;
+		}
+
+		count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_DISABLE].count;
+		if (!count) {
+			DSI_ERR("This panel does not support level2 key disable command\n");
+		} else {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_DISABLE);
+			if (rc) {
+				DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_DISABLE commands\n");
+				goto error;
+			}
+		}
+	} else {
 	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_ENABLE].count;
-	if (!count) {
-		DSI_ERR("This panel does not support level2 key enable command\n");
-	} else {
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_ENABLE);
-		if (rc) {
-			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_ENABLE commands\n");
+		if (!count) {
+			DSI_ERR("This panel does not support level2 key enable command\n");
+		} else {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_ENABLE);
+			if (rc) {
+				DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_ENABLE commands\n");
+				goto error;
+			}
+		}
+
+		rc = dsi_display_register_read(dsi_display, 0xB9, b9_register_value_500step, 229);
+		if (rc <= 0) {
+			DSI_ERR("Failed to read 0xB9 registers\n");
 			goto error;
 		}
-	}
 
-	payload = 0xA4;
-	rc = mipi_dsi_dcs_write(dsi, 0xB0, &payload, sizeof(payload));
-	if (rc < 0) {
-		DSI_ERR("Failed to write mipi dsi dcs cmd\n");
-		goto error;
-	}
-
-	rc = dsi_display_register_read(dsi_display, 0xC9, dimming_gamma_60hz, 5);
-	if (rc <= 0) {
-		DSI_ERR("Failed to read 0xC9 registers\n");
-		goto error;
-	}
-
-	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_DISABLE].count;
-	if (!count) {
-		DSI_ERR("This panel does not support level2 key disable command\n");
-	} else {
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_DISABLE);
-		if (rc) {
-			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_DISABLE commands\n");
-			goto error;
+		count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_DISABLE].count;
+		if (!count) {
+			DSI_ERR("This panel does not support level2 key disable command\n");
+		} else {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_DISABLE);
+			if (rc) {
+				DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_DISABLE commands\n");
+				goto error;
+			}
 		}
 	}
-
-	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_ENABLE].count;
-	if (!count) {
-		DSI_ERR("This panel does not support level2 key enable command\n");
-	} else {
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_ENABLE);
-		if (rc) {
-			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_ENABLE commands\n");
-			goto error;
-		}
-	}
-
-	payload = 0xA7;
-	rc = mipi_dsi_dcs_write(dsi, 0xB0, &payload, sizeof(payload));
-	if (rc < 0) {
-		DSI_ERR("Failed to write mipi dsi dcs cmd\n");
-		goto error;
-	}
-
-	rc = dsi_display_register_read(dsi_display, 0xC7, dimming_gamma_120hz, 5);
-	if (rc <= 0) {
-		DSI_ERR("Failed to read 0xC7 registers\n");
-		goto error;
-	}
-
-	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_DISABLE].count;
-	if (!count) {
-		DSI_ERR("This panel does not support level2 key disable command\n");
-	} else {
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_DISABLE);
-		if (rc) {
-			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_DISABLE commands\n");
-			goto error;
-		}
-	}
-
-	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_ENABLE].count;
-	if (!count) {
-		DSI_ERR("This panel does not support level2 key enable command\n");
-	} else {
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_ENABLE);
-		if (rc) {
-			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_ENABLE commands\n");
-			goto error;
-		}
-	}
-
-	payload = 0x17;
-	rc = mipi_dsi_dcs_write(dsi, 0xB0, &payload, sizeof(payload));
-	if (rc < 0) {
-		DSI_ERR("Failed to write mipi dsi dcs cmd\n");
-		goto error;
-	}
-
-	rc = dsi_display_register_read(dsi_display, 0xC9, &dimming_gamma_60hz[15], 5);
-	if (rc <= 0) {
-		DSI_ERR("Failed to read 0xC9 registers\n");
-		goto error;
-	}
-
-	count = mode->priv_info->cmd_sets[DSI_CMD_SET_LEVEL2_KEY_DISABLE].count;
-	if (!count) {
-		DSI_ERR("This panel does not support level2 key disable command\n");
-	} else {
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LEVEL2_KEY_DISABLE);
-		if (rc) {
-			DSI_ERR("Failed to send DSI_CMD_SET_LEVEL2_KEY_DISABLE commands\n");
-			goto error;
-		}
-	}
-
-	dsi_panel_update_gamma_change_write();
+	dsi_panel_update_gamma_change_write(panel);
 
 	rc = dsi_panel_dimming_gamma_write(panel);
 	if (rc < 0)
@@ -9415,8 +9451,8 @@ int dsi_display_gamma_read(struct dsi_display *dsi_display)
 		rc = dsi_display_get_gamma_para(dsi_display, panel);
 		if (rc)
 			DSI_ERR("Failed to dsi_display_get_gamma_para\n");
-	}
-	else if (strcmp(dsi_display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0) {
+	} else if ((strcmp(dsi_display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0)
+		|| (strcmp(dsi_display->panel->name, "samsung amb655x fhd cmd mode dsc dsi panel") == 0)) {
 		rc = dsi_display_get_dimming_gamma_para(dsi_display, panel);
 		if (rc)
 			DSI_ERR("Failed to dsi_display_get_dimming_gamma_para\n");
@@ -9445,7 +9481,8 @@ void dsi_display_gamma_read_work(struct work_struct *work)
 				|| ((dsi_display->panel->panel_production_info & 0x0F) == 0x0D))
 			dsi_display_gamma_read(dsi_display);
 		dsi_panel_parse_gamma_cmd_sets();
-	} else if (strcmp(dsi_display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0) {
+	} else if ((strcmp(dsi_display->panel->name, "samsung ana6706 dsc cmd mode panel") == 0)
+		|| (strcmp(dsi_display->panel->name, "samsung amb655x fhd cmd mode dsc dsi panel") == 0)) {
 		dsi_display_gamma_read(dsi_display);
 	}
 }
@@ -11229,82 +11266,6 @@ int dsi_display_set_mca_setting_mode(struct drm_connector *connector, int mca_se
 	rc = dsi_panel_set_mca_setting_mode(panel, mca_setting_mode);
 	if (rc)
 		DSI_ERR("Failed to set mca setting mode %d\n", mca_setting_mode);
-	mutex_unlock(&panel->panel_lock);
-
-	rc = dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
-			DSI_CORE_CLK, DSI_CLK_OFF);
-	if (rc) {
-		DSI_ERR("[%s] failed to disable DSI core clocks, rc=%d\n",
-			dsi_display->name, rc);
-		goto error;
-	}
-
-error:
-	mutex_unlock(&dsi_display->display_lock);
-	return rc;
-}
-
-int dsi_display_get_dimming_setting_mode(struct drm_connector *connector)
-{
-	struct dsi_display *dsi_display = NULL;
-	struct dsi_bridge *c_bridge;
-
-	if ((connector == NULL) || (connector->encoder == NULL)
-			|| (connector->encoder->bridge == NULL))
-		return -EINVAL;
-
-	c_bridge =  to_dsi_bridge(connector->encoder->bridge);
-	dsi_display = c_bridge->display;
-
-	if ((dsi_display == NULL) || (dsi_display->panel == NULL))
-		return -EINVAL;
-
-	return dsi_display->panel->dimming_setting_mode;
-}
-
-int dsi_display_set_dimming_setting_mode(struct drm_connector *connector, int dimming_setting_mode)
-{
-	struct dsi_display *dsi_display = NULL;
-	struct dsi_panel *panel = NULL;
-	struct dsi_bridge *c_bridge;
-	int rc = 0;
-
-	if ((connector == NULL) || (connector->encoder == NULL)
-			|| (connector->encoder->bridge == NULL))
-		return -EINVAL;
-
-	c_bridge =  to_dsi_bridge(connector->encoder->bridge);
-	dsi_display = c_bridge->display;
-
-	if ((dsi_display == NULL) || (dsi_display->panel == NULL))
-		return -EINVAL;
-
-	panel = dsi_display->panel;
-
-	if (strcmp(panel->name, "samsung amb655x fhd cmd mode dsc dsi panel") != 0) {
-		dsi_display->panel->dimming_setting_mode = 0;
-		return 0;
-	}
-
-	mutex_lock(&dsi_display->display_lock);
-
-	panel->dimming_setting_mode = dimming_setting_mode;
-
-	if (!dsi_panel_initialized(panel))
-		goto error;
-
-	rc = dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
-			DSI_CORE_CLK, DSI_CLK_ON);
-	if (rc) {
-		DSI_ERR("[%s] failed to enable DSI core clocks, rc=%d\n",
-			dsi_display->name, rc);
-		goto error;
-	}
-
-	mutex_lock(&panel->panel_lock);
-	rc = dsi_panel_set_dimming_setting_mode(panel, dimming_setting_mode);
-	if (rc)
-		DSI_ERR("Failed to set dimming setting mode %d\n", dimming_setting_mode);
 	mutex_unlock(&panel->panel_lock);
 
 	rc = dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,

@@ -8,7 +8,7 @@
 #define OP_FREEZER_ERROR               (-1)
 #define MIN_USERAPP_UID (10000)
 #define INTERFACETOKEN_BUFF_SIZE (100)
-#define PARCEL_OFFSET (12) // sync with the writeInterfaceToken
+#define PARCEL_OFFSET (16) // sync with the writeInterfaceToken
 
 /* op_freezer_message for communication with freezer native daemon
  * type: async binder/sync binder/signal/pkg/loopback

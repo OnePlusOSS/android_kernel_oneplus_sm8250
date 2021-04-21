@@ -82,6 +82,22 @@ static struct wakeup_source deleted_ws = {
 static void ws_printk(struct work_struct *work);
 static DECLARE_DELAYED_WORK(ws_printk_work, ws_printk);
 
+/**
+ * wakeup_source_prepare - Prepare a new wakeup source for initialization.
+ * @ws: Wakeup source to prepare.
+ * @name: Pointer to the name of the new wakeup source.
+ *
+ * Callers must ensure that the @name string won't be freed when @ws is still in
+ * use.
+ */
+void wakeup_source_prepare(struct wakeup_source *ws, const char *name)
+{
+	if (ws) {
+		memset(ws, 0, sizeof(*ws));
+		ws->name = name;
+	}
+}
+EXPORT_SYMBOL_GPL(wakeup_source_prepare);
 static DEFINE_IDA(wakeup_ida);
 
 /**

@@ -216,6 +216,8 @@ void mhi_ring_cmd_db(struct mhi_controller *mhi_cntrl, struct mhi_cmd *mhi_cmd)
 	db = ring->iommu_base + (ring->wp - ring->base);
 	*ring->ctxt_wp = db;
 	mhi_write_db(mhi_cntrl, ring->db_addr, db);
+
+	smp_wmb();
 }
 
 void mhi_ring_chan_db(struct mhi_controller *mhi_cntrl,
@@ -1940,8 +1942,7 @@ int mhi_prepare_channel(struct mhi_controller *mhi_cntrl,
 	return 0;
 
 error_dec_pendpkt:
-	if (in_mission_mode)
-		atomic_dec(&mhi_cntrl->pending_pkts);
+	atomic_dec(&mhi_cntrl->pending_pkts);
 error_pm_state:
 	if (!mhi_chan->offload_ch)
 		mhi_deinit_chan_ctxt(mhi_cntrl, mhi_chan);

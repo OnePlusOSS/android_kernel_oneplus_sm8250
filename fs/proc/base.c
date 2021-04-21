@@ -3775,7 +3775,7 @@ static ssize_t proc_va_feature_read(struct file *file, char __user *buf,
 	if (mm) {
 		if (mm->va_feature & 0x4) {
 			ret = snprintf(buffer, sizeof(buffer), "%d\n",
-					(mm->zygoteheap_in_MB > 256) ? mm->zygoteheap_in_MB : 256);
+					(mm->zygoteheap_in_MB > 64) ? mm->zygoteheap_in_MB : 64);
 			if (ret > 0)
 				ret = simple_read_from_buffer(buf, count, ppos,
 						buffer, ret);

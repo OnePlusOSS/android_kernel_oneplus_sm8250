@@ -516,6 +516,8 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
 	}
 	args.iname = iname;
 	err = fuse_simple_request(fc, &args);
+	if (args.iname)
+		__putname(args.iname);
 	if (err)
 		goto out_free_ff;
 

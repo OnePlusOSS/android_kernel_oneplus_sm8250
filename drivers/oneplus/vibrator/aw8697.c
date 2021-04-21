@@ -74,10 +74,49 @@ struct pm_qos_request pm_qos_req_vb;
 
 #define TRUST_LEVEL 5
 #define ABS(x)		((x) < 0 ? (-x) : (x))
-#define AW8697_LONG_INDEX_HEAD		94
-#define FACTORY_MODE_NORMAL_RTP_NUMBER  82
-#define FACTORY_MODE_HIGH_TEMP_RTP_NUMBER  81
+
+#ifdef CONFIG_ARCH_LITO
+#define AW8697_LONG_INDEX_HEAD         94
 #define FACTORY_MODE_AT_MODE_RTP_NUMBER  119
+#else
+#define AW8697_LONG_INDEX_HEAD		100
+#define FACTORY_MODE_AT_MODE_RTP_NUMBER  125
+#endif
+
+#define HAL_FACTORY_MODE_NORMAL_RTP_NUMBER  888
+#define HAL_FACTORY_MODE_HIGH_TEMP_RTP_NUMBER  777
+
+#ifdef CONFIG_ARCH_LITO
+  #define FACTORY_MODE_EFFECT_NUMBER 84
+#else
+  #define FACTORY_MODE_EFFECT_NUMBER 89
+#endif
+
+#ifdef CONFIG_ARCH_LITO
+  #define HAPTIC_REAL_F0_1 227
+  #define HAPTIC_REAL_F0_2 227
+  #define HAPTIC_REAL_F0_3 228
+  #define HAPTIC_REAL_F0_4 229
+  #define HAPTIC_REAL_F0_5 230
+  #define HAPTIC_REAL_F0_6 230
+  #define HAPTIC_REAL_F0_7 230
+  #define HAPTIC_REAL_F0_8 231
+  #define HAPTIC_REAL_F0_9 232
+  #define HAPTIC_REAL_F0_10 233
+  #define HAPTIC_REAL_F0_11 234
+#else
+  #define HAPTIC_REAL_F0_1 160
+  #define HAPTIC_REAL_F0_2 162
+  #define HAPTIC_REAL_F0_3 164
+  #define HAPTIC_REAL_F0_4 166
+  #define HAPTIC_REAL_F0_5 168
+  #define HAPTIC_REAL_F0_6 170
+  #define HAPTIC_REAL_F0_7 172
+  #define HAPTIC_REAL_F0_8 174
+  #define HAPTIC_REAL_F0_9 176
+  #define HAPTIC_REAL_F0_10 178
+  #define HAPTIC_REAL_F0_11 180
+#endif
 
 
 /* add haptic audio tp mask */
@@ -127,13 +166,21 @@ static char aw8697_rtp_name[][AW8697_RTP_NAME_MAX] = {
 	{"ringtone_Optimistic_RTP.bin"},
 	{"ringtone_Piano_RTP.bin"},
 	{"ring_Whirl_RTP.bin"},
+#ifdef CONFIG_ARCH_LITO
+	{"ring_Crimson_RTP.bin"},
+	{"ring_Curious_RTP.bin"},
+	{"ring_Imperfections_RTP.bin"},
+	{"ring_The_Essence_RTP.bin"},
+#endif
 	{"VZW_Alrwave_RTP.bin"},
 	{"t-jingle_RTP.bin"},
+#ifndef CONFIG_ARCH_LITO
 	{"ringtone_Eager.bin"},
 	{"ringtone_Ebullition.bin"},
 	{"ringtone_Friendship.bin"},
 	{"ringtone_Jazz_life_RTP.bin"},
 	{"ringtone_Sun_glittering_RTP.bin"},
+#endif
 	{"notif_Allay_RTP.bin"},//notify
 	{"notif_Allusion_RTP.bin"},
 	{"notif_Amiable_RTP.bin"},
@@ -159,6 +206,9 @@ static char aw8697_rtp_name[][AW8697_RTP_NAME_MAX] = {
 	{"notif_Surprise_RTP.bin"},
 	{"notif_Twinkle_RTP.bin"},
 	{"Version_Alert_RTP.bin"},
+#ifdef CONFIG_ARCH_LITO
+	{"notif_Glint_RTP.bin"},
+#endif
 	{"alarm_Alarm_clock_RTP.bin"},//alarm
 	{"alarm_Beep_RTP.bin"},
 	{"alarm_Breeze_RTP.bin"},
@@ -178,6 +228,16 @@ static char aw8697_rtp_name[][AW8697_RTP_NAME_MAX] = {
 	{"alarm_tactfully_RTP.bin"},
 	{"alarm_The_wind_RTP.bin"},
 	{"alarm_Walking_in_the_rain_RTP.bin"},
+#ifdef CONFIG_ARCH_LITO
+	{"alarm_Dawn_RTP.bin"},
+#else
+	{"Audition_RTP.bin"},
+	{"In_game_alarm_RTP.bin"},
+	{"In_game_ringtone_RTP.bin"},
+	{"In_game_sms_RTP.bin"},
+	{"Rock_RTP.bin"},
+	{"Wake_up_samurai_RTP.bin"},
+#endif
 	{"shuntai24k_rtp.bin"},
 	{"wentai24k_rtp.bin"},
 	{"agingtest_160hz_RTP.bin"},
@@ -220,7 +280,7 @@ static char aw8697_rtp_name[][AW8697_RTP_NAME_MAX] = {
 };
 
 enum {
-	FACTORY_MODE_160HZ_EFFECTION = 83,
+	FACTORY_MODE_160HZ_EFFECTION = FACTORY_MODE_EFFECT_NUMBER,
 	FACTORY_MODE_162HZ_EFFECTION,
 	FACTORY_MODE_164HZ_EFFECTION,
 	FACTORY_MODE_166HZ_EFFECTION,
@@ -3432,7 +3492,12 @@ static ssize_t aw8697_activate_store(struct device *dev,
 /*for type Android OS's vibrator 20181225  end*/
     if (val == 0)
        mdelay(10);
-   //hrtimer_cancel(&aw8697->timer);
+#ifdef CONFIG_ARCH_LITO
+	hrtimer_cancel(&aw8697->timer);
+	aw8697->state = val;
+	mutex_unlock(&aw8697->lock);
+	schedule_work(&aw8697->vibrator_work);
+#else
 	aw8697->state = val;
 	if (val == 0) {
 		aw8697_haptic_stop(aw8697);
@@ -3462,7 +3527,7 @@ static ssize_t aw8697_activate_store(struct device *dev,
 			queue_work(system_highpri_wq, &aw8697->rtp_work);
 	}
 	mutex_unlock(&aw8697->lock);
-
+#endif
     return count;
 }
 
@@ -3831,9 +3896,11 @@ static ssize_t aw8697_rtp_store(struct device *dev, struct device_attribute *att
         pr_info("%s: invalid audio ready\n", __FUNCTION__);
         return count;
     }
-
-    if (val != FACTORY_MODE_NORMAL_RTP_NUMBER
-        && val != FACTORY_MODE_HIGH_TEMP_RTP_NUMBER
+    if (val == HAL_FACTORY_MODE_NORMAL_RTP_NUMBER)
+        val = FACTORY_MODE_EFFECT_NUMBER;
+    if (val == HAL_FACTORY_MODE_HIGH_TEMP_RTP_NUMBER)
+        val = FACTORY_MODE_EFFECT_NUMBER;
+    if (val != FACTORY_MODE_EFFECT_NUMBER
         && val != 0
         && !aw8697->ignore_sync) {
         if (val == AUDIO_READY_STATUS)
@@ -3865,29 +3932,28 @@ static ssize_t aw8697_rtp_store(struct device *dev, struct device_attribute *att
     aw8697_haptic_set_rtp_aei(aw8697, false);
     aw8697_interrupt_clear(aw8697);
     if (val < (sizeof(aw8697_rtp_name)/AW8697_RTP_NAME_MAX)) {
-        if (val == FACTORY_MODE_NORMAL_RTP_NUMBER
-              || val ==FACTORY_MODE_HIGH_TEMP_RTP_NUMBER) {
-           if (aw8697->haptic_real_f0 <= 160)
+        if (val == FACTORY_MODE_EFFECT_NUMBER) {
+           if (aw8697->haptic_real_f0 <= HAPTIC_REAL_F0_1)
                aw8697->rtp_file_num = FACTORY_MODE_160HZ_EFFECTION;
-           else if (aw8697->haptic_real_f0 <= 162)
+           else if (aw8697->haptic_real_f0 <= HAPTIC_REAL_F0_2)
                aw8697->rtp_file_num = FACTORY_MODE_162HZ_EFFECTION;
-           else if(aw8697->haptic_real_f0 <=164)
+           else if(aw8697->haptic_real_f0 <= HAPTIC_REAL_F0_3)
                   aw8697->rtp_file_num =  FACTORY_MODE_164HZ_EFFECTION;
-           else if(aw8697->haptic_real_f0 <= 166)
+           else if(aw8697->haptic_real_f0 <= HAPTIC_REAL_F0_4)
                   aw8697->rtp_file_num = FACTORY_MODE_166HZ_EFFECTION;
-           else if(aw8697->haptic_real_f0 <= 168)
+           else if(aw8697->haptic_real_f0 <= HAPTIC_REAL_F0_5)
                   aw8697->rtp_file_num = FACTORY_MODE_168HZ_EFFECTION;
-           else if(aw8697->haptic_real_f0  <= 170)
+           else if(aw8697->haptic_real_f0  <= HAPTIC_REAL_F0_6)
                   aw8697->rtp_file_num =FACTORY_MODE_170HZ_EFFECTION;
-           else if(aw8697->haptic_real_f0  <= 172)
+           else if(aw8697->haptic_real_f0  <= HAPTIC_REAL_F0_7)
                   aw8697->rtp_file_num = FACTORY_MODE_172HZ_EFFECTION;
-           else if(aw8697->haptic_real_f0  <= 174)
+           else if(aw8697->haptic_real_f0  <= HAPTIC_REAL_F0_8)
                   aw8697->rtp_file_num = FACTORY_MODE_174HZ_EFFECTION;
-           else if(aw8697->haptic_real_f0  <= 176)
+           else if(aw8697->haptic_real_f0  <= HAPTIC_REAL_F0_9)
                   aw8697->rtp_file_num = FACTORY_MODE_176HZ_EFFECTION;
-           else if(aw8697->haptic_real_f0  <= 178)
+           else if(aw8697->haptic_real_f0  <= HAPTIC_REAL_F0_10)
                  aw8697->rtp_file_num = FACTORY_MODE_178HZ_EFFECTION;
-           else if(aw8697->haptic_real_f0  <= 180)
+           else if(aw8697->haptic_real_f0  <= HAPTIC_REAL_F0_11)
                   aw8697->rtp_file_num = FACTORY_MODE_180HZ_EFFECTION;
            else
                aw8697->rtp_file_num = FACTORY_MODE_170HZ_EFFECTION;

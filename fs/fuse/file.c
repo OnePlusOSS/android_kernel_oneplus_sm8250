@@ -29,7 +29,7 @@ static int fuse_send_open(struct fuse_conn *fc, u64 nodeid, struct file *file,
 	ssize_t ret;
 	struct fuse_open_in inarg;
 	FUSE_ARGS(args);
-	char *iname;
+	char *iname = NULL;
 
 	memset(&inarg, 0, sizeof(inarg));
 	inarg.flags = file->f_flags & ~(O_CREAT | O_EXCL | O_NOCTTY);
@@ -47,10 +47,13 @@ static int fuse_send_open(struct fuse_conn *fc, u64 nodeid, struct file *file,
 	args.out.args[0].size = sizeof(*outargp);
 	args.out.args[0].value = outargp;
 
-	iname = inode_name(file_inode(file));
+	if (opcode == FUSE_OPEN)
+		iname = inode_name(file_inode(file));
 	args.iname = iname;
 
 	ret = fuse_simple_request(fc, &args);
+	if (args.iname)
+		__putname(args.iname);
 	if (args.private_lower_rw_file != NULL)
 		*lower_file = args.private_lower_rw_file;
 	return ret;

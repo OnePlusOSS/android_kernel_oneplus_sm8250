@@ -17,8 +17,6 @@
 #include "xhci.h"
 #include "xhci-trace.h"
 #include "xhci-debugfs.h"
-/* @bsp, 2020/03/25 usb & PD porting */
-/* Disable hw-lpm for some u-disk */
 #include <linux/moduleparam.h>
 
 static bool usb2_lpm_disable = 1;
@@ -2321,7 +2319,6 @@ static void xhci_add_in_port(struct xhci_hcd *xhci, unsigned int num_ports,
 		xhci_dbg_trace(xhci, trace_xhci_dbg_init,
 				"xHCI 1.0: support USB2 software lpm");
 		xhci->sw_lpm_support = 1;
-/* @bsp, Disable hw-lpm for some u-disk */
 		if (!usb2_lpm_disable && (temp & XHCI_HLC)) {
 			xhci_dbg_trace(xhci, trace_xhci_dbg_init,
 					"xHCI 1.0: support USB2 hardware lpm");

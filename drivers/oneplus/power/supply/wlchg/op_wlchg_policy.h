@@ -118,6 +118,7 @@
 #define ADAPTER_TYPE_UNKNOWN 0
 #define ADAPTER_TYPE_FASTCHAGE_DASH 1
 #define ADAPTER_TYPE_FASTCHAGE_WARP 2
+#define ADAPTER_TYPE_FASTCHAGE_PD_65W	7
 #define ADAPTER_TYPE_USB 3
 #define ADAPTER_TYPE_NORMAL_CHARGE 4
 #define ADAPTER_TYPE_EPP 5
@@ -284,6 +285,7 @@ struct wpc_data {
 
 	bool geted_tx_id;
 	bool quiet_mode_enabled;
+	bool quiet_mode_init;
 	bool get_adapter_err;
 	bool epp_working;
 	/* Indicates whether the message of getting adapter type was sent successfully */

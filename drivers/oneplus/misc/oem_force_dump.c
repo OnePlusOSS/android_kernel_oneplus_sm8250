@@ -21,6 +21,7 @@
 #include <linux/syscalls.h>
 #include <linux/sched/debug.h>
 #include <linux/cred.h>
+#include "../../../kernel/sched/sched.h"
 
 struct sock *nl_sk;
 static int fd = -1;
@@ -50,13 +51,16 @@ void send_sig_to_get_trace(char *name)
 {
 	struct task_struct *g, *t;
 
+	rcu_read_lock();
 	for_each_process_thread(g, t) {
 		if (find_task_by_name(t, name)) {
 			do_send_sig_info(SIGQUIT, SEND_SIG_FORCED, t, PIDTYPE_TGID);
 			msleep(500);
-			return;
+			goto out;
 		}
 	}
+out:
+	rcu_read_unlock();
 }
 
 
@@ -64,6 +68,7 @@ void send_sig_to_get_tombstone(char *name)
 {
 	struct task_struct *p;
 
+	rcu_read_lock();
 	for_each_process(p) {
 		if (!strncmp(p->comm, name, TASK_COMM_LEN)) {
 			do_send_sig_info(SIGNAL_DEBUGGER, SEND_SIG_FORCED, p, PIDTYPE_TGID);
@@ -71,6 +76,7 @@ void send_sig_to_get_tombstone(char *name)
 			break;
 		}
 	}
+	rcu_read_unlock();
 }
 
 void get_init_sched_info(void)
@@ -86,6 +92,148 @@ void get_init_sched_info(void)
 		sched_show_task(t);
 
 }
+
+static void dump_task_info(char *status, struct task_struct *p,
+				bool dump_sched_info, bool dump_call_stack)
+{
+	if (p) {
+		pr_info("%s: %s(pid: %d)\n", status, p->comm, p->pid);
+#ifdef CONFIG_SCHED_INFO
+		if (dump_sched_info)
+			pr_info("Exec_Started_at: %llu nsec, Last_Queued_at: %llu nsec, Prio: %d Preempt_count: %#x\n",
+			p->sched_info.last_arrival,
+			p->sched_info.last_queued,
+			p->prio, p->thread_info.preempt_count);
+#else
+		if (dump_sched_info)
+			pr_info(" vrun: %lu arr: %lu sum_ex: %lu\n",
+					   (unsigned long)p->se.vruntime,
+					   (unsigned long)p->se.exec_start,
+					   (unsigned long)p->se.sum_exec_runtime);
+
+#endif
+		if (dump_call_stack)
+			sched_show_task(p);
+	} else
+		pr_info("%s: None\n", status);
+}
+
+static void dump_rq(struct rq *rq)
+{
+	dump_task_info("curr", rq->curr, false, false);
+	dump_task_info("idle", rq->idle, false, false);
+	dump_task_info("stop", rq->stop, false, false);
+}
+
+static void dump_cfs_rq(struct cfs_rq *cfs_rq);
+
+static void dump_cgroup_state(char *status, struct sched_entity *se_p)
+{
+	struct task_struct *task;
+	struct cfs_rq *my_q = NULL;
+	unsigned int nr_running;
+
+	if (!se_p) {
+		dump_task_info(status, NULL, false, false);
+		return;
+	}
+#ifdef CONFIG_FAIR_GROUP_SCHED
+	my_q = se_p->my_q;
+#endif
+	if (!my_q) {
+		task = container_of(se_p, struct task_struct, se);
+		dump_task_info(status, task, true, true);
+		return;
+	}
+	nr_running = my_q->nr_running;
+	pr_info("%s: %d process is grouping\n",
+				   status, nr_running);
+	dump_cfs_rq(my_q);
+}
+
+static void dump_cfs_node_func(struct rb_node *node)
+{
+	struct sched_entity *se_p = container_of(node, struct sched_entity,
+						 run_node);
+
+	dump_cgroup_state("pend", se_p);
+}
+
+static void dump_rb_walk_cfs(struct rb_root_cached *rb_root_cached_p)
+{
+	int max_walk = 200;
+	struct rb_node *leftmost = rb_root_cached_p->rb_leftmost;
+	struct rb_root *root = &rb_root_cached_p->rb_root;
+	struct rb_node *rb_node = rb_first(root);
+
+	if (!leftmost)
+		return;
+	while (rb_node && max_walk--) {
+		dump_cfs_node_func(rb_node);
+		rb_node = rb_next(rb_node);
+	}
+}
+
+static void dump_rt_rq(struct rt_rq *rt_rq)
+{
+	struct rt_prio_array *array = &rt_rq->active;
+	struct sched_rt_entity *rt_se;
+	int idx;
+
+	pr_info("RT %d process is pending\n", rt_rq->rt_nr_running);
+
+	if (bitmap_empty(array->bitmap, MAX_RT_PRIO))
+		return;
+
+	idx = sched_find_first_bit(array->bitmap);
+	while (idx < MAX_RT_PRIO) {
+		list_for_each_entry(rt_se, array->queue + idx, run_list) {
+			struct task_struct *p;
+
+#ifdef CONFIG_RT_GROUP_SCHED
+			if (rt_se->my_q)
+				continue;
+#endif
+
+			p = container_of(rt_se, struct task_struct, rt);
+			dump_task_info("pend", p, true, true);
+		}
+		idx = find_next_bit(array->bitmap, MAX_RT_PRIO, idx + 1);
+	}
+}
+
+static void dump_cfs_rq(struct cfs_rq *cfs_rq)
+{
+	struct rb_root_cached *rb_root_cached_p = &cfs_rq->tasks_timeline;
+
+	pr_info("CFS %d process is pending\n", cfs_rq->nr_running);
+
+	dump_cgroup_state("curr", cfs_rq->curr);
+	dump_cgroup_state("next", cfs_rq->next);
+	dump_cgroup_state("last", cfs_rq->last);
+	dump_cgroup_state("skip", cfs_rq->skip);
+	dump_rb_walk_cfs(rb_root_cached_p);
+}
+
+void dump_runqueue(void)
+{
+	int cpu;
+	struct rq *rq;
+	struct rt_rq  *rt;
+	struct cfs_rq *cfs;
+
+	pr_info("==================== RUNQUEUE STATE ====================\n");
+	for_each_possible_cpu(cpu) {
+		rq = cpu_rq(cpu);
+		rt = &rq->rt;
+		cfs = &rq->cfs;
+		pr_info("CPU%d %d process is running\n", cpu, rq->nr_running);
+		dump_rq(rq);
+		dump_cfs_rq(cfs);
+		dump_rt_rq(rt);
+	}
+}
+
 void compound_key_to_get_trace(char *name)
 {
 	if (pwr_status == KEY_PRESSED && vol_up_status == KEY_PRESSED)

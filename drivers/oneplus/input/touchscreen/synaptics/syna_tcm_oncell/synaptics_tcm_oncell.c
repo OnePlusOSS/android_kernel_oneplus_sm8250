@@ -2148,10 +2148,26 @@ static int syna_tcm_enable_gesture_mask(struct syna_tcm_data *tcm_info, bool ena
 	return retval;
 }
 
+static int syna_tcm_set_glass_mode(struct syna_tcm_data *tcm_info, bool enable)
+{
+	int retval = 0;
+
+	TPD_INFO("%s: enable(%d)\n", __func__, enable);
+
+	retval = syna_tcm_set_dynamic_config(tcm_info, DC_GLASS_MODE, enable);
+	if (retval < 0) {
+		TPD_INFO("%s: Failed to set glass mode\n", __func__);
+	}
+
+	return retval;
+}
+
+
 static int syna_tcm_set_game_mode(struct syna_tcm_data *tcm_info, bool enable)
 {
 	int retval = 0;
 	unsigned short noise_length = 0;
+	unsigned char edge_suppression_width = 10;
 
 	tcm_info->game_mode = enable;
 	TPD_INFO("%s: enable(%d)\n", __func__, tcm_info->game_mode);
@@ -2175,6 +2191,15 @@ static int syna_tcm_set_game_mode(struct syna_tcm_data *tcm_info, bool enable)
 			TPD_INFO("Failed to set dynamic report frequence config\n");
 			return retval;
 		}
+
+		if (g_tp->limit_switch == 1 || g_tp->limit_switch == 3) {
+			edge_suppression_width = 10;	//set edge suppression width 10 for game(landscape) to fix the tap delay issue
+			retval = syna_tcm_set_dynamic_config(tcm_info, DC_GRIP_ENABLED, 0x01 | (edge_suppression_width << 8));
+			if (retval < 0) {
+				TPD_INFO("%s:failed to enable grip suppression\n", __func__);
+				return retval;
+			}
+		}
 	} else {
 		retval = syna_tcm_set_dynamic_config(tcm_info, DC_ERROR_PRIORITY, false);
 		if (retval < 0) {
@@ -2187,10 +2212,18 @@ static int syna_tcm_set_game_mode(struct syna_tcm_data *tcm_info, bool enable)
 			TPD_INFO("Failed to set dynamic noise length config\n");
 			return retval;
 		}
+		
 		retval = syna_tcm_set_dynamic_config(tcm_info, DC_SET_REPORT_FRE, tcm_info->display_refresh_rate == 90 ? 0x01 : 0x02);
 		if (retval < 0) {
 		TPD_INFO("Failed to set dynamic report frequence config\n");
 		return retval;
+		}
+
+		edge_suppression_width = 50;
+		retval = syna_tcm_set_dynamic_config(tcm_info, DC_GRIP_ENABLED, 0x01 | (edge_suppression_width << 8));
+		if (retval < 0) {
+			TPD_INFO("%s:failed to enable grip suppression\n", __func__);
+			return retval;
 		}
 	}
 
@@ -2522,6 +2555,12 @@ static int syna_mode_switch(void *chip_data, work_mode mode, bool flag)
 			ret = syna_tp_delta_print(tcm_info);
 			if (ret < 0) {
 				TPD_INFO("%s: print tp delta: %d failed\n", __func__, flag);
+			}
+			break;
+		case MODE_GLASS:
+			ret = syna_tcm_set_glass_mode(tcm_info, flag);
+			if (ret < 0) {
+				TPD_INFO("%s: set glass mode: %d failed\n", __func__, flag);
 			}
 			break;
 		default:

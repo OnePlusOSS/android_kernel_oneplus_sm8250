@@ -239,7 +239,6 @@ static int pm8xxx_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 	static int alarm_en_pre;
 
 	rtc_tm_to_time(&alarm->time, &secs);
-
 	for (i = 0; i < NUM_8_BIT_RTC_REGS; i++) {
 		value[i] = secs & 0xFF;
 		secs >>= 8;

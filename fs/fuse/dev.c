@@ -159,6 +159,10 @@ void fuse_request_free(struct fuse_req *req)
 		kfree(req->pages);
 		kfree(req->page_descs);
 	}
+	if (req->iname) {
+		__putname(req->iname);
+		req->iname = NULL;
+	}
 	kmem_cache_free(fuse_req_cachep, req);
 }
 
@@ -630,6 +634,7 @@ ssize_t fuse_simple_request(struct fuse_conn *fc, struct fuse_args *args)
 	req->out.argvar = args->out.argvar;
 	req->out.numargs = args->out.numargs;
 	req->iname = args->iname;
+	args->iname = NULL;
 	memcpy(req->out.args, args->out.args,
 	       args->out.numargs * sizeof(struct fuse_arg));
 	fuse_request_send(fc, req);
@@ -1407,6 +1412,7 @@ static ssize_t fuse_dev_do_read(struct fuse_dev *fud, struct file *file,
 			if (likely(current->fpack)) {
 				current->fpack->fuse_open_req = true;
 				current->fpack->iname = req->iname;
+				req->iname = NULL;
 			}
 		}
 	}
@@ -1940,6 +1946,11 @@ static ssize_t fuse_dev_do_write(struct fuse_dev *fud,
 	struct fuse_pqueue *fpq = &fud->pq;
 	struct fuse_req *req;
 	struct fuse_out_header oh;
+
+	if (current->fpack && current->fpack->iname) {
+		__putname(current->fpack->iname);
+		current->fpack->iname = NULL;
+	}
 
 	if (nbytes < sizeof(struct fuse_out_header))
 		return -EINVAL;

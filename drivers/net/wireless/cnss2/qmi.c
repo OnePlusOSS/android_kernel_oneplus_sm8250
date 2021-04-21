@@ -1146,7 +1146,9 @@ void cnss_get_filename(char *filename,
 					 P805_PUBLIC_AMERICA_DEFAULT_BDF);
 			break;
 			}
-		} else if (hw_id == 15) {
+		} else if (hw_id == 15 || hw_id == 53 || hw_id == 54 ||
+				hw_id == 55 || hw_id == 21 || hw_id == 22 ||
+				hw_id == 23) {
 			switch (rf_id) {
 			case 11:
 			cnss_pr_dbg("it is China PVT version, begin to load the China BDF file");
@@ -1209,7 +1211,7 @@ void cnss_get_filename(char *filename,
 					 P805_PUBLIC_AMERICA_DEFAULT_BDF);
 			break;
 			}
-		} else if (hw_id == 51 || hw_id == 52 || hw_id == 53) {
+		} else if (hw_id == 52) {
 			cnss_get_china_sec_res_filename(filename, filename_len,
 							hw_id, tempstr);
 		} else {
@@ -3202,6 +3204,7 @@ int cnss_wlfw_server_arrive(struct cnss_plat_data *plat_priv, void *data)
 
 	if (test_bit(CNSS_QMI_WLFW_CONNECTED, &plat_priv->driver_state)) {
 		cnss_pr_err("Unexpected WLFW server arrive\n");
+		CNSS_ASSERT(0);
 		return -EINVAL;
 	}
 

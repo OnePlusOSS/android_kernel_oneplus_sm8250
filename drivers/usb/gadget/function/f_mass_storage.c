@@ -3142,7 +3142,6 @@ void fsg_common_set_inquiry_string(struct fsg_common *common, const char *vn,
 		     ? "File-CD Gadget"
 		     : "File-Stor Gadget"),
 		 i);
-/* @BSP, 2020/04/04, CD-ROM and VID customized */
 	snprintf(common->inquiry_string,
 		sizeof(common->inquiry_string),
 		"%s",  "OnePlus Device Driver");

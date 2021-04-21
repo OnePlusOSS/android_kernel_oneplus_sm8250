@@ -1,14 +1,9 @@
 /**********************************************************************************
 * Copyright (c)  2008-2015  OnePlus Mobile Comm Corp., Ltd
-* VENDOR_EDIT
 * Description:    OnePlus Healthinfo Monitor
 *                          Record Kernel Resourse Abnormal Stat
 * Version    : 2.0
 * Date       : 2019-04-24
-* Author     : jared.wu@PSP
-* ------------------------------ Revision History: --------------------------------
-* <version>           <date>                <author>                            <desc>
-* Revision 1.0        2019-04-24       jared.wu@PSP      Created for Healthinfomonitor
 ***********************************************************************************/
 
 #ifndef _ONEPLUS_HEALTHINFO_H_

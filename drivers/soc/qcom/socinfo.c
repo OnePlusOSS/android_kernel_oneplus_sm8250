@@ -342,11 +342,9 @@ static struct msm_soc_info cpu_of_id[] = {
 	[441] = {MSM_CPU_SCUBA, "SCUBA"},
 	[471] = {MSM_CPU_SCUBA, "SCUBA"},
 
-	/* BENGAL-IOT ID */
-	[469] = {MSM_CPU_BENGAL_IOT, "BENGAL-IOT"},
+	[469] = {MSM_CPU_QCM4290, "QCM4290"},
 
-	/* BENGALP-IOT ID */
-	[470] = {MSM_CPU_BENGALP_IOT, "BENGALP-IOT"},
+	[470] = {MSM_CPU_QCS4290, "QCS4290"},
 
 	/* Uninitialized IDs are not known to run Linux.
 	 * MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
@@ -1255,13 +1253,13 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 365;
 		strlcpy(dummy_socinfo.build_id, "sdmmagpie - ",
 		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_bengal_iot()) {
+	} else if (early_machine_is_qcm4290()) {
 		dummy_socinfo.id = 469;
-		strlcpy(dummy_socinfo.build_id, "bengal-iot - ",
+		strlcpy(dummy_socinfo.build_id, "qcm4290 - ",
 		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_bengalp_iot()) {
+	} else if (early_machine_is_qcs4290()) {
 		dummy_socinfo.id = 470;
-		strlcpy(dummy_socinfo.build_id, "bengalp-iot - ",
+		strlcpy(dummy_socinfo.build_id, "qcs4290 - ",
 		sizeof(dummy_socinfo.build_id));
 	} else
 		strlcat(dummy_socinfo.build_id, "Dummy socinfo",

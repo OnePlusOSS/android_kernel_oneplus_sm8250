@@ -1,7 +1,6 @@
 /*this is for different project dtsi*/
 #include "instantnoodle.dtsi"
 #include "kona-thermal.dtsi"
-/* @bsp, Battery & Charging config STRAT */
 &qupv3_se16_i2c {
 	oneplus_fastchg@26{
 		op,4300mAh_4p45_support;
@@ -102,7 +101,6 @@
 &kona_mtp_batterydata {
 	#include "OP-fg-batterydata-4300mah.dtsi"
 };
-/* @bsp, Battery & Charging config STRAT */
 
 /delete-node/ &skin_therm_19821;
 /delete-node/ &msm_therm_19821;
@@ -116,29 +114,29 @@
 		wake-capable-sensor;
 		trips {
 			skin_therm_usr_trip0: skin_therm_usr_trip0 {
-				temperature = <50000>;
-				hysteresis = <7000>;
-				type = "passive";
-			};
-			skin_therm_usr_trip1: skin_therm_usr_trip1 {
-				temperature = <54000>;
-				hysteresis = <9000>;
-				type = "passive";
-			};
-			skin_therm_usr_trip3: skin_therm_usr_trip3 {
 				temperature = <58000>;
 				hysteresis = <7000>;
 				type = "passive";
 			};
+			skin_therm_usr_trip1: skin_therm_usr_trip1 {
+				temperature = <61000>;
+				hysteresis = <8000>;
+				type = "passive";
+			};
+			skin_therm_usr_trip3: skin_therm_usr_trip3 {
+				temperature = <65000>;
+				hysteresis = <8000>;
+				type = "passive";
+			};
 		};
 		cooling-maps {
-			modem_Tj_lvl1 {
+			modem_skin_lvl0 {
 				trip = <&skin_therm_usr_trip0>;
-				cooling-device = <&modem_tj 1 1>;
+				cooling-device = <&modem_skin 1 1>;
 			};
 			modem_skin_lvl1 {
 				trip = <&skin_therm_usr_trip1>;
-				cooling-device = <&modem_skin 1 1>;
+				cooling-device = <&modem_skin 2 2>;
 			};
 			modem_skin_lvl3 {
 				trip = <&skin_therm_usr_trip3>;
@@ -165,7 +163,7 @@
 				type = "passive";
 			};
 			mmw_pa1_usr_trip2: mmw_pa1_usr_trip2 {
-				temperature = <52000>;
+				temperature = <100000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -204,7 +202,7 @@
 				type = "passive";
 			};
 			xo_therm_usr_trip2: xo_therm_usr_trip2 {
-				temperature = <60000>;
+				temperature = <100000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};
@@ -244,7 +242,7 @@
 				type = "passive";
 			};
 			modem_mmw2_usr_trip2: modem_mmw2_usr_trip2{
-				temperature = <60000>;
+				temperature = <100000>;
 				hysteresis = <5000>;
 				type = "passive";
 			};

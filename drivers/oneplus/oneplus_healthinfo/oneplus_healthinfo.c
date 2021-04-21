@@ -1,14 +1,9 @@
 /**********************************************************************************
 * Copyright (c)  2008-2015 OnePlus Mobile Comm Corp., Ltd
-* VENDOR_EDIT
 * Description:     Healthinfo Monitor  Kernel Driver
 *
 * Version   : 1.0
 * Date       : 2019-04-24
-* Author     : jared.wu@PSP
-* ------------------------------ Revision History: --------------------------------
-* <version>           <date>                <author>                            <desc>
-* Revision 1.0        2018-04-24       jared.wu@PSP         Created for Healthinfomonitor
 ***********************************************************************************/
 
 #include <linux/oem/oneplus_healthinfo.h>

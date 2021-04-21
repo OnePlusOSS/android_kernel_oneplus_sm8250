@@ -389,6 +389,8 @@ static void msm_cvp_cleanup_instance(struct msm_cvp_inst *inst)
 	if (cvp_comm_release_persist_buffers(inst))
 		dprintk(CVP_ERR,
 			"Failed to release persist buffers\n");
+
+	msm_cvp_session_queue_stop(inst);
 }
 
 int msm_cvp_destroy(struct msm_cvp_inst *inst)

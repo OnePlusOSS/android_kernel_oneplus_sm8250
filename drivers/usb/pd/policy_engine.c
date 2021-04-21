@@ -1643,12 +1643,16 @@ static void handle_vdm_rx(struct usbpd *pd, struct rx_msg *rx_msg)
 //						0, SOP_MSG);
 //				if (ret)
 //					usbpd_set_state(pd, PE_SEND_SOFT_RESET);
-//			} else {
+			if ((cmd == USBPD_SVDM_DISCOVER_SVIDS)
+				&& (pd->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH)) {
+				usbpd_info(&pd->dev, "not supported send svid.");
+				pd_send_msg(pd, MSG_NOT_SUPPORTED, NULL, 0, SOP_MSG);
+			} else {
 				usbpd_send_svdm(pd, svid, cmd,
 						SVDM_CMD_TYPE_RESP_NAK,
 						SVDM_HDR_OBJ_POS(vdm_hdr),
 						NULL, 0);
-//			}
+			}
 		}
 		break;
 
@@ -2553,9 +2557,21 @@ static void handle_state_src_ready(struct usbpd *pd, struct rx_msg *rx_msg)
 static void enter_state_hard_reset(struct usbpd *pd)
 {
 	union power_supply_propval val = {0};
+	bool disconnect_pd;
+	int ret;
+
+	ret = power_supply_get_property(pd->usb_psy,
+			POWER_SUPPLY_PROP_DISCONNECT_PD, &val);
+	if (ret) {
+		usbpd_err(&pd->dev, "Unable to read USB DISCONNECT_PD: %d\n", ret);
+		disconnect_pd = false;
+	} else {
+		disconnect_pd = val.intval;
+	}
 
 	/* are we still connected? */
-	if (pd->typec_mode == POWER_SUPPLY_TYPEC_NONE) {
+	if (pd->typec_mode == POWER_SUPPLY_TYPEC_NONE || disconnect_pd) {
+		pd->typec_mode = POWER_SUPPLY_TYPEC_NONE;
 		pd->current_pr = PR_NONE;
 		kick_sm(pd, 0);
 		return;
@@ -3822,6 +3838,15 @@ static int psy_changed(struct notifier_block *nb, unsigned long evt, void *ptr)
 	int ret;
 
 	if (ptr != pd->usb_psy || evt != PSY_EVENT_PROP_CHANGED)
+		return 0;
+
+	ret = power_supply_get_property(pd->usb_psy,
+			POWER_SUPPLY_PROP_DISCONNECT_PD, &val);
+	if (ret) {
+		usbpd_err(&pd->dev, "Unable to read USB DISCONNECT_PD: %d\n", ret);
+		return ret;
+	}
+	if (val.intval)
 		return 0;
 
 	ret = power_supply_get_property(pd->usb_psy,
