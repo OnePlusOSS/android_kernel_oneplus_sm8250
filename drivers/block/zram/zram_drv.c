@@ -325,6 +325,10 @@ static ssize_t idle_store(struct device *dev,
 
 	up_read(&zram->init_lock);
 
+#ifdef CONFIG_ZWB_HANDLE
+	wake_up_process(zwb_clear_tsk);
+#endif
+
 	return len;
 }
 
@@ -785,6 +789,7 @@ next:
 		free_block_bdev(zram, blk_idx);
 	ret = len;
 	__free_page(page);
+	ksys_sync();
 release_init_lock:
 	up_read(&zram->init_lock);
 
@@ -1148,10 +1153,11 @@ static ssize_t bd_stat_show(struct device *dev,
 
 	down_read(&zram->init_lock);
 	ret = scnprintf(buf, PAGE_SIZE,
-		"%8llu %8llu %8llu\n",
+		"%8llu %8llu %8llu %8llu\n",
 			FOUR_K((u64)atomic64_read(&zram->stats.bd_count)),
 			FOUR_K((u64)atomic64_read(&zram->stats.bd_reads)),
-			FOUR_K((u64)atomic64_read(&zram->stats.bd_writes)));
+			FOUR_K((u64)atomic64_read(&zram->stats.bd_writes)),
+			FOUR_K((u64)atomic64_read(&zram->stats.bd_free)));
 	up_read(&zram->init_lock);
 
 	return ret;
@@ -1297,6 +1303,9 @@ static void zram_free_page(struct zram *zram, size_t index)
 	if (zram_test_flag(zram, index, ZRAM_WB)) {
 		zram_clear_flag(zram, index, ZRAM_WB);
 		free_block_bdev(zram, zram_get_element(zram, index));
+#ifdef CONFIG_ZRAM_WRITEBACK
+		atomic64_inc(&zram->stats.bd_free);
+#endif
 		goto out;
 	}
 

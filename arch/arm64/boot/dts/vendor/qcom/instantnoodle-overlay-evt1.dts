@@ -1,0 +1,22 @@
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/clock/qcom,gcc-kona.h>
+#include <dt-bindings/clock/qcom,camcc-kona.h>
+#include <dt-bindings/clock/qcom,rpmh.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+#include "kona-mtp.dtsi"
+#include "kona-oem.dtsi"
+#include "instantnoodle.dtsi"
+#include "camera/kona-oem-camera-instantnoodle.dtsi" /* camera maybe use the same */
+/ {
+	model = "Qualcomm Technologies, Inc. kona MTP evt1 19821 19855 12 13";
+	compatible = "qcom,kona-mtp", "qcom,kona", "qcom,mtp";
+	qcom,board-id = <8 0>;
+	/*we can add project id to this array,uefi can auto read it,if new project,we add to this array */
+	oem,project-id = <19821 19855>;
+	/*we can add hw id to this array,uefi can auto read it,if new hw,we add to this array  */
+	oem,hw-id = <12 13 54>;
+};
+

@@ -1,0 +1,3 @@
+source "drivers/oneplus/input/touchscreen/util_interface/Kconfig"
+source "drivers/oneplus/input/touchscreen/samsung/Kconfig"
+source "drivers/oneplus/input/touchscreen/synaptics/Kconfig"

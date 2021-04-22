@@ -1202,7 +1202,7 @@ static int spss_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	pr_info("Initialization completed ok, firmware_name [%s].\n",
+	pr_info("Initialization completed finish, firmware_name [%s].\n",
 		firmware_name);
 
 	iar_nb = kzalloc(sizeof(*iar_nb), GFP_KERNEL);

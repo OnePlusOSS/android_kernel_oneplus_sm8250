@@ -89,6 +89,7 @@ gen_headers_out_arm64 = [
     "drm/mga_drm.h",
     "drm/msm_drm.h",
     "drm/msm_drm_pp.h",
+    "drm/msm_drm_iris.h",
     "drm/nouveau_drm.h",
     "drm/omap_drm.h",
     "drm/qxl_drm.h",

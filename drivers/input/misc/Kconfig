@@ -184,6 +184,18 @@ config INPUT_QPNP_POWER_ON
 	  reporting the change in status of the KPDPWR_N line (connected to the
 	  power-key) as well as reset features.
 
+config KEY_FLUSH
+	bool "Key trigger flush"
+	depends on PANIC_FLUSH
+	default y
+	help
+	  This option enables device driver support for flush blk devices using
+	  panic_flush module triggered by qpnp power key.
+
+	  panic_flush.o must be compiled.
+
+	  If unsure, say Y.
+
 config INPUT_QTI_HAPTICS
 	tristate "Haptics support for QTI PMIC"
 	depends on MFD_SPMI_PMIC
@@ -872,7 +884,7 @@ config INPUT_RAVE_SP_PWRBUTTON
 	help
 	  Say Y here if you want to enable power key reporting from RAVE SP
 
-	  To compile this driver as a module, choose M here: the
+	  to compile this driver as a module, choose M here: the
 	  module will be called rave-sp-pwrbutton.
 
 config INPUT_SC27XX_VIBRA
@@ -884,5 +896,4 @@ config INPUT_SC27XX_VIBRA
 
 	  To compile this driver as a module, choose M here. The module will
 	  be called sc27xx_vibra.
-
 endif

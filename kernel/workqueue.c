@@ -52,6 +52,13 @@
 #include <linux/bug.h>
 #include <linux/delay.h>
 
+#ifdef CONFIG_OEM_FORCE_DUMP
+#include <linux/sched/debug.h>
+#endif
+
+#ifdef CONFIG_IM
+#include <linux/oem/im.h>
+#endif
 #include "workqueue_internal.h"
 
 enum {
@@ -1856,6 +1863,10 @@ static struct worker *create_worker(struct worker_pool *pool)
 					      "kworker/%s", id_buf);
 	if (IS_ERR(worker->task))
 		goto fail;
+
+#ifdef CONFIG_IM
+	im_set_flag(worker->task, IM_KWORKER);
+#endif
 
 	set_user_nice(worker->task, pool->attrs->nice);
 	kthread_bind_mask(worker->task, pool->attrs->cpumask);
@@ -5884,3 +5895,32 @@ int __init workqueue_init(void)
 
 	return 0;
 }
+
+#ifdef CONFIG_OEM_FORCE_DUMP
+void dump_workqueue(void)
+{
+	int cpu, pool_id, bkt;
+	struct worker_pool *pool;
+	struct worker *worker;
+	struct work_struct *work;
+
+	pr_info("==================== WORKQUEUE STATE ====================\n");
+	for_each_possible_cpu(cpu) {
+		pr_info("CPU %d\n", cpu);
+		pool_id = 0;
+		for_each_cpu_worker_pool(pool, cpu) {
+			pr_info("pool %d\n", pool_id++);
+			hash_for_each(pool->busy_hash, bkt, worker, hentry) {
+				pr_info("BUSY Workqueue worker: %s\n", worker->task->comm);
+				sched_show_task(worker->task);
+			}
+			list_for_each_entry(worker, &pool->idle_list, entry) {
+				pr_info("IDLE Workqueue worker: %s\n", worker->task->comm);
+			}
+			list_for_each_entry(work, &pool->worklist, entry) {
+				pr_info("Pending entry: %pS\n", work->func);
+			}
+		}
+	}
+}
+#endif

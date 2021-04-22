@@ -13,6 +13,8 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
+static  bool print_cureent_time;
+
 /* RTC Register offsets from RTC CTRL REG */
 #define PM8XXX_ALARM_CTRL_OFFSET	0x01
 #define PM8XXX_RTC_WRITE_OFFSET		0x02
@@ -216,7 +218,12 @@ static int pm8xxx_rtc_read_time(struct device *dev, struct rtc_time *tm)
 	dev_dbg(dev, "secs = %lu, h:m:s == %d:%d:%d, d/m/y = %d/%d/%d\n",
 		secs, tm->tm_hour, tm->tm_min, tm->tm_sec,
 		tm->tm_mday, tm->tm_mon, tm->tm_year);
-
+	if (print_cureent_time) {
+		print_cureent_time = false;
+		dev_info(dev, "current time:secs = %lu, h:m:s == %d:%d:%d, d/m/y = %d/%d/%d\n",
+			secs, tm->tm_hour, tm->tm_min, tm->tm_sec,
+			tm->tm_mday, tm->tm_mon, tm->tm_year);
+	}
 	return 0;
 }
 
@@ -228,13 +235,28 @@ static int pm8xxx_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 	unsigned long secs, irq_flags;
 	struct pm8xxx_rtc *rtc_dd = dev_get_drvdata(dev);
 	const struct pm8xxx_rtc_regs *regs = rtc_dd->regs;
+	static u8 pre_value_0, pre_value_1, pre_value_2, pre_value_3;
+	static int alarm_en_pre;
 
 	rtc_tm_to_time(&alarm->time, &secs);
-
 	for (i = 0; i < NUM_8_BIT_RTC_REGS; i++) {
 		value[i] = secs & 0xFF;
 		secs >>= 8;
 	}
+	if (value[0] != pre_value_0 || value[1] != pre_value_1
+					|| value[2] != pre_value_2 || value[3] != pre_value_3) {
+		dev_info(dev, "val[0] = 0x%x, val[1] = 0x%x, val[2] = 0x%x, val[3] = 0x%x\n",
+					value[0], value[1], value[2], value[3]);
+		dev_info(dev, "Alarm Set for h:r:s=%d:%d:%d, d/m/y=%d/%d/%d\n",
+					alarm->time.tm_hour, alarm->time.tm_min,
+					alarm->time.tm_sec, alarm->time.tm_mday,
+					alarm->time.tm_mon, alarm->time.tm_year);
+		print_cureent_time = true;
+	}
+	pre_value_0 = value[0];
+	pre_value_1 = value[1];
+	pre_value_2 = value[2];
+	pre_value_3 = value[3];
 
 	spin_lock_irqsave(&rtc_dd->ctrl_reg_lock, irq_flags);
 
@@ -259,6 +281,9 @@ static int pm8xxx_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 		dev_err(dev, "Write to RTC alarm control register failed\n");
 		goto rtc_rw_fail;
 	}
+	if (alarm_en_pre != alarm->enabled)
+		dev_info(dev, "alarm->enabled:%d\n", alarm->enabled);
+	alarm_en_pre = alarm->enabled;
 
 	dev_dbg(dev, "Alarm Set for h:r:s=%d:%d:%d, d/m/y=%d/%d/%d\n",
 		alarm->time.tm_hour, alarm->time.tm_min,

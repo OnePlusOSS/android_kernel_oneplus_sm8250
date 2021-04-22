@@ -737,6 +737,25 @@ static struct kgsl_process_private *kgsl_iommu_get_process(u64 ptbase)
 	return NULL;
 }
 
+static void kgsl_send_uevent_iommu_notify(struct kgsl_device *desc, char *fault_type,
+	const char *context_name)
+{
+	char *envp[4];
+	char *title = "GPU_IOMMU_PAGE_FAULT";
+
+	if (!desc)
+		return;
+
+	envp[0] = kasprintf(GFP_KERNEL, "title=%s", title);
+	envp[1] = kasprintf(GFP_KERNEL, "fault_type=%s", fault_type);
+	envp[2] = kasprintf(GFP_KERNEL, "context=%s", context_name);
+	envp[3] = NULL;
+	kobject_uevent_env(&desc->dev->kobj, KOBJ_CHANGE, envp);
+	kfree(envp[0]);
+	kfree(envp[1]);
+	kfree(envp[2]);
+}
+
 static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	struct device *dev, unsigned long addr, int flags, void *token)
 {
@@ -785,6 +804,8 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 
 	ptbase = KGSL_IOMMU_GET_CTX_REG_Q(ctx, TTBR0);
 	private = kgsl_iommu_get_process(ptbase);
+
+	kgsl_send_uevent_iommu_notify(device, fault_type, ctx->name);
 
 	if (private) {
 		pid = private->pid;

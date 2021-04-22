@@ -19,6 +19,10 @@
 extern struct dentry *blk_debugfs_root;
 #endif
 
+#ifdef CONFIG_ONEPLUS_HEALTHINFO
+extern unsigned long ufs_outstanding;
+#endif
+
 struct blk_flush_queue {
 	unsigned int		flush_queue_delayed:1;
 	unsigned int		flush_pending_idx:1;
@@ -41,6 +45,10 @@ extern struct kmem_cache *blk_requestq_cachep;
 extern struct kmem_cache *request_cachep;
 extern struct kobj_type blk_queue_ktype;
 extern struct ida blk_queue_ida;
+
+#ifdef CONFIG_PANIC_FLUSH
+extern unsigned long sysctl_blkdev_issue_flush_count;
+#endif
 
 /*
  * @q->queue_lock is set while a queue is being initialized. Since we know

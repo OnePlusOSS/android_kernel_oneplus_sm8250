@@ -1,0 +1,5 @@
+config ONEPLUS_MEM_MONITOR
+	bool "memory monitor "
+	default n
+	help
+	 memory monitor.

@@ -1,0 +1,43 @@
+# oem device driver for charge
+
+config FG_BQ27541
+	tristate "TI bq27541 fg"
+	depends on I2C
+	help
+	  Say Y here to enable the TI Fuel Gauge driver.This adds support
+	  for battery fuel gauging and state of charge of battery connected to
+	  the fuel gauge. The state of charge is reported through a BMS power
+	  supply property and also sends uevents when the capacity is updated.
+
+config OP_DEBUG_CHG
+	tristate "OP DEBUG CHARGE"
+	depends on MFD_SPMI_PMIC
+	help
+	  Enables support for the debug charging peripheral
+	  When use agingboot,can dump pmic register and
+	  print vbus vbat current information
+	  a
+
+config ONEPLUS_FASTCHG
+	tristate "ONEPLUS FAST CHARGE"
+	depends on I2C
+	help
+	  Say Y here to enable the ONEPLUS FAST CHARGE driver.This adds support
+	  for WARP charge and state of charge of battery connected to
+	  the battery. The state of charge is reported through a battery power
+	  supply property
+
+config CP_DA9313
+	tristate "Dialog da9313 dual cell switched capacitor divider"
+	depends on I2C
+	help
+	  Say Y here to enable the da9313 divider driver.This adds support
+	  for dual cell switched capacitor divider to power system.
+
+config CHGIC_MP2762
+	tristate "MPS mp2762 buck and boost charger ic"
+	depends on I2C
+	help
+	  Say Y here to enable the MP2762 buck and boost charger driver.This adds support
+	  for dual cell switched capacitor divider to power system.
+

@@ -156,6 +156,12 @@ struct request {
 	unsigned int cmd_flags;		/* op and common flags */
 	req_flags_t rq_flags;
 
+#ifdef CONFIG_ONEPLUS_HEALTHINFO
+	ktime_t block_io_start;
+	ktime_t ufs_io_start;
+	u64 flash_io_latency;
+#endif
+
 	int internal_tag;
 
 	/* the following two fields are internal, NEVER access directly */

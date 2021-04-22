@@ -1102,6 +1102,10 @@ struct device {
 	bool			of_node_reused:1;
 	bool			state_synced:1;
 
+#ifdef CONFIG_CONTROL_CENTER
+	bool cc_marked;
+#endif
+
 	ANDROID_KABI_RESERVE(1);
 	ANDROID_KABI_RESERVE(2);
 	ANDROID_KABI_RESERVE(3);

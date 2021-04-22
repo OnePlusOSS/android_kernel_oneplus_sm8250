@@ -205,6 +205,10 @@ enum {
 #define DEF_MAX_DISCARD_ISSUE_TIME	60000	/* 60 s, if no candidates */
 #define DEF_DISCARD_URGENT_UTIL		80	/* do more discard over 80% */
 #define DEF_CP_INTERVAL			60	/* 60 secs */
+#ifdef CONFIG_F2FS_OF2FS
+#define DEF_GC_IDLE_INTERVAL	1	/* 1 secs */
+#define DEF_DISCARD_IDLE_INTERVAL	1	/* 1 secs */
+#endif
 #define DEF_IDLE_INTERVAL		5	/* 5 secs */
 #define DEF_DISABLE_INTERVAL		5	/* 5 secs */
 #define DEF_DISABLE_QUICK_INTERVAL	1	/* 1 secs */
@@ -314,6 +318,9 @@ struct discard_cmd {
 	int error;			/* bio error */
 	spinlock_t lock;		/* for state/bio_ref updating */
 	unsigned short bio_ref;		/* bio reference count */
+#ifdef CONFIG_F2FS_BD_STAT
+	u64 discard_time;
+#endif
 };
 
 enum {
@@ -321,6 +328,9 @@ enum {
 	DPOLICY_FORCE,
 	DPOLICY_FSTRIM,
 	DPOLICY_UMOUNT,
+#ifdef CONFIG_F2FS_OF2FS
+	DPOLICY_ODISCARD,
+#endif
 	MAX_DPOLICY,
 };
 
@@ -336,6 +346,9 @@ struct discard_policy {
 	bool ordered;			/* issue discard by lba order */
 	bool timeout;			/* discard timeout for put_super */
 	unsigned int granularity;	/* discard granularity */
+#ifdef CONFIG_F2FS_OF2FS
+	bool io_busy;
+#endif
 };
 
 struct discard_cmd_control {
@@ -346,6 +359,10 @@ struct discard_cmd_control {
 	struct list_head fstrim_list;		/* in-flight discard from fstrim */
 	wait_queue_head_t discard_wait_queue;	/* waiting queue for wake-up */
 	unsigned int discard_wake;		/* to wake up discard thread */
+#ifdef CONFIG_F2FS_OF2FS
+	unsigned int odiscard_wake;
+	unsigned int otrim_wake;
+#endif
 	struct mutex cmd_lock;
 	unsigned int nr_discards;		/* # of discards in the list */
 	unsigned int max_discards;		/* max. discards to be issued */
@@ -1550,6 +1567,10 @@ struct f2fs_sb_info {
 	unsigned int ndirty_inode[NR_INODE_TYPE];	/* # of dirty inodes */
 #endif
 	spinlock_t stat_lock;			/* lock for stat operations */
+#ifdef CONFIG_F2FS_BD_STAT
+	spinlock_t bd_lock;
+	struct f2fs_bigdata_info *bd_info;
+#endif
 
 	/* For app/fs IO statistics */
 	spinlock_t iostat_lock;
@@ -1584,8 +1605,18 @@ struct f2fs_sb_info {
 
 	/* Precomputed FS UUID checksum for seeding other checksums */
 	__u32 s_chksum_seed;
-
 	struct workqueue_struct *post_read_wq;	/* post read workqueue */
+
+#ifdef CONFIG_F2FS_OF2FS
+	bool is_frag;
+	unsigned long last_frag_check;
+	atomic_t need_ssr_gc;
+	bool gc_opt_enable;
+
+	struct list_head sbi_list;
+	unsigned long last_wp_odc_jiffies;
+	bool odiscard_already_run;
+#endif
 
 	struct kmem_cache *inline_xattr_slab;	/* inline xattr entry */
 	unsigned int inline_xattr_slab_size;	/* default inline xattr slab size */
@@ -3728,6 +3759,12 @@ static inline void f2fs_destroy_root_stats(void) { }
 static inline void update_sit_info(struct f2fs_sb_info *sbi) {}
 #endif
 
+#ifdef CONFIG_F2FS_BD_STAT
+#include "../../drivers/oneplus/fs/f2fs/of2fs_bigdata.h"
+extern void f2fs_build_bd_stat(struct f2fs_sb_info *sbi);
+extern void f2fs_destroy_bd_stat(struct f2fs_sb_info *sbi);
+#endif
+
 extern const struct file_operations f2fs_dir_operations;
 extern const struct file_operations f2fs_file_operations;
 extern const struct inode_operations f2fs_file_inode_operations;
@@ -4122,6 +4159,51 @@ static inline bool is_journalled_quota(struct f2fs_sb_info *sbi)
 #endif
 	return false;
 }
+
+#ifdef CONFIG_F2FS_OF2FS
+#define BATTERY_THRESHOLD 30
+#define ODISCARD_WAKEUP_INTERVAL 900
+#define ODISCARD_EXEC_TIME_NO_CHARGING 8000
+
+#define DEF_URGENT_DISCARD_ISSUE_TIME	50
+#define DEF_MIN_DISCARD_ISSUE_TIME_OF2FS	100
+#define DEF_MID_DISCARD_ISSUE_TIME_OF2FS	2000
+#define DEF_MAX_DISCARD_ISSUE_TIME_OF2FS	120000
+#define DEF_DISCARD_EMPTY_ISSUE_TIME	600000
+
+extern int f2fs_odiscard_enable;
+
+extern inline void wake_up_odiscard_of2fs(struct f2fs_sb_info *sbi);
+extern inline void wake_up_otrim_of2fs(struct f2fs_sb_info *sbi);
+
+enum {
+	F2FS_TRIM_START,
+	F2FS_TRIM_FINISH,
+	F2FS_TRIM_INTERRUPT,
+};
+
+struct f2fs_device_state {
+	bool screen_off;
+	bool battery_charging;
+	int battery_percent;
+};
+extern struct f2fs_device_state f2fs_device;
+
+#define FS_FREE_SPACE_PERCENT		20
+#define DEVICE_FREE_SPACE_PERCENT	10
+static inline block_t fs_free_space_threshold(struct f2fs_sb_info *sbi)
+{
+	return (block_t)(SM_I(sbi)->main_segments * sbi->blocks_per_seg *
+					FS_FREE_SPACE_PERCENT) / 100;
+}
+
+static inline block_t device_free_space_threshold(struct f2fs_sb_info *sbi)
+{
+	return (block_t)(SM_I(sbi)->main_segments * sbi->blocks_per_seg *
+					DEVICE_FREE_SPACE_PERCENT) / 100;
+}
+
+#endif
 
 #define EFSBADCRC	EBADMSG		/* Bad CRC detected */
 #define EFSCORRUPTED	EUCLEAN		/* Filesystem is corrupted */

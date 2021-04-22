@@ -35,6 +35,9 @@ enum page_ext_flags {
  */
 struct page_ext {
 	unsigned long flags;
+#if defined(CONFIG_MEMPLUS) && defined(CONFIG_PAGE_EXTENSION) && defined(CONFIG_PAGE_OWNER_ENABLE_DEFAULT)
+	int8_t next_event;
+#endif
 };
 
 extern void pgdat_page_ext_init(struct pglist_data *pgdat);

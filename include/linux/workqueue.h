@@ -676,4 +676,10 @@ int workqueue_offline_cpu(unsigned int cpu);
 int __init workqueue_init_early(void);
 int __init workqueue_init(void);
 
+#ifdef CONFIG_OEM_FORCE_DUMP
+extern void dump_workqueue(void);
+#else
+static void dump_workqueue(void) {}
+#endif
+
 #endif

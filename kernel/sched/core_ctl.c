@@ -20,6 +20,8 @@
 #include "sched.h"
 #include "walt.h"
 
+#include <linux/oem/control_center.h>
+
 struct cluster_data {
 	bool inited;
 	unsigned int min_cpus;
@@ -46,6 +48,7 @@ struct cluster_data {
 	struct task_struct *core_ctl_thread;
 	unsigned int first_cpu;
 	unsigned int boost;
+	unsigned int op_boost;
 	struct kobject kobj;
 	unsigned int strict_nrrun;
 };
@@ -329,6 +332,8 @@ static ssize_t show_global_state(const struct cluster_data *state, char *buf)
 						cluster->nr_isolated_cpus);
 		count += snprintf(buf + count, PAGE_SIZE - count,
 				"\tBoost: %u\n", (unsigned int) cluster->boost);
+		count += snprintf(buf + count, PAGE_SIZE - count,
+				"\tOPBoost: %u\n", (unsigned int) cluster->op_boost);
 	}
 	spin_unlock_irq(&state_lock);
 
@@ -764,6 +769,15 @@ static bool adjustment_possible(const struct cluster_data *cluster,
 	return (need < cluster->active_cpus || (need > cluster->active_cpus &&
 						cluster->nr_isolated_cpus));
 }
+#define TRACE_DEBUG 0
+
+static inline void tracing_mark_write(int serial, char *name, unsigned int value)
+{
+#if TRACE_DEBUG
+	trace_printk("C|%d|%s|%u\n", 99990+serial, name, value);
+#endif
+}
+
 
 static bool need_all_cpus(const struct cluster_data *cluster)
 {
@@ -787,7 +801,7 @@ static bool eval_need(struct cluster_data *cluster)
 
 	spin_lock_irqsave(&state_lock, flags);
 
-	if (cluster->boost || !cluster->enable || need_all_cpus(cluster)) {
+	if (cluster->boost || cluster->op_boost || !cluster->enable || need_all_cpus(cluster)) {
 		need_cpus = cluster->max_cpus;
 	} else {
 		cluster->active_cpus = get_active_cpu_count(cluster);
@@ -1246,6 +1260,48 @@ static int core_ctl_isolation_dead_cpu(unsigned int cpu)
 {
 	return isolation_cpuhp_state(cpu, false);
 }
+
+int core_ctl_op_boost(bool boost, int level)
+{
+	unsigned int index = 0;
+	struct cluster_data *cluster;
+	unsigned long flags;
+	int ret = 0;
+	bool boost_state_changed = false;
+	int total_boost = -1;
+
+	if (unlikely(!initialized))
+		return 0;
+
+	tracing_mark_write(0, "cctl_boost", boost);
+	spin_lock_irqsave(&state_lock, flags);
+	for_each_cluster(cluster, index) {
+		if (boost) {
+			boost_state_changed = !cluster->op_boost;
+			if (ccdm_get_hint(CCDM_TB_CCTL_BOOST) && cluster->op_boost == 0)
+				++cluster->op_boost;
+			if (++total_boost == level)
+				break;
+		} else {
+			if (!cluster->op_boost) {
+				ret = -EINVAL;
+				break;
+			}
+			--cluster->op_boost;
+			boost_state_changed = !cluster->op_boost;
+		}
+	}
+	spin_unlock_irqrestore(&state_lock, flags);
+
+	if (boost_state_changed) {
+		index = 0;
+		for_each_cluster(cluster, index)
+			apply_need(cluster);
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(core_ctl_op_boost);
 
 /* ============================ init code ============================== */
 

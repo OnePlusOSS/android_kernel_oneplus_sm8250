@@ -12,6 +12,7 @@
 #include <linux/of_device.h>
 #include <linux/sysfs.h>
 #include <soc/qcom/subsystem_restart.h>
+#include <linux/oem/boot_mode.h>
 
 #define BOOT_CMD 1
 #define IMAGE_UNLOAD_CMD 0
@@ -57,6 +58,13 @@ static int cdsp_loader_do(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 			"%s: Device tree information missing\n", __func__);
 
+		goto fail;
+	}
+
+	if (get_boot_mode() == MSM_BOOT_MODE_FACTORY) {
+		dev_dbg(&pdev->dev,
+			"%s: do not load CDSP image in factory mode.\n",
+				__func__);
 		goto fail;
 	}
 

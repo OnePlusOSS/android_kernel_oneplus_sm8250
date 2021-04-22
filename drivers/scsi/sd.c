@@ -3303,7 +3303,7 @@ static int sd_probe(struct device *dev)
 	struct gendisk *gd;
 	int index;
 	int error;
-
+	static int num;
 	scsi_autopm_get_device(sdp);
 	error = -ENODEV;
 	if (sdp->type != TYPE_DISK &&
@@ -3339,6 +3339,11 @@ static int sd_probe(struct device *dev)
 		sdev_printk(KERN_WARNING, sdp, "SCSI disk (sd) name length exceeded.\n");
 		goto out_free_index;
 	}
+
+	if ((num < SD_NUM) && !(sdp->removable))
+		ufs_disk[num++] = gd;
+	else if (sdp->removable)
+		sdev_printk(KERN_WARNING, sdp, "it's a removable SCSI disk (sd) name: %s\n", gd->disk_name);
 
 	sdkp->device = sdp;
 	sdkp->driver = &sd_template;

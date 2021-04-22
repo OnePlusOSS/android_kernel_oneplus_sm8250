@@ -1757,6 +1757,28 @@ void adreno_fault_skipcmd_detached(struct adreno_device *adreno_dev,
 }
 
 /**
+ * Add to track gpu cmd page fault
+ */
+static void kgsl_send_uevent_cmd_notify(struct kgsl_device *desc, int contextId,
+		int timestamp)
+{
+	char *envp[4];
+	char *title = "GPU_CMD_PAGE_FAULT";
+
+	if (!desc)
+		return;
+
+	envp[0] = kasprintf(GFP_KERNEL, "title=%s", title);
+	envp[1] = kasprintf(GFP_KERNEL, "cntId=%d", contextId);
+	envp[2] = kasprintf(GFP_KERNEL, "timestamp=%d", timestamp);
+	envp[3] = NULL;
+	kobject_uevent_env(&desc->dev->kobj, KOBJ_CHANGE, envp);
+	kfree(envp[0]);
+	kfree(envp[1]);
+	kfree(envp[2]);
+}
+
+/**
  * process_cmdobj_fault() - Process a cmdobj for fault policies
  * @device: Device on which the cmdobj caused a fault
  * @replay: List of cmdobj's that are to be replayed on the device. The
@@ -1926,6 +1948,7 @@ static void process_cmdobj_fault(struct kgsl_device *device,
 
 	pr_context(device, drawobj->context, "gpu %s ctx %d ts %d\n",
 		state, drawobj->context->id, drawobj->timestamp);
+	kgsl_send_uevent_cmd_notify(device, drawobj->context->id, drawobj->timestamp);
 
 	/* Mark the context as failed */
 	mark_guilty_context(device, drawobj->context->id);

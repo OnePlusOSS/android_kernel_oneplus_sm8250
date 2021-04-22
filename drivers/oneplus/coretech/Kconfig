@@ -1,0 +1,94 @@
+config OPCHAIN
+	default n
+	bool "Oneplus CoreTech helper, used for opchain module"
+config MEMPLUS
+	default n
+	bool "memory+ feature"
+	help
+	 Memory+ feature
+config SMART_BOOST
+	bool "support smart boost feature"
+	default n
+	help
+	 this feature allow memory used by recent-app stay in kernel.
+config DEFRAG
+	default n
+	bool "anti-defragment feature"
+	help
+	 anti-defragment feature.
+config FSC
+	default n
+	bool "system layer file status cache"
+	help
+	 To cache absence file and avoid stat call storm
+config HOUSTON
+	default n
+	bool "to collect system-wide and pmu data"
+	help
+	 Realtime temperature monitor
+config CONTROL_CENTER
+	default n
+	bool "control center"
+	help
+	 A framework to adjust system resource such as perfd, but easy to extend
+	 the scope of use. Support priority control between different request and
+	 QoS for keep adjusting for a specific period. Besides resource controlling,
+	 it also provide a decision model for helping governor to make decision.
+
+config AIGOV
+	default n
+	bool "A governor which using ai predicted info as input"
+
+config IM
+	bool "identify task itself"
+	default n
+	help
+	  In many cases we need to identify task, all we do is simply string compare,
+	  but in some performance sensitive context like scheduler, it's not a good choice to
+	  do that. So this IM thing can let we check task only through one comparsion.
+
+config PCCORE
+	default n
+	bool "pccore feature"
+
+config VM_FRAGMENT_MONITOR
+	default n
+	bool "monitor virtual memory fragment"
+
+config UXCHAIN
+	default n
+	bool "A sched policy for ux relative threads "
+
+config UXCHAIN_V2
+        default n
+        depends on UXCHAIN
+        bool "optimization for mmap_sem of mm_struct "
+
+config TPD
+	default n
+	bool "a task placement decision for cpu limitation"
+
+config TPP
+	default n
+	depends on IM
+	bool "Task parallel placement"
+
+config MEMEX_STANDALONE
+	default n
+	bool "MemEX feature"
+	help
+	 MemEX feature
+
+config RATP
+       bool "restricted admission for task placement in low-end platfom"
+       default n
+       help
+         In low-end platform, we will restrict admission for task placement to avoid
+         CPU resource contention.
+
+config ZWB_HANDLE
+	default n
+	depends on ZRAM_WRITEBACK
+	bool "zram writeback feature"
+	help
+	 zram writeback feature

@@ -9,13 +9,22 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/regmap.h>
+#ifdef CONFIG_OPLUS_CHARGER
+#include <linux/oem/power_supply.h>
+#else
 #include <linux/power_supply.h>
+#endif
 #include <linux/interrupt.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/printk.h>
 #include <linux/pmic-voter.h>
+#ifdef CONFIG_OPLUS_CHARGER
+// include oplus_battery_msmxxx.h in schgm-flash.h
+#else
 #include "smb5-lib.h"
+#endif
+
 #include "schgm-flash.h"
 
 #define IS_BETWEEN(left, right, value) \

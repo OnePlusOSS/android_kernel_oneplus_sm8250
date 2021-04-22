@@ -1,0 +1,6 @@
+config HUNG_TASK_ENHANCE
+	bool "hung task enhance"
+	default n
+	depends on DETECT_HUNG_TASK
+	help
+      define this config to enable HUNG_TASK_ENHANCE .

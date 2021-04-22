@@ -979,7 +979,7 @@ static void mhi_sat_dev_remove(struct mhi_device *mhi_dev)
 	sat_cntrl->state = SAT_ERROR;
 	spin_unlock_irq(&sat_cntrl->state_lock);
 
-	if (send_sys_err)
+	if (send_sys_err  && !!subsys->rpdev)
 		mhi_sat_send_sys_err(sat_cntrl);
 
 	/* exit if some devices are still present */

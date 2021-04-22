@@ -216,6 +216,8 @@ void mhi_ring_cmd_db(struct mhi_controller *mhi_cntrl, struct mhi_cmd *mhi_cmd)
 	db = ring->iommu_base + (ring->wp - ring->base);
 	*ring->ctxt_wp = db;
 	mhi_write_db(mhi_cntrl, ring->db_addr, db);
+
+	smp_wmb();
 }
 
 void mhi_ring_chan_db(struct mhi_controller *mhi_cntrl,
@@ -807,6 +809,7 @@ void mhi_create_devices(struct mhi_controller *mhi_cntrl)
 	struct mhi_device *mhi_dev;
 	int ret;
 
+	MHI_ERR(":%s\n", __func__);
 	mhi_chan = mhi_cntrl->mhi_chan;
 	for (i = 0; i < mhi_cntrl->max_chan; i++, mhi_chan++) {
 		if (!mhi_chan->configured || mhi_chan->mhi_dev ||

@@ -252,7 +252,7 @@ static int mdm4x_pon_dt_init(struct mdm_ctrl *mdm)
 			mdm->soft_reset_inverted = 1;
 		return 0;
 	} else
-		return -EIO;
+		return 0;
 }
 
 static int mdm4x_pon_setup(struct mdm_ctrl *mdm)

@@ -876,6 +876,15 @@ config PROCESS_RECLAIM
 
 	 Any other value is ignored.
 
+config DIRECT_SWAPPINESS
+	bool "direct swappiness"
+	default n
+	help
+	  set direct swappiness rate, higher means more swap and slowly.
+	  echo ratio > proc/sys/vm/direct_swapiness  default_value 60
+	  cat /sys/module/memplus_core/parameters/memory_plus_enabled
+	  default_value 0
+
 config FORCE_ALLOC_FROM_DMA_ZONE
 	bool "Force certain memory allocators to always return ZONE_DMA32 memory"
 	depends on ZONE_DMA32
@@ -885,3 +894,4 @@ config FORCE_ALLOC_FROM_DMA_ZONE
 	  always using ZONE_DMA32 memory.
 
 	  If unsure, say "n".
+

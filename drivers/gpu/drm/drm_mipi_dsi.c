@@ -1061,6 +1061,11 @@ int mipi_dsi_dcs_set_display_brightness(struct mipi_dsi_device *dsi,
 	u8 payload[2] = { brightness & 0xff, brightness >> 8 };
 	ssize_t err;
 
+#ifdef OEM_TARGET_PRODUCT_EBBA
+	payload[0] = brightness >> 8;
+	payload[1] = brightness & 0xff;
+#endif
+
 	err = mipi_dsi_dcs_write(dsi, MIPI_DCS_SET_DISPLAY_BRIGHTNESS,
 				 payload, sizeof(payload));
 	if (err < 0)
@@ -1095,6 +1100,35 @@ int mipi_dsi_dcs_get_display_brightness(struct mipi_dsi_device *dsi,
 	return 0;
 }
 EXPORT_SYMBOL(mipi_dsi_dcs_get_display_brightness);
+
+int mipi_dsi_dcs_set_display_brightness_samsung(struct mipi_dsi_device *dsi,
+					u16 brightness)
+{
+	u8 payload[2] = {brightness >> 8, brightness & 0xff};
+	ssize_t err;
+
+	err = mipi_dsi_dcs_write(dsi, MIPI_DCS_SET_DISPLAY_BRIGHTNESS,
+				 payload, sizeof(payload));
+	if (err < 0)
+		return err;
+
+	return 0;
+}
+EXPORT_SYMBOL(mipi_dsi_dcs_set_display_brightness_samsung);
+
+int mipi_dsi_dcs_write_c1(struct mipi_dsi_device *dsi,
+						u16 read_number)
+{
+		u8 payload[3] = {0x0A, read_number >> 8, read_number & 0xff};
+		ssize_t err;
+
+		err = mipi_dsi_dcs_write(dsi, 0xC1, payload, sizeof(payload));
+		if (err < 0)
+			return err;
+
+		return 0;
+}
+EXPORT_SYMBOL(mipi_dsi_dcs_write_c1);
 
 static int mipi_dsi_drv_probe(struct device *dev)
 {

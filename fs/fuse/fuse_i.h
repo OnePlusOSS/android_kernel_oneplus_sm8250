@@ -122,6 +122,12 @@ enum {
 
 struct fuse_conn;
 
+struct fuse_shortcircuit {
+	struct file *filp;
+
+	struct cred *cred;
+};
+
 /** FUSE specific file data */
 struct fuse_file {
 	/** Fuse connection for this file */
@@ -147,6 +153,8 @@ struct fuse_file {
 
 	/** Entry on inode's write_files list */
 	struct list_head write_entry;
+
+	struct fuse_shortcircuit sct;
 
 	/** RB node to be linked on fuse_conn->polled_files */
 	struct rb_node polled_node;
@@ -236,6 +244,9 @@ struct fuse_args {
 		unsigned numargs;
 		struct fuse_arg args[2];
 	} out;
+
+	struct fuse_shortcircuit sct;
+	char *iname;
 };
 
 #define FUSE_ARGS(args) struct fuse_args args = {}
@@ -278,6 +289,8 @@ struct fuse_io_priv {
  * FR_SENT:		request is in userspace, waiting for an answer
  * FR_FINISHED:		request is finished
  * FR_PRIVATE:		request is on private list
+ *
+ * FR_BOOST:		request can be boost
  */
 enum fuse_req_flag {
 	FR_ISREPLY,
@@ -291,6 +304,10 @@ enum fuse_req_flag {
 	FR_SENT,
 	FR_FINISHED,
 	FR_PRIVATE,
+
+#ifdef CONFIG_ONEPLUS_FG_OPT
+	FR_BOOST = 30,
+#endif
 };
 
 /**
@@ -385,6 +402,10 @@ struct fuse_req {
 
 	/** Request is stolen from fuse_file->reserved_req */
 	struct file *stolen_file;
+
+	struct fuse_shortcircuit sct;
+
+	char *iname;
 };
 
 struct fuse_iqueue {
@@ -557,6 +578,7 @@ struct fuse_conn {
 	/** handle fs handles killing suid/sgid/cap on write/chown/trunc */
 	unsigned handle_killpriv:1;
 
+
 	/*
 	 * The following bitfields are only for optimization purposes
 	 * and hence races in setting them will not cause malfunction
@@ -642,6 +664,8 @@ struct fuse_conn {
 
 	/** Allow other than the mounter user to access the filesystem ? */
 	unsigned allow_other:1;
+
+	unsigned int shortcircuit:1;
 
 	/** The number of requests waiting for completion */
 	atomic_t num_waiting;
@@ -999,5 +1023,12 @@ extern const struct xattr_handler *fuse_no_acl_xattr_handlers[];
 struct posix_acl;
 struct posix_acl *fuse_get_acl(struct inode *inode, int type);
 int fuse_set_acl(struct inode *inode, struct posix_acl *acl, int type);
+extern int sct_mode;
+
+int fuse_shortcircuit_setup(struct fuse_conn *fc, struct fuse_req *req);
+ssize_t fuse_shortcircuit_read_iter(struct kiocb *iocb, struct iov_iter *to);
+ssize_t fuse_shortcircuit_write_iter(struct kiocb *iocb, struct iov_iter *from);
+ssize_t fuse_shortcircuit_mmap(struct file *file, struct vm_area_struct *vma);
+void fuse_shortcircuit_release(struct fuse_file *ff);
 
 #endif /* _FS_FUSE_I_H */

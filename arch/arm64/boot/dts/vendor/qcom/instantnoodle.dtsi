@@ -1,0 +1,361 @@
+/*this is for different project dtsi*/
+&kona_snd {
+	qcom,audio-routing =
+		"AMIC1", "MIC BIAS1",
+		"MIC BIAS1", "Analog Mic1",
+		"AMIC2", "MIC BIAS2",
+		"MIC BIAS2", "Analog Mic2",
+		"AMIC3", "MIC BIAS3",
+		"MIC BIAS3", "Analog Mic3",
+		"AMIC4", "MIC BIAS3",
+		"MIC BIAS3", "Analog Mic4",
+		"AMIC5", "MIC BIAS4",
+		"MIC BIAS4", "Analog Mic5",
+		"TX DMIC0", "MIC BIAS1",
+		"MIC BIAS1", "Digital Mic0",
+		"TX DMIC1", "MIC BIAS1",
+		"MIC BIAS1", "Digital Mic1",
+		"TX DMIC2", "MIC BIAS3",
+		"MIC BIAS3", "Digital Mic2",
+		"TX DMIC3", "MIC BIAS3",
+		"MIC BIAS3", "Digital Mic3",
+		"TX DMIC4", "MIC BIAS4",
+		"MIC BIAS4", "Digital Mic4",
+		"TX DMIC5", "MIC BIAS4",
+		"MIC BIAS4", "Digital Mic5",
+		"IN1_HPHL", "HPHL_OUT",
+		"IN2_HPHR", "HPHR_OUT",
+		"IN3_AUX", "AUX_OUT",
+		"TX SWR_ADC0", "ADC1_OUTPUT",
+		"TX SWR_ADC1", "ADC2_OUTPUT",
+		"TX SWR_ADC2", "ADC3_OUTPUT",
+		"TX SWR_ADC3", "ADC4_OUTPUT",
+		"TX SWR_DMIC0", "DMIC1_OUTPUT",
+		"TX SWR_DMIC1", "DMIC2_OUTPUT",
+		"TX SWR_DMIC2", "DMIC3_OUTPUT",
+		"TX SWR_DMIC3", "DMIC4_OUTPUT",
+		"TX SWR_DMIC4", "DMIC5_OUTPUT",
+		"TX SWR_DMIC5", "DMIC6_OUTPUT",
+		"TX SWR_DMIC6", "DMIC7_OUTPUT",
+		"TX SWR_DMIC7", "DMIC8_OUTPUT",
+		"WSA SRC0_INP", "SRC0",
+		"WSA_TX DEC0_INP", "TX DEC0 MUX",
+		"WSA_TX DEC1_INP", "TX DEC1 MUX",
+		"RX_TX DEC0_INP", "TX DEC0 MUX",
+		"RX_TX DEC1_INP", "TX DEC1 MUX",
+		"RX_TX DEC2_INP", "TX DEC2 MUX",
+		"RX_TX DEC3_INP", "TX DEC3 MUX",
+		"VA_AIF1 CAP", "VA_SWR_CLK",
+		"VA_AIF2 CAP", "VA_SWR_CLK",
+		"VA_AIF3 CAP", "VA_SWR_CLK",
+		"VA MIC BIAS1", "Digital Mic0",
+		"VA MIC BIAS1", "Digital Mic1",
+		"VA MIC BIAS3", "Digital Mic2",
+		"VA MIC BIAS3", "Digital Mic3",
+		"VA MIC BIAS4", "Digital Mic4",
+		"VA MIC BIAS4", "Digital Mic5",
+		"VA DMIC0", "VA MIC BIAS1",
+		"VA DMIC1", "VA MIC BIAS1",
+		"VA DMIC2", "VA MIC BIAS3",
+		"VA DMIC3", "VA MIC BIAS3",
+		"VA DMIC4", "VA MIC BIAS4",
+		"VA DMIC5", "VA MIC BIAS4",
+		"VA SWR_ADC0", "VA_SWR_CLK",
+		"VA SWR_ADC1", "VA_SWR_CLK",
+		"VA SWR_ADC2", "VA_SWR_CLK",
+		"VA SWR_ADC3", "VA_SWR_CLK",
+		"VA SWR_MIC0", "VA_SWR_CLK",
+		"VA SWR_MIC1", "VA_SWR_CLK",
+		"VA SWR_MIC2", "VA_SWR_CLK",
+		"VA SWR_MIC3", "VA_SWR_CLK",
+		"VA SWR_MIC4", "VA_SWR_CLK",
+		"VA SWR_MIC5", "VA_SWR_CLK",
+		"VA SWR_MIC6", "VA_SWR_CLK",
+		"VA SWR_MIC7", "VA_SWR_CLK",
+		"VA SWR_ADC0", "ADC1_OUTPUT",
+		"VA SWR_ADC1", "ADC2_OUTPUT",
+		"VA SWR_ADC2", "ADC3_OUTPUT",
+		"VA SWR_ADC3", "ADC4_OUTPUT",
+		"VA SWR_MIC0", "DMIC1_OUTPUT",
+		"VA SWR_MIC1", "DMIC2_OUTPUT",
+		"VA SWR_MIC2", "DMIC3_OUTPUT",
+		"VA SWR_MIC3", "DMIC4_OUTPUT",
+		"VA SWR_MIC4", "DMIC5_OUTPUT",
+		"VA SWR_MIC5", "DMIC6_OUTPUT",
+		"VA SWR_MIC6", "DMIC7_OUTPUT",
+		"VA SWR_MIC7", "DMIC8_OUTPUT";
+};
+&qupv3_se13_i2c {
+	status = "ok";
+	sec-s6sy761@48 {
+		compatible = "sec-s6sy761";
+		reg = <0x48>;
+		project-name = "19821";
+		chip-name = "SY771";
+		touchpanel,display-coords = <1079 2399>;
+		touchpanel,panel-coords = <1079 2399>;
+		touchpanel,tx-rx-num = <16 36>;
+		lcd_refresh_rate_switch = <1>;
+		panel = <&dsi_samsung_oneplus_dsc_cmd &dsi_samsung_ana6705_dsc_cmd 
+		&dsi_samsung_ana6706_dsc_cmd>;
+	};
+};
+
+&qupv3_se16_i2c {
+	oneplus_fastchg@26{
+		op,4320mAh_4p45_support;
+	};
+};
+
+&pm8150b_charger {
+	/* ibatmax setting for different temp regions */
+	ibatmax-little-cold-ma = <350>;
+	ibatmax-cool-ma = <2000>;
+	ibatmax-little-cool-ma = <2000>;
+	ibatmax-pre-normal-ma = <2000>;
+	ibatmax-normal-ma = <2000>;
+	ibatmax-warm-ma = <1150>;
+	ibatmax-little-cool-thr-ma = <1900>;
+	ibatmax-cool-thr-ma = <1150>;
+	/* vbatmax setting for different temp regions */
+	vbatmax-little-cold-mv = <3975>;
+	vbatmax-cool-mv = <4435>;
+	vbatmax-little-cool-mv = <4435>;
+	vbatmax-pre-normal-mv = <4435>;
+	vbatmax-normal-mv = <4435>;
+	vbatmax-warm-mv = <4130>;
+	little-cool-vbat-thr-mv = <4180>;
+	cool-vbat-thr-mv = <4180>;
+	/* vbatdet setting for different temp regions */
+	vbatdet-little-cold-mv = <3675>;
+	vbatdet-cool-mv = <4235>;
+	vbatdet-little-cool-mv = <4335>;
+	vbatdet-pre-normal-mv = <4335>;
+	vbatdet-normal-mv = <4335>;
+	vbatdet-warm-mv = <4030>;
+	/* temp region settings */
+	cold-bat-decidegc = <20>;
+	little-cold-bat-decidegc = <0>;
+	cool-bat-decidegc = <50>;
+	little-cool-bat-decidegc = <120>;
+	pre-normal-bat-decidegc = <160>;
+	warm-bat-decidegc = <450>;
+	hot-bat-decidegc = <500>;
+	qcom,otg-cl-ua = <1500000>;
+	op,sw-iterm-ma = <310>;
+	op,sw-check-full-enable;
+	/* temp region settings */
+	cold-bat-decidegc = <20>;
+	little-cold-bat-decidegc = <0>;
+	cool-bat-decidegc = <50>;
+	little-cool-bat-decidegc = <120>;
+	pre-normal-bat-decidegc = <160>;
+	warm-bat-decidegc = <450>;
+	hot-bat-decidegc = <500>;
+	qcom,otg-cl-ua = <1500000>;
+	op,sw-iterm-ma = <225>;
+	op,sw-check-full-enable;
+
+	/*ffc temp region*/
+	ffc-pre-normal-decidegc = <120>;
+	ffc-normal-decidegc = <350>;
+	ffc-warm-decidegc = <400>;
+	ffc-normal-fcc-ma = <950>;
+	ffc-warm-fcc-ma = <1050>;
+	ffc-normal-cutoff-ma = <800>;
+	ffc-warm-cutoff-ma = <900>;
+	ffc-full-vbat-mv = <4480>;
+
+	/* skin thermal temp adjust the dash current */
+	op,skin-thermal-high-threshold = <41>;
+	op,skin-thermal-pre-high-threshold = <39>;
+	op,skin-thermal-medium-threshold = <38>;
+	op,skin-thermal-normal-threshold = <36>;
+	op,skin-thermal-lcdoff-high-threshold = <41>;
+	op,skin-thermal-lcdoff-pre-high-threshold = <39>;
+	op,skin-thermal-lcdoff-medium-threshold = <38>;
+	op,skin-thermal-lcdoff-normal-threshold = <36>;
+	op,enable-dash-current-dynamic-adjust;
+
+	/* skin thermal temp adjust the normal charger path current */
+	op,nor-skin-thermal-high-threshold = <38>;
+	op,nor-skin-thermal-pre-high-threshold = <36>;
+	op,nor-skin-thermal-warm-threshold = <36>;
+	op,nor-skin-thermal-pre-warm-threshold = <35>;
+	op,nor-skin-thermal-medium-threshold = <34>;
+	op,nor-skin-thermal-normal-threshold = <33>;
+	op,nor-skin-thermal-lcdoff-high-threshold = <38>;
+	op,nor-skin-thermal-lcdoff-pre-high-threshold = <36>;
+	op,nor-skin-thermal-lcdoff-warm-threshold = <36>;
+	op,nor-skin-thermal-lcdoff-pre-warm-threshold = <35>;
+	op,nor-skin-thermal-lcdoff-medium-threshold = <34>;
+	op,nor-skin-thermal-lcdoff-normal-threshold = <33>;
+	op,nor-call-on-current-ma = <1800>;
+	op,nor-skin-thermal-high-current-ma = <2000>;
+	op,nor-skin-thermal-warm-current-ma = <3000>;
+	op,nor-skin-thermal-medium-current-ma = <3000>;
+	op,enable-nor-current-dynamic-adjust;
+};
+
+&kona_mtp_batterydata {
+	#include "OP-fg-batterydata-4320mah.dtsi"
+};
+
+&usb2_phy0 {
+	qcom,param-override-seq =
+		<0x67 0x6c/*Disconnection voltage +21.56%*/
+		0x0b 0x70/*Pre-emphasis:4x DC voltage level:+17.80%*/
+		0x28 0x74>;
+};
+
+&usb1 {
+	status = "disabled";
+};
+
+&thermal_zones {
+	skin_therm_19821: skin-therm {
+		trips {
+			skint_therm_trip0: skint_therm_trip0 {
+				temperature = <46000>;
+				hysteresis = <2000>;
+				type = "passive";
+			};
+			skint_therm_trip1: skint_therm_trip1 {
+				temperature = <47000>;
+				hysteresis = <1000>;
+				type = "passive";
+			};
+			skint_therm_trip2: skint_therm_trip2 {
+				temperature = <48000>;
+				hysteresis = <2000>;
+				type = "passive";
+			};
+			skint_therm_trip3: skint_therm_trip3 {
+				temperature = <50000>;
+				hysteresis = <2000>;
+				type = "passive";
+			};
+		};
+		cooling-maps {
+			freq_dev0 {
+				trip = <&skint_therm_trip0>;
+				cooling-device =
+					<&msm_gpu (THERMAL_MAX_LIMIT-2) (THERMAL_MAX_LIMIT-2)>;/*441.6*/
+			};
+			freq_dev1 {
+				trip = <&skint_therm_trip0>;
+				cooling-device =
+					<&CPU4 7 7>;/*1766*/
+			};
+			freq_dev2 {
+				trip = <&skint_therm_trip0>;
+				cooling-device =
+					<&CPU7 8 8>;/*2073*/
+			};
+			freq_dev3 {
+				trip = <&skint_therm_trip1>;
+				cooling-device =
+					<&CPU4 9 9>;/*1478*/
+			};
+			freq_dev4 {
+				trip = <&skint_therm_trip1>;
+				cooling-device =
+					<&CPU7 11 11>;/*1747*/
+			};
+			freq_dev5 {
+				trip = <&skint_therm_trip2>;
+				cooling-device =
+					<&msm_gpu (THERMAL_MAX_LIMIT-1) (THERMAL_MAX_LIMIT-1)>;/*400*/
+			};
+			freq_dev6 {
+				trip = <&skint_therm_trip2>;
+				cooling-device =
+					<&CPU0 3 3>;/*1516*/
+			};
+			freq_dev7 {
+				trip = <&skint_therm_trip2>;
+				cooling-device =
+					<&CPU4 14 14>;/*1056.0*/
+			};
+			freq_dev8 {
+				trip = <&skint_therm_trip2>;
+				cooling-device =
+					<&cpu7_isolate 1 1>;
+			};
+			freq_dev9 {
+				trip = <&skint_therm_trip3>;
+				cooling-device =
+					<&CPU0 10 10>;/*883.2*/
+			};
+			freq_dev10 {
+				trip = <&skint_therm_trip3>;
+				cooling-device =
+					<&cpu4_isolate 1 1>;
+			};
+		};
+	};
+
+	msm_therm_19821: msm-therm {
+		trips {
+			msm_therm_trip0: msm_therm_trip0 {
+				temperature = <63000>;
+				hysteresis = <2000>;
+				type = "passive";
+			};
+			msm_therm_trip1: msm_therm_trip1 {
+				temperature = <65000>;
+				hysteresis = <2000>;
+				type = "passive";
+			};
+		};
+		cooling-maps {
+			freq_dev0 {
+				trip = <&msm_therm_trip0>;
+				cooling-device =
+					<&msm_gpu (THERMAL_MAX_LIMIT-3) (THERMAL_MAX_LIMIT-3)>;/*490(SVS_L1)*/
+			};
+			freq_dev1 {
+				trip = <&msm_therm_trip0>;
+				cooling-device =
+					<&CPU0 2 2>;/*1612MHz(Nominal_L1)*/
+			};
+			freq_dev2 {
+				trip = <&msm_therm_trip0>;
+				cooling-device =
+					<&CPU4 7 7>;/*1766.4MHz(Nominal_L1)*/
+			};
+			freq_dev3 {
+				trip = <&msm_therm_trip0>;
+				cooling-device =
+					<&CPU7 8 8>;/*2073.6MHz(Nominal_L1)*/
+			};
+			freq_dev4 {
+				trip = <&msm_therm_trip1>;
+				cooling-device =
+					<&msm_gpu (THERMAL_MAX_LIMIT-2) (THERMAL_MAX_LIMIT-2)>;/*441.6(SVS_L0)*/
+			};
+			freq_dev5 {
+				trip = <&msm_therm_trip1>;
+				cooling-device =
+					<&CPU0 3 3>;/*1516.8MHz(Nominal)*/
+			};
+			freq_dev6 {
+				trip = <&msm_therm_trip1>;
+				cooling-device =
+					<&CPU4 9 9>;/*1574.4MHz(Nominal_L1)*/
+			};
+			freq_dev7 {
+				trip = <&msm_therm_trip1>;
+				cooling-device =
+				<&CPU7 12 12>;/*1632.0MHz(Nominal)*/
+			};
+		};
+	};
+
+};
+
+&vendor {
+	extcon_usb1 {
+		status = "disabled";
+	};
+};

@@ -16,6 +16,12 @@
 #include <linux/sched.h>
 #include <linux/cpu_cooling.h>
 
+#ifdef CONFIG_PCCORE
+#include <oneplus/pccore/pccore_helper.h>
+#include <oneplus/control_center/control_center_helper.h>
+#include <oneplus/houston/houston_helper.h>
+#include <trace/events/power.h>
+#endif
 #define CREATE_TRACE_POINTS
 #include <trace/events/dcvsh.h>
 
@@ -325,11 +331,50 @@ qcom_cpufreq_hw_fast_switch(struct cpufreq_policy *policy,
 			    unsigned int target_freq)
 {
 	int index;
-
+#ifdef CONFIG_PCCORE
+	int dp_level = get_op_level();
+	bool op_enable = get_op_select_freq_enable();
+	int dp_level_mode = get_op_fd_mode();
+	int idx_cache;
+#endif
 	index = policy->cached_resolved_idx;
 	if (index < 0)
 		return 0;
+#ifdef CONFIG_PCCORE
+	idx_cache = index;
+	if (op_enable) {
+		if (!ht_pcc_alwayson() && ccdm_any_hint())
+			goto done;
+		if (dp_level_mode == 2) {
+			if (policy->freq_table_sorted == CPUFREQ_TABLE_SORTED_ASCENDING)
+				index = find_prefer_pd(policy->cpu, index, true, dp_level);
+			else
+				index = find_prefer_pd(policy->cpu, index, false, dp_level);
 
+		} else if (dp_level_mode == 1) {
+
+			if (policy->freq_table_sorted == CPUFREQ_TABLE_SORTED_ASCENDING) {
+
+				if (index - dp_level >= 0)
+					index -= dp_level;
+				else
+					index = 0;
+			} else {
+				int max = cpufreq_table_count_valid_entries(policy);
+
+				if (index + dp_level > max)
+					index = max;
+				else
+					index += dp_level;
+			}
+		}
+		if (policy->freq_table[index].frequency < policy->min)
+			index = policy->min_idx;
+	}
+done:
+	trace_find_freq(idx_cache, target_freq, index, policy->freq_table[index].frequency,
+		policy->cpu, op_enable, dp_level_mode, dp_level);
+#endif
 	if (qcom_cpufreq_hw_target_index(policy, index))
 		return 0;
 

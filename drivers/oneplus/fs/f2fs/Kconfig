@@ -1,0 +1,19 @@
+config F2FS_BD_STAT
+	bool "F2FS Bigdata Statisitics Information"
+	depends on F2FS_FS
+	default y
+	help
+	  contains the f2fs big-data statistics information about specific partition
+	  mounted as f2fs.
+	  /proc/fs/f2fs/<partition>/base_info:
+	  - basic statistics information
+	  /proc/fs/f2fs/<partition>/discard_info
+	  - discard statistics information
+	  /proc/fs/f2fs/<partition>/cp_info
+	  - checkpoint statistics information
+	  /proc/fs/f2fs/<partition>/gc_info
+	  - gc statistics information
+	  /proc/fs/f2fs/<partition>/fsync_info
+	  - fsync statistics information
+	  /proc/fs/f2fs/<partition>/hotcold_info
+	  - hot/cold statistics information

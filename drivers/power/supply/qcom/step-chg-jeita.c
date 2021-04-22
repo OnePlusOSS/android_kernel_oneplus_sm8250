@@ -415,7 +415,7 @@ reschedule:
 
 }
 
-static int get_val(struct range_data *range, int rise_hys, int fall_hys,
+int get_val(struct range_data *range, int rise_hys, int fall_hys,
 		int current_index, int threshold, int *new_index, int *val)
 {
 	int i;

@@ -25,6 +25,7 @@
 #include "scsi_priv.h"
 #include "scsi_logging.h"
 
+struct gendisk *ufs_disk[SD_NUM];
 static struct device_type scsi_dev_type;
 
 static const struct {
@@ -377,6 +378,92 @@ shost_rd_attr(unchecked_isa_dma, "%d\n");
 shost_rd_attr(prot_capabilities, "%u\n");
 shost_rd_attr(prot_guard_type, "%hd\n");
 shost_rd_attr2(proc_name, hostt->proc_name, "%s\n");
+
+static int calc_ddr_size(void)
+{
+		int temp_size;
+	/* One page => 4K */
+		temp_size = (int)totalram_pages/1024;
+
+		if ((temp_size > 0*256) && (temp_size <= 1*256))
+			return WT_GET_DDR_SIZE_1GB;
+		else if ((temp_size > 1*256) && (temp_size <= 2*256))
+			return WT_GET_DDR_SIZE_2GB;
+		else if ((temp_size > 2*256) && (temp_size <= 3*256))
+			return WT_GET_DDR_SIZE_3GB;
+		else if ((temp_size > 3*256) && (temp_size <= 4*256))
+			return WT_GET_DDR_SIZE_4GB;
+		else if ((temp_size > 4*256) && (temp_size <= 6*256))
+			return WT_GET_DDR_SIZE_6GB;
+		else if ((temp_size > 6*256) && (temp_size <= 8*256))
+			return WT_GET_DDR_SIZE_8GB;
+		else if ((temp_size > 8*256) && (temp_size <= 10*256))
+			return WT_GET_DDR_SIZE_10GB;
+		else if ((temp_size > 10*256) && (temp_size <= 12*256))
+			return WT_GET_DDR_SIZE_12GB;
+		else if ((temp_size > 12*256) && (temp_size <= 16*256))
+			return WT_GET_DDR_SIZE_16GB;
+		else
+			return WT_GET_DDR_SIZE_ZERO;
+}
+
+
+static int calc_ufs_size(unsigned long long size)
+{
+		int temp_size;
+	/* Sector size => 512Byte, so we need to convert to GB size. */
+		temp_size = (int)((size * 512) / 1024 / 1024 / 1024);
+
+		if ((temp_size > 8) && (temp_size <= 16))
+			return WT_GET_UFS_SIZE_16GB;
+		else if ((temp_size > 16) && (temp_size <= 32))
+			return WT_GET_UFS_SIZE_32GB;
+		else if ((temp_size > 32) && (temp_size <= 64))
+			return WT_GET_UFS_SIZE_64GB;
+		else if ((temp_size > 64) && (temp_size <= 128))
+			return WT_GET_UFS_SIZE_128GB;
+		else if ((temp_size > 128) && (temp_size <= 256))
+			return WT_GET_UFS_SIZE_256GB;
+		else if ((temp_size > 256) && (temp_size <= 512))
+			return WT_GET_UFS_SIZE_512GB;
+		else if ((temp_size > 512) && (temp_size <= 1024))
+			return WT_GET_UFS_SIZE_1TB;
+		else
+			return WT_GET_UFS_SIZE_ZERO;
+}
+
+static ssize_t
+flash_name_show(struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+		struct scsi_device *sdev;
+		struct hd_struct *p = NULL;
+		struct gendisk **gd_t = ufs_disk;
+		unsigned long long ufs_size = 0;
+		int ret = 0;
+		char vendor_name[32] = {0};
+		char model_name[32] = {0};
+
+		sdev = to_scsi_device(dev);
+
+		for (; *gd_t != NULL; gd_t++) {
+			p = &((*gd_t)->part0);
+			ufs_size += (unsigned long long)part_nr_sects_read(p);
+		}
+		pr_info("%s: wt ufs sects num is <%llu>\n", __func__, ufs_size);
+		ret = sscanf(sdev->vendor, "%8s", vendor_name);
+		if (ret != 1)
+			return -EINVAL;
+
+		ret = sscanf(sdev->model, "%16s", model_name);
+		if (ret != 1)
+			return -EINVAL;
+
+		return snprintf(buf, 40, "%s_%s_%dGB_%dGB\n", vendor_name,
+			model_name, calc_ddr_size(), calc_ufs_size(ufs_size));
+}
+
+static DEVICE_ATTR_RO(flash_name);
 
 static ssize_t
 show_host_busy(struct device *dev, struct device_attribute *attr, char *buf)
@@ -1220,6 +1307,7 @@ static struct attribute *scsi_sdev_attrs[] = {
 	&dev_attr_preferred_path.attr,
 #endif
 	&dev_attr_queue_ramp_up_period.attr,
+	&dev_attr_flash_name.attr,
 	REF_EVT(media_change),
 	REF_EVT(inquiry_change_reported),
 	REF_EVT(capacity_change_reported),

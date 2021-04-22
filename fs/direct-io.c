@@ -37,6 +37,9 @@
 #include <linux/rwsem.h>
 #include <linux/uio.h>
 #include <linux/atomic.h>
+#ifdef CONFIG_CGROUP_IOLIMIT
+#include <linux/iolimit_cgroup.h>
+#endif
 #include <linux/prefetch.h>
 
 /*
@@ -1004,6 +1007,15 @@ static int do_direct_IO(struct dio *dio, struct dio_submit *sdio,
 			unsigned this_chunk_bytes;	/* # of bytes mapped */
 			unsigned this_chunk_blocks;	/* # of blocks */
 			unsigned u;
+
+#ifdef CONFIG_CGROUP_IOLIMIT
+			if (iolimit_enable) {
+				if (dio->op == REQ_OP_WRITE)
+					io_write_bandwidth_control(PAGE_SIZE);
+				else
+					io_read_bandwidth_control(PAGE_SIZE);
+			}
+#endif
 
 			if (sdio->blocks_available == 0) {
 				/*

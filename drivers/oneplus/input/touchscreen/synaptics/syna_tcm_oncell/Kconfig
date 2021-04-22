@@ -1,0 +1,9 @@
+#
+# Synaptics TCM touchscreen driver configuration
+#
+config TOUCHPANEL_SYNAPTICS_TCM_ONCELL
+	default y
+	bool "TP IC enable or not for oem"
+	---help---
+	say Y to enable driver for Touchpanel
+

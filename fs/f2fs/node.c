@@ -564,6 +564,11 @@ int f2fs_get_node_info(struct f2fs_sb_info *sbi, nid_t nid,
 	nat_blk = (struct f2fs_nat_block *)page_address(page);
 	ne = nat_blk->entries[nid - start_nid];
 	node_info_from_raw_nat(ni, &ne);
+
+	if (nid == 3)
+		f2fs_info(sbi, "%s: roo node, nid:3, nat block:%d, block addr:%u, ino:%d\n",
+				__func__, index, ni->blk_addr, ni->ino);
+
 	f2fs_put_page(page, 1);
 cache:
 	blkaddr = le32_to_cpu(ne.block_addr);
@@ -1917,8 +1922,10 @@ continue_unlock:
 				goto continue_unlock;
 			}
 
-			/* flush inline_data, if it's async context. */
-			if (do_balance && is_inline_node(page)) {
+			if (!do_balance)
+				goto write_node;
+
+			if (is_inline_node(page)) {
 				clear_inline_node(page);
 				unlock_page(page);
 				flush_inline_data(sbi, ino_of_node(page));
@@ -1931,7 +1938,7 @@ continue_unlock:
 				if (flush_dirty_inode(page))
 					goto lock_node;
 			}
-
+write_node:
 			f2fs_wait_on_page_writeback(page, NODE, true, true);
 
 			if (!clear_page_dirty_for_io(page))

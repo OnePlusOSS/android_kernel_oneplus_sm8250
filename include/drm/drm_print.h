@@ -306,7 +306,7 @@ void drm_err(const char *format, ...);
  * @fmt: printf() like format string.
  */
 #define DRM_DEV_ERROR(dev, fmt, ...)					\
-	drm_dev_printk(dev, KERN_ERR, "*ERROR* " fmt, ##__VA_ARGS__)
+	drm_dev_printk(dev, KERN_ERR, "" fmt, ##__VA_ARGS__)
 #define DRM_ERROR(fmt, ...)						\
 	drm_err(fmt, ##__VA_ARGS__)
 

@@ -99,6 +99,7 @@ struct timekeeper {
 	u8			cs_was_changed_seq;
 	ktime_t			next_leap_ktime;
 	u64			raw_sec;
+	struct timespec64	monotonic_to_boot;
 
 	/* The following members are for timekeeping internal use */
 	u64			cycle_interval;

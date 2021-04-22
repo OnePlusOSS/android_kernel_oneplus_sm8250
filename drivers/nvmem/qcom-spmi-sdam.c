@@ -9,6 +9,8 @@
 #include <linux/of_platform.h>
 #include <linux/nvmem-provider.h>
 #include <linux/regmap.h>
+#include <linux/oem/power/oem_external_fg.h>
+#include <linux/spmi.h>
 
 #define SDAM_MEM_START			0x40
 #define REGISTER_MAP_ID			0x40
@@ -102,6 +104,7 @@ static int sdam_write(void *priv, unsigned int offset, void *val, size_t bytes)
 
 static int sdam_probe(struct platform_device *pdev)
 {
+	struct device *dev = &pdev->dev;
 	struct sdam_chip *sdam;
 	struct nvmem_device *nvmem;
 	struct nvmem_config *sdam_config;
@@ -156,7 +159,10 @@ static int sdam_probe(struct platform_device *pdev)
 
 	pr_info("SDAM base=0x%04x size=%d registered successfully\n",
 						sdam->base, sdam->size);
-
+	if (to_spmi_device(dev->parent)->usid == 0)
+		op_sdram_regmap_register(sdam->regmap);
+	pr_info("SDAM base=0x%04x size=%d registered successfully\n",
+						sdam->base, sdam->size);
 	return 0;
 }
 

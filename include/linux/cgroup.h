@@ -72,6 +72,18 @@ struct css_task_iter {
 extern struct cgroup_root cgrp_dfl_root;
 extern struct css_set init_css_set;
 
+#ifdef CONFIG_RATP
+
+#define STUNE_FG        1
+#define STUNE_BG        2
+#define STUNE_TOP       3
+#define STUNE_RT        4
+#define STUNE_AUDIOAPP  5
+
+extern int stune_map[];
+
+#endif
+
 #define SUBSYS(_x) extern struct cgroup_subsys _x ## _cgrp_subsys;
 #include <linux/cgroup_subsys.h>
 #undef SUBSYS
