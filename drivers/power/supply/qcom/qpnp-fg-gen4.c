@@ -4608,6 +4608,28 @@ static int fg_psy_get_property(struct power_supply *psy,
 				pval->intval = (int)temp;
 		}
 		break;
+	case POWER_SUPPLY_PROP_FULL_AVAILABLE_CAPACITY:
+		if (!get_extern_fg_regist_done() && get_extern_bq_present())
+                        pval->intval = -EINVAL;
+                else if (fg->use_external_fg && external_fg && external_fg->get_batt_full_available_capacity)
+                        pval->intval = external_fg->get_batt_full_available_capacity();
+                else {
+                        rc = fg_gen4_get_learned_capacity(chip, &temp);
+                        if (!rc)
+                                pval->intval = (int)temp;
+                }
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL_CHARGE_CAPACITY_FILTERED:
+                if (!get_extern_fg_regist_done() && get_extern_bq_present())
+                        pval->intval = -EINVAL;
+                else if (fg->use_external_fg && external_fg && external_fg->get_batt_full_available_capacity_filtered)
+                        pval->intval = external_fg->get_batt_full_available_capacity_filtered();
+                else {
+                        rc = fg_gen4_get_learned_capacity(chip, &temp);
+                        if (!rc)
+                                pval->intval = (int)temp;
+                }
+		break;
 	case POWER_SUPPLY_PROP_REMAINING_CAPACITY:
 		if (!get_extern_fg_regist_done() && get_extern_bq_present())
 			pval->intval = DEFALUT_BATT_TEMP;
@@ -4918,6 +4940,8 @@ static enum power_supply_property fg_psy_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_NOW_RAW,
 	POWER_SUPPLY_PROP_CHARGE_NOW,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
+	POWER_SUPPLY_PROP_FULL_AVAILABLE_CAPACITY,
+	POWER_SUPPLY_PROP_CHARGE_FULL_CHARGE_CAPACITY_FILTERED,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER_SHADOW,
 	POWER_SUPPLY_PROP_CYCLE_COUNTS,

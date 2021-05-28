@@ -524,11 +524,25 @@ static int wireless_chg_init(struct op_chg_chip *chip)
 
 	chg_param->fastchg_fod_enable = of_property_read_bool(node, "op,fastchg-fod-enable");
 	if (chg_param->fastchg_fod_enable) {
+		rc = of_property_read_u8(node, "op,fastchg-match-q-new",
+			&chg_param->fastchg_match_q_new);
+		if (rc < 0) {
+			pr_err("op,fastchg-match-q-new reading failed, rc=%d\n", rc);
+			chg_param->fastchg_match_q_new = 0x56;
+		}
+
 		rc = of_property_read_u8(node, "op,fastchg-match-q",
 			&chg_param->fastchg_match_q);
 		if (rc < 0) {
 			pr_err("op,fastchg-match-q reading failed, rc=%d\n", rc);
 			chg_param->fastchg_match_q = 0x44;
+		}
+
+		rc = of_property_read_u8_array(node, "op,fastchg-fod-parm-new",
+			(u8 *)&chg_param->fastchg_fod_parm_new, FOD_PARM_LENGTH);
+		if (rc < 0) {
+			chg_param->fastchg_fod_enable = false;
+			pr_err("Read op,fastchg-fod-parm-new failed, rc=%d\n", rc);
 		}
 
 		rc = of_property_read_u8_array(node, "op,fastchg-fod-parm",
@@ -797,6 +811,7 @@ static void wlchg_reset_variables(struct op_chg_chip *chip)
 	chg_status->startup_fod_parm = false;
 	chg_status->adapter_type = ADAPTER_TYPE_UNKNOWN;
 	chg_status->charge_type = WPC_CHARGE_TYPE_DEFAULT;
+	chg_status->adapter_id = 0;
 	chg_status->send_msg_timer = jiffies;
 	chg_status->cep_ok_wait_timeout = jiffies;
 	chg_status->fastchg_retry_timer = jiffies;
@@ -1612,16 +1627,22 @@ static long wlchg_dev_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 	case WLCHG_NOTIFY_ADAPTER_TYPE:
-		chg_status->adapter_type = arg;
+		chg_status->adapter_type = arg & WPC_ADAPTER_TYPE_MASK;
+		chg_status->adapter_id = (arg & WPC_ADAPTER_ID_MASK) >> 3;
 		if (chip->wireless_psy != NULL)
 			power_supply_changed(chip->wireless_psy);
 		if (chg_status->adapter_type == ADAPTER_TYPE_FASTCHAGE_PD_65W)
 			chg_status->adapter_type = ADAPTER_TYPE_FASTCHAGE_WARP;
 		if (chip->chg_param.fastchg_fod_enable &&
 		    (chg_status->adapter_type == ADAPTER_TYPE_FASTCHAGE_DASH ||
-		     chg_status->adapter_type == ADAPTER_TYPE_FASTCHAGE_WARP))
-			wlchg_rx_set_match_q_parm(g_rx_chip, chip->chg_param.fastchg_match_q);
-		chg_info("adapter type is %d\n", chg_status->adapter_type);
+		     chg_status->adapter_type == ADAPTER_TYPE_FASTCHAGE_WARP)) {
+			if (chg_status->adapter_id == 0x00 || chg_status->adapter_id == 0x01)
+				wlchg_rx_set_match_q_parm(g_rx_chip, chip->chg_param.fastchg_match_q);
+			else
+			 	wlchg_rx_set_match_q_parm(g_rx_chip, chip->chg_param.fastchg_match_q_new);
+		}
+		chg_info("adapter arg is 0x%02x, adapter type is %d, adapter id is %d\n",
+			arg, chg_status->adapter_type, chg_status->adapter_id);
 		break;
 	case WLCHG_NOTIFY_ADAPTER_TYPE_ERR:
 		chg_status->get_adapter_err = true;
@@ -1632,7 +1653,11 @@ static long wlchg_dev_ioctl(struct file *filp, unsigned int cmd,
 		chg_info("charge type is %d\n", arg);
 		if (chip->chg_param.fastchg_fod_enable &&
 		    chg_status->charge_type == WPC_CHARGE_TYPE_FAST) {
-			wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+			if (chg_status->adapter_id == 0x00 || chg_status->adapter_id == 0x01)
+				wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+			else
+				wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm_new);
+
 			chg_status->startup_fod_parm = false;
 			chg_info("write fastchg fod parm\n");
 		}
@@ -2959,7 +2984,10 @@ static int fastchg_startup_process(struct op_chg_chip *chip)
 				bq2597x_check_charge_enabled(exchgpump_bq, &cp2_is_enabled);
 			if (cp2_is_enabled) {
 				if (chip->chg_param.fastchg_fod_enable) {
-					wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+					if (chg_status->adapter_id == 0x00 || chg_status->adapter_id == 0x01)
+						wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+					else
+						wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm_new);
 					chg_status->startup_fod_parm = false;
 					chg_info("write fastchg fod parm\n");
 				}
@@ -3140,7 +3168,10 @@ static int wlchg_charge_status_process(struct op_chg_chip *chip)
 				    (chg_status->charge_type == WPC_CHARGE_TYPE_FAST) &&
 				    chg_status->deviation_check_done) {
 					if (chip->chg_param.fastchg_fod_enable && chg_status->startup_fod_parm) {
-						wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+						if (chg_status->adapter_id == 0x00 || chg_status->adapter_id == 0x01)
+							wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+						else
+							wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm_new);
 						chg_status->startup_fod_parm = false;
 						chg_info("write fastchg fod parm\n");
 					}
@@ -3541,7 +3572,10 @@ freq_check_done:
 		chg_err("<~WPC~> ..........WPC_CHG_STATUS_FAST_CHARGING_EXIT..........\n");
 		if (chip->chg_param.fastchg_fod_enable && chg_status->startup_fod_parm &&
 		    chg_status->charge_type == WPC_CHARGE_TYPE_FAST) {
-			wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+			if (chg_status->adapter_id == 0x00 || chg_status->adapter_id == 0x01)
+				wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm);
+			else
+				wlchg_rx_set_fod_parm(g_rx_chip, chip->chg_param.fastchg_fod_parm_new);
 			chg_status->startup_fod_parm = false;
 			chg_info("write fastchg fod parm\n");
 		}
