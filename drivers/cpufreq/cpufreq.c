@@ -44,6 +44,8 @@
 #ifdef CONFIG_PCCORE
 #include <oneplus/houston/houston_helper.h>
 #endif
+#include <linux/oem/cpufreq_bouncing.h>
+
 #define GOLD_CPU_NUMBER 4
 #define GOLD_PLUS_CPU_NUMBER 7
 
@@ -548,6 +550,8 @@ unsigned int cpufreq_driver_resolve_freq(struct cpufreq_policy *policy,
 #ifdef CONFIG_PCCORE
 	unsigned int min_target;
 #endif
+
+	target_freq = cb_cap(policy, target_freq);
 
 #ifdef CONFIG_CONTROL_CENTER
 	if (likely(policy->cc_enable))
@@ -1994,7 +1998,7 @@ unsigned int cpufreq_driver_fast_switch(struct cpufreq_policy *policy,
 					unsigned int target_freq)
 {
 	int ret;
-
+	target_freq = cb_cap(policy, target_freq);
 	target_freq = clamp_val(target_freq, policy->min, policy->max);
 
 	ret = cpufreq_driver->fast_switch(policy, target_freq);
