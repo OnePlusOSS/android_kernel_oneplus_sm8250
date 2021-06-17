@@ -67,7 +67,9 @@ struct sugov_policy {
 	s64			down_rate_delay_ns;
 	unsigned int		next_freq;
 	unsigned int		cached_raw_freq;
-
+#ifdef CONFIG_OPLUS_FEATURE_SUGOV_TL
+	unsigned int		cached_raw_laf;
+#endif
 	/* The next fields are only needed if fast switch cannot be used: */
 	struct			irq_work irq_work;
 	struct			kthread_work work;
@@ -480,13 +482,22 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 #else
 	freq = map_util_freq(util, freq, max);
 #endif
-	if (freq == sg_policy->cached_raw_freq && !sg_policy->need_freq_update) {
+	if (freq == sg_policy->cached_raw_freq &&
+#ifdef CONFIG_OPLUS_FEATURE_SUGOV_TL
+	    prev_laf == sg_policy->cached_raw_laf &&
+#endif
+	    !sg_policy->need_freq_update) {
 		req_freq = sg_policy->next_freq;
 		goto out;
 	}
 
 	sg_policy->need_freq_update = false;
 	sg_policy->cached_raw_freq = freq;
+
+#ifdef CONFIG_OPLUS_FEATURE_SUGOV_TL
+	sg_policy->cached_raw_laf = prev_laf;
+#endif
+
 	req_freq = cpufreq_driver_resolve_freq(policy, freq);
 out:
 	/* keep resolved freq */
