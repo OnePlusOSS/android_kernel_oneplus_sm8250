@@ -901,6 +901,66 @@ TRACE_EVENT(memlat_dev_update,
 		__entry->vote)
 );
 
+#ifdef CONFIG_OPLUS_FEATURE_SUGOV_TL
+TRACE_EVENT(sugov_next_freq_tl,
+	    TP_PROTO(unsigned int cpu, unsigned long util, unsigned long max,
+		     unsigned int freq, unsigned int laf, unsigned int prev_freq),
+	    TP_ARGS(cpu, util, max, freq, laf, prev_freq),
+	    TP_STRUCT__entry(
+		    __field(unsigned int, cpu)
+		    __field(unsigned long, util)
+		    __field(unsigned long, max)
+		    __field(unsigned int, freq)
+		    __field(unsigned int, laf)
+		    __field(unsigned int, prev_freq)
+	    ),
+	    TP_fast_assign(
+		    __entry->cpu = cpu;
+		    __entry->util = util;
+		    __entry->max = max;
+		    __entry->freq = freq;
+		    __entry->laf = laf;
+		    __entry->prev_freq = prev_freq;
+	    ),
+	    TP_printk("cpu=%u util=%lu max=%lu freq=%u laf=%u, prev_freq=%u",
+		      __entry->cpu,
+		      __entry->util,
+		      __entry->max,
+		      __entry->freq,
+		      __entry->laf,
+		      __entry->prev_freq)
+);
+
+TRACE_EVENT(choose_freq,
+	    TP_PROTO(unsigned int freq, unsigned int prevfreq, unsigned int freqmax,
+		     unsigned int freqmin, unsigned int tl, int index),
+	    TP_ARGS(freq, prevfreq, freqmax, freqmin, tl, index),
+	    TP_STRUCT__entry(
+		    __field(unsigned int, freq)
+		    __field(unsigned int, prevfreq)
+		    __field(unsigned int, freqmax)
+		    __field(unsigned int, freqmin)
+		    __field(unsigned int, tl)
+		    __field(int, index)
+	    ),
+	    TP_fast_assign(
+		    __entry->freq = freq;
+		    __entry->prevfreq = prevfreq;
+		    __entry->freqmax = freqmax;
+		    __entry->freqmin = freqmin;
+		    __entry->tl = tl;
+		    __entry->index = index;
+	    ),
+	    TP_printk("freq=%u prevfreq=%u freqmax=%u freqmin=%u tl=%u index=%d",
+		      __entry->freq,
+		      __entry->prevfreq,
+		      __entry->freqmax,
+		      __entry->freqmin,
+		      __entry->tl,
+		      __entry->index)
+);
+#endif
+
 #endif /* _TRACE_POWER_H */
 
 /* This part must be outside protection */
