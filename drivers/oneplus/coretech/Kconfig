@@ -92,3 +92,9 @@ config ZWB_HANDLE
 	bool "zram writeback feature"
 	help
 	 zram writeback feature
+config CPUFREQ_BOUNCING
+	default n
+	bool "A power optimization feature to control excessive heating of devices"
+config OPLUS_FEATURE_SUGOV_TL
+	default n
+	bool "A power optimization feature target loads"

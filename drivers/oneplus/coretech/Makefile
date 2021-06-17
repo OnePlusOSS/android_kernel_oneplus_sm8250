@@ -34,3 +34,4 @@ obj-$(CONFIG_TPP) += tpp/
 obj-$(CONFIG_MEMEX_STANDALONE) += memex_standalone_support/core/
 obj-$(CONFIG_RATP) += ratp/
 obj-$(CONFIG_ZWB_HANDLE) += zwb_handle/
+obj-$(CONFIG_CPUFREQ_BOUNCING) += cpufreq_bouncing/
