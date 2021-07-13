@@ -3730,7 +3730,7 @@ static ssize_t aw8697_activate_store(struct device *dev,
 					} else {
 						aw8697->sin_add_flag = 1;
 						val = 25;//aw8697->duration/20 = 500/20
-						aw8697->rtp_file_num = 113;
+						aw8697->rtp_file_num = 13 + AW8697_LONG_INDEX_HEAD; //280ms_RTP.bin
 					}
 			}
 			pr_info("%s: aw8697->rtp_file_num=%d\n", __FUNCTION__, aw8697->rtp_file_num);
