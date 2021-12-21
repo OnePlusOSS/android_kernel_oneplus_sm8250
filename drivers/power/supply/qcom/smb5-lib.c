@@ -9177,6 +9177,7 @@ bool is_fastchg_allowed(struct smb_charger *chg)
 	if (chg->swarp_online
 		&& cap > DASH_VALID_CAPACITY_HIG_THRESHOLD) {
 		pr_err("capacity high, swarp adapter.");
+		chg->dash_present = true;
 		return false;
 	}
 
@@ -9931,8 +9932,10 @@ static void retrigger_dash_work(struct work_struct *work)
 			schedule_delayed_work(&chg->pd_status_check_work,
 					msecs_to_jiffies(2000));
 		}
-		if (chg->swarp_supported)
+		if (chg->swarp_supported) {
 			rerun_election(chg->usb_icl_votable);
+			recheck_asic_fw_status();
+		}
 		return;
 	}
 

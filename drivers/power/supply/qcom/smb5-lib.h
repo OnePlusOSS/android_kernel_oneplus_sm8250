@@ -951,6 +951,7 @@ extern bool get_prop_fast_chg_started(struct smb_charger *chg);
 extern void mcu_en_gpio_set(int value);
 extern void switch_mode_to_normal(void);
 extern void enhance_dash_type_set(int type);
+extern void recheck_asic_fw_status(void);
 extern void notify_pd_in_to_wireless(void);
 extern struct smb_charger *g_chg;
 extern struct drm_panel *lcd_active_panel;

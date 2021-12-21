@@ -65,6 +65,7 @@ struct fastchg_device_info {
 	bool is_swarp_supported;
 	bool warp_normal_path_need_config;
 	bool fw_ver_not_match;
+	bool need_recheck_fw;
 	int asic_hw_id;
 #endif
 	bool is_4300mAh_4p45_support;
@@ -2297,7 +2298,7 @@ static void dashchg_fw_update(struct work_struct *work)
 	} else {
 		rc = dashchg_fw_check();
 	}
-	if (rc == FW_CHECK_SUCCESS) {
+	if (rc == FW_CHECK_SUCCESS && !di->need_recheck_fw) {
 		di->firmware_already_updated = true;
 		reset_mcu_and_request_irq(di);
 #ifdef OP_SWARP_SUPPORTED
@@ -2324,6 +2325,7 @@ update_asic_fw:
 				msleep(10);
 			}
 			rc = rk826_fw_write(di, dashchg_firmware_data, 0, di->dashchg_fw_ver_count);
+			di->need_recheck_fw = false;
 		} else if (di->asic_hw_id == RICHTEK_RT5125) {
 			rc = rt5125_fw_update(di);
 		}
@@ -2597,6 +2599,27 @@ void enhance_dash_type_set(int type)
 		if (type >= 0 && type <= 6)
 		fastchg_di->dash_enhance = type;
 		pr_info("set dash enhance %d.", type);
+	}
+}
+
+void recheck_asic_fw_status(void)
+{
+	u8 value_buf[2] = {0};
+	int rc = 0;
+	struct fastchg_device_info *di = fastchg_di;
+
+	if (di->asic_hw_id == ROCKCHIP_RK826) {
+		rc = oneplus_u16_i2c_read(di->client, 0x52f8, 2, value_buf);
+		if (rc < 0) {
+			pr_info("rk826 read register 0x52f8 fail, rc = %d\n", rc);
+			pr_info("rk826 fw check ok.");
+		} else {
+			pr_info("read 0x52f8 success 0x%x", value_buf[0] | (value_buf[1] << 8));
+			pr_err("fw has err, need re-download.");
+			di->need_recheck_fw = true;
+			di->firmware_already_updated = false;
+			schedule_delayed_work(&di->update_firmware, msecs_to_jiffies(2000));
+		}
 	}
 }
 
@@ -3896,6 +3919,7 @@ static int dash_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	di->fast_chg_ing = false;
 	di->fast_low_temp_full = false;
 	di->fast_chg_started = false;
+	di->need_recheck_fw = false;
 
 	fastchg_di = di;
 	dev_set_drvdata(&client->dev, di);
