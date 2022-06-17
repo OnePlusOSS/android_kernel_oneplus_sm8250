@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (c) 2016-2021, The Linux Foundation. All rights reserved. */
+/* Copyright (c) 2016-2020, The Linux Foundation. All rights reserved. */
 
 #ifndef _CNSS_MAIN_H
 #define _CNSS_MAIN_H
@@ -84,7 +84,6 @@ struct cnss_pinctrl_info {
 	struct pinctrl_state *wlan_en_active;
 	struct pinctrl_state *wlan_en_sleep;
 	int bt_en_gpio;
-	int sw_ctrl_gpio;
 };
 
 #ifdef CONFIG_MSM_SUBSYSTEM_RESTART
@@ -332,16 +331,6 @@ enum cnss_ce_index {
 	CNSS_CE_COMMON,
 };
 
-enum cnss_timeout_type {
-	CNSS_TIMEOUT_QMI,
-	CNSS_TIMEOUT_POWER_UP,
-	CNSS_TIMEOUT_IDLE_RESTART,
-	CNSS_TIMEOUT_CALIBRATION,
-	CNSS_TIMEOUT_WLAN_WATCHDOG,
-	CNSS_TIMEOUT_RDDM,
-	CNSS_TIMEOUT_RECOVERY,
-};
-
 struct cnss_plat_data {
 	struct platform_device *plat_dev;
 	void *bus_priv;
@@ -375,7 +364,6 @@ struct cnss_plat_data {
 	struct wlfw_rf_board_info board_info;
 	struct wlfw_soc_info soc_info;
 	struct wlfw_fw_version_info fw_version_info;
-	struct cnss_dev_mem_info dev_mem_info[CNSS_MAX_DEV_MEM_NUM];
 	char fw_build_id[QMI_WLFW_MAX_BUILD_ID_LEN + 1];
 	u32 otp_version;
 	u32 fw_mem_seg_len;
@@ -419,7 +407,26 @@ struct cnss_plat_data {
 	u8 fw_pcie_gen_switch;
 	u8 pcie_gen_speed;
 	int power_up_error;
+
+    #ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+    //Add for wifi switch monitor
+	unsigned long loadBdfState;
+	unsigned long loadRegdbState;
+    #endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
 };
+
+#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+//Add for wifi switch monitor
+enum cnss_load_state {
+	CNSS_LOAD_BDF_FAIL = 1,
+	CNSS_LOAD_BDF_SUCCESS,
+	CNSS_LOAD_REGDB_FAIL,
+	CNSS_LOAD_REGDB_SUCCESS,
+	CNSS_PROBE_FAIL,
+	CNSS_PROBE_SUCCESS,
+};
+
+#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
 
 #ifdef CONFIG_ARCH_QCOM
 static inline u64 cnss_get_host_timestamp(struct cnss_plat_data *plat_priv)
@@ -478,10 +485,5 @@ int cnss_minidump_add_region(struct cnss_plat_data *plat_priv,
 int cnss_minidump_remove_region(struct cnss_plat_data *plat_priv,
 				enum cnss_fw_dump_type type, int seg_no,
 				void *va, phys_addr_t pa, size_t size);
-unsigned int cnss_get_timeout(struct cnss_plat_data *plat_priv,
-			      enum cnss_timeout_type);
-int cnss_pci_update_qtime_sync_period(struct device *dev,
-				      unsigned int qtime_sync_period);
-int cnss_get_gpio_value(struct cnss_plat_data *plat_priv, int gpio_num);
 
 #endif /* _CNSS_MAIN_H */

@@ -109,6 +109,11 @@ static int rtc_proc_show(struct seq_file *seq, void *offset)
 
 void rtc_proc_add_device(struct rtc_device *rtc)
 {
+#ifdef OPLUS_FEATURE_SAUPWK
+	extern void __attribute__((weak)) saupwk_rtc_proc_add_device(struct rtc_device *rtc);
+        if(saupwk_rtc_proc_add_device)
+                saupwk_rtc_proc_add_device(rtc);
+#endif
 	if (is_rtc_hctosys(rtc))
 		proc_create_single_data("driver/rtc", 0, NULL, rtc_proc_show,
 				rtc);
@@ -116,6 +121,11 @@ void rtc_proc_add_device(struct rtc_device *rtc)
 
 void rtc_proc_del_device(struct rtc_device *rtc)
 {
+#ifdef OPLUS_FEATURE_SAUPWK
+	extern void __attribute__((weak)) saupwk_rtc_proc_del_device(struct rtc_device *rtc);
+        if(saupwk_rtc_proc_del_device)
+                saupwk_rtc_proc_del_device(rtc);
+#endif
 	if (is_rtc_hctosys(rtc))
 		remove_proc_entry("driver/rtc", NULL);
 }

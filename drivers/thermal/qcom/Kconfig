@@ -102,17 +102,6 @@ config REGULATOR_COOLING_DEVICE
 
 	  If you want this support, you should say Y here.
 
-config QTI_RPM_SMD_COOLING_DEVICE
-	bool "Qualcomm Technologies Inc. RPM SMD cooling device driver"
-	depends on MSM_RPM_SMD && THERMAL_OF
-	help
-	  This implements a mitigation device to send temperature band
-	  level to RPM hardware via SMD protocol. This mitigation device
-	  will be used by temperature reliability rules to restrict a
-	  railway at predefined voltage corner using RPM hardware.
-
-	  If you want this support, you should say Y here.
-
 config MSM_BCL_PERIPHERAL_CTL
 	bool "BCL driver to control the PMIC BCL peripheral"
 	depends on SPMI && THERMAL_OF
@@ -162,14 +151,3 @@ config QTI_CX_IPEAK_COOLING_DEVICE
 	  on the CX rail.
 
 	  If you want this support, you should say Y here.
-
-config QTI_THERMAL_QFPROM
-	tristate "Qualcomm Technologies Inc. thermal QFPROM driver"
-	depends on THERMAL
-	depends on QCOM_QFPROM
-	help
-	  This driver enables or disables pre-configured thermal zones
-	  selectively at runtime based on QFPROM nvmem cell bit value is
-	  set or not. It supports to check multiple nvmem cell value for
-	  multiple condtion. In that case, if any of the nvmem-cell condition
-	  fails, driver just exits with default enabled thermal zones.

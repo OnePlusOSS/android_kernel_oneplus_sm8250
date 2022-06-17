@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2019, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2019, The Linux Foundation. All rights reserved.
  */
 #define pr_fmt(fmt) "synx: " fmt
 
@@ -73,7 +73,7 @@ int synx_init_object(struct synx_table_row *table,
 	mutex_unlock(&synx_dev->row_locks[idx]);
 
 	pr_debug("synx obj init: id:0x%x state:%u fence: 0x%pK\n",
-		id, synx_status(row), fence);
+		synx_status(row), fence);
 
 	return 0;
 }
@@ -175,7 +175,6 @@ int synx_deinit_object(struct synx_table_row *row)
 	struct synx_callback_info *synx_cb, *temp_cb;
 	struct synx_cb_data  *upayload_info, *temp_upayload;
 	struct synx_obj_node *obj_node, *temp_obj_node;
-	struct synx_handle_entry *entry;
 	unsigned long flags;
 
 	if (!row || !synx_dev)
@@ -185,22 +184,17 @@ int synx_deinit_object(struct synx_table_row *row)
 	spin_lock_irqsave(&synx_dev->idr_lock, flags);
 	list_for_each_entry_safe(obj_node,
 		temp_obj_node, &row->synx_obj_list, list) {
-		entry = idr_remove(&synx_dev->synx_ids,
-				obj_node->synx_obj);
-		if (!entry) {
+		if ((struct synx_table_row *)idr_remove(&synx_dev->synx_ids,
+				obj_node->synx_obj) != row) {
 			pr_err("removing data in idr table failed 0x%x\n",
 				obj_node->synx_obj);
-			list_del_init(&obj_node->list);
-			kfree(obj_node);
-			continue;
+			spin_unlock_irqrestore(&synx_dev->idr_lock, flags);
+			return -EINVAL;
 		}
 		pr_debug("removed synx obj at 0x%x successful\n",
 			obj_node->synx_obj);
 		list_del_init(&obj_node->list);
 		kfree(obj_node);
-		pr_debug("released handle entry %pK\n",
-			entry);
-		kfree(entry);
 	}
 	spin_unlock_irqrestore(&synx_dev->idr_lock, flags);
 
@@ -364,7 +358,6 @@ s32 synx_merge_error(s32 *synx_objs, u32 num_objs)
 		mutex_lock(&synx_dev->row_locks[row->index]);
 		synx_release_reference(row->fence);
 		mutex_unlock(&synx_dev->row_locks[row->index]);
-		synx_release_handle(row);
 	}
 
 	return 0;
@@ -396,7 +389,6 @@ int synx_util_validate_merge(s32 *synx_objs,
 		mutex_lock(&synx_dev->row_locks[row->index]);
 		count += synx_add_reference(row->fence);
 		mutex_unlock(&synx_dev->row_locks[row->index]);
-		synx_release_handle(row);
 	}
 
 	fences = kcalloc(count, sizeof(*fences), GFP_KERNEL);
@@ -418,7 +410,6 @@ int synx_util_validate_merge(s32 *synx_objs,
 		mutex_lock(&synx_dev->row_locks[row->index]);
 		count += synx_fence_add(row->fence, fences, count);
 		mutex_unlock(&synx_dev->row_locks[row->index]);
-		synx_release_handle(row);
 	}
 
 	/* eliminate duplicates */
@@ -565,24 +556,15 @@ u32 synx_status_locked(struct synx_table_row *row)
 void *synx_from_handle(s32 synx_obj)
 {
 	s32 base;
-	struct synx_table_row *row = NULL;
-	struct synx_handle_entry *entry;
+	struct synx_table_row *row;
 	unsigned long flags;
 
 	if (!synx_dev)
 		return NULL;
 
 	spin_lock_irqsave(&synx_dev->idr_lock, flags);
-	entry = idr_find(&synx_dev->synx_ids, synx_obj);
-	if (entry && entry->row) {
-		row = entry->row;
-		/*
-		 * obtain additional reference at the start of each function
-		 * so that release will not affect cleanup the object which
-		 * still being used by other function.
-		 */
-		dma_fence_get(row->fence);
-	}
+	row = (struct synx_table_row *) idr_find(&synx_dev->synx_ids,
+		synx_obj);
 	spin_unlock_irqrestore(&synx_dev->idr_lock, flags);
 
 	if (!row) {
@@ -602,44 +584,18 @@ void *synx_from_handle(s32 synx_obj)
 	return row;
 }
 
-void synx_release_handle(void *pObj)
-{
-	struct synx_table_row *row = pObj;
-
-	if (!row)
-		return;
-
-	dma_fence_put(row->fence);
-}
-
 s32 synx_create_handle(void *pObj)
 {
 	s32 base = current->tgid << 16;
 	s32 id;
-	struct synx_handle_entry *entry;
 	unsigned long flags;
 
 	if (!synx_dev)
 		return -EINVAL;
 
-	entry = kzalloc(sizeof(*entry), GFP_ATOMIC);
-	if (!entry)
-		return -ENOMEM;
-
-	/*
-	 * handle entry is added to IDR table on create
-	 * and is removed on release function, after which
-	 * handle will not be available to clients.
-	 * But release will not affect process which already
-	 * own a reference.
-	 */
-	kref_init(&entry->refcount);
-	entry->row = pObj;
-
 	spin_lock_irqsave(&synx_dev->idr_lock, flags);
-	id = idr_alloc(&synx_dev->synx_ids, entry,
+	id = idr_alloc(&synx_dev->synx_ids, pObj,
 			base, base + 0x10000, GFP_ATOMIC);
-	entry->synx_obj = id;
 	spin_unlock_irqrestore(&synx_dev->idr_lock, flags);
 
 	pr_debug("generated Id: 0x%x, base: 0x%x, client: 0x%x\n",
@@ -703,8 +659,7 @@ struct synx_table_row *synx_from_import_key(s32 synx_obj, u32 key)
 
 int synx_generate_import_key(struct synx_table_row *row,
 	s32 synx_obj,
-	u32 *key,
-	struct dma_fence *fence)
+	u32 *key)
 {
 	bool bit;
 	long idx = 0;
@@ -757,7 +712,7 @@ int synx_generate_import_key(struct synx_table_row *row,
 
 		new_row = synx_dev->synx_table + idx;
 		/* both metadata points to same dma fence */
-		new_row->fence = fence;
+		new_row->fence = row->fence;
 		new_row->index = idx;
 		INIT_LIST_HEAD(&new_row->synx_obj_list);
 		INIT_LIST_HEAD(&new_row->callback_list);
@@ -777,23 +732,18 @@ int synx_generate_import_key(struct synx_table_row *row,
 void *synx_from_key(s32 id, u32 secure_key)
 {
 	struct synx_table_row *row = NULL;
-	struct synx_handle_entry *entry;
-	unsigned long flags;
 
 	if (!synx_dev)
 		return NULL;
 
-	spin_lock_irqsave(&synx_dev->idr_lock, flags);
-	entry = idr_find(&synx_dev->synx_ids, id);
-	if (entry && entry->row)
-		row = entry->row;
-	spin_unlock_irqrestore(&synx_dev->idr_lock, flags);
-
+	spin_lock_bh(&synx_dev->idr_lock);
+	row = (struct synx_table_row *) idr_find(&synx_dev->synx_ids, id);
 	if (!row) {
-		pr_err(
-		"synx handle does not exist 0x%x\n", id);
+		pr_err("invalid synx obj 0x%x\n", id);
+		spin_unlock_bh(&synx_dev->idr_lock);
 		return NULL;
 	}
+	spin_unlock_bh(&synx_dev->idr_lock);
 
 	if (row->secure_key != secure_key)
 		row = NULL;

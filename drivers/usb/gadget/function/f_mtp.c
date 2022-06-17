@@ -125,7 +125,9 @@ struct mtp_dev {
 
 	wait_queue_head_t read_wq;
 	wait_queue_head_t write_wq;
+#ifndef OPLUS_FEATURE_CHG_BASIC
 	wait_queue_head_t intr_wq;
+#endif
 	struct usb_request *rx_req[RX_REQ_MAX];
 	int rx_done;
 
@@ -354,6 +356,20 @@ struct mtp_ext_config_desc {
 	struct mtp_ext_config_desc_function    function;
 };
 
+static struct mtp_ext_config_desc mtp_ext_config_desc = {
+	.header = {
+		.dwLength = __constant_cpu_to_le32(sizeof(mtp_ext_config_desc)),
+		.bcdVersion = __constant_cpu_to_le16(0x0100),
+		.wIndex = __constant_cpu_to_le16(4),
+		.bCount = 1,
+	},
+	.function = {
+		.bFirstInterfaceNumber = 0,
+		.bInterfaceCount = 1,
+		.compatibleID = { 'M', 'T', 'P' },
+	},
+};
+
 struct mtp_device_status {
 	__le16	wLength;
 	__le16	wCode;
@@ -380,6 +396,10 @@ struct mtp_instance {
 
 /* temporary variable used between mtp_open() and mtp_gadget_bind() */
 static struct mtp_dev *_mtp_dev;
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+static ATOMIC_NOTIFIER_HEAD(mtp_rw_notifier);
+#endif
 
 static inline struct mtp_dev *func_to_mtp(struct usb_function *f)
 {
@@ -487,7 +507,9 @@ static void mtp_complete_intr(struct usb_ep *ep, struct usb_request *req)
 
 	mtp_req_put(dev, &dev->intr_idle, req);
 
+#ifndef OPLUS_FEATURE_CHG_BASIC
 	wake_up(&dev->intr_wq);
+#endif
 }
 
 static int mtp_create_bulk_endpoints(struct mtp_dev *dev,
@@ -1037,11 +1059,19 @@ static int mtp_send_event(struct mtp_dev *dev, struct mtp_event *event)
 	if (dev->state == STATE_OFFLINE)
 		return -ENODEV;
 
+#ifndef OPLUS_FEATURE_CHG_BASIC
 	ret = wait_event_interruptible_timeout(dev->intr_wq,
 			(req = mtp_req_get(dev, &dev->intr_idle)),
 			msecs_to_jiffies(1000));
+#else
+	req = mtp_req_get(dev, &dev->intr_idle);
+#endif
 	if (!req)
+#ifndef OPLUS_FEATURE_CHG_BASIC
 		return -ETIME;
+#else
+		return -EBUSY;
+#endif
 
 	if (copy_from_user(req->buf, (void __user *)event->data, length)) {
 		mtp_req_put(dev, &dev->intr_idle, req);
@@ -1051,6 +1081,10 @@ static int mtp_send_event(struct mtp_dev *dev, struct mtp_event *event)
 	ret = usb_ep_queue(dev->ep_intr, req, GFP_KERNEL);
 	if (ret)
 		mtp_req_put(dev, &dev->intr_idle, req);
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	mtp_log("exit: (%d)\n", ret);
+#endif
 
 	return ret;
 }
@@ -1062,6 +1096,10 @@ static long mtp_send_receive_ioctl(struct file *fp, unsigned int code,
 	struct file *filp = NULL;
 	struct work_struct *work;
 	int ret = -EINVAL;
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	mtp_log("entering ioctl with state: %d\n", dev->state);
+#endif
 
 	if (mtp_lock(&dev->ioctl_excl)) {
 		mtp_log("ioctl returning EBUSY state:%d\n", dev->state);
@@ -1098,6 +1136,10 @@ static long mtp_send_receive_ioctl(struct file *fp, unsigned int code,
 	/* make sure write is done before parameters are read */
 	smp_wmb();
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	atomic_notifier_call_chain(&mtp_rw_notifier, code, (void *)&mfr);
+#endif
+
 	if (code == MTP_SEND_FILE_WITH_HEADER) {
 		work = &dev->send_file_work;
 		dev->xfer_send_header = 1;
@@ -1118,6 +1160,9 @@ static long mtp_send_receive_ioctl(struct file *fp, unsigned int code,
 	/* wait for operation to complete */
 	flush_workqueue(dev->wq);
 	fput(filp);
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	atomic_notifier_call_chain(&mtp_rw_notifier, code | 0x8000, (void *)&mfr);
+#endif
 
 	/* read the result */
 	smp_rmb();
@@ -1135,6 +1180,21 @@ out:
 	mtp_log("ioctl returning %d\n", ret);
 	return ret;
 }
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+int mtp_register_notifier(struct notifier_block *nb)
+{
+	return atomic_notifier_chain_register(&mtp_rw_notifier, nb);
+}
+EXPORT_SYMBOL(mtp_register_notifier);
+
+int mtp_unregister_notifier(struct notifier_block *nb)
+{
+	return atomic_notifier_chain_unregister(&mtp_rw_notifier, nb);
+}
+EXPORT_SYMBOL(mtp_unregister_notifier);
+#endif /*OPLUS_FEATURE_CHG_BASIC*/
+
 
 static long mtp_ioctl(struct file *fp, unsigned int code, unsigned long value)
 {
@@ -1314,7 +1374,20 @@ static int mtp_ctrlrequest(struct usb_composite_dev *cdev,
 		mtp_log("vendor request: %d index: %d value: %d length: %d\n",
 			ctrl->bRequest, w_index, w_value, w_length);
 
-		value = -EOPNOTSUPP;
+		if (ctrl->bRequest == 1
+				&& (ctrl->bRequestType & USB_DIR_IN)
+				&& (w_index == 4 || w_index == 5)) {
+			value = (w_length < sizeof(mtp_ext_config_desc) ?
+					w_length : sizeof(mtp_ext_config_desc));
+			memcpy(cdev->req->buf, &mtp_ext_config_desc, value);
+
+			/* update compatibleID if PTP */
+			if (dev->function.fs_descriptors == fs_ptp_descs) {
+				struct mtp_ext_config_desc *d = cdev->req->buf;
+
+				d->function.compatibleID[0] = 'P';
+			}
+		}
 	} else if ((ctrl->bRequestType & USB_TYPE_MASK) == USB_TYPE_CLASS) {
 		mtp_log("class request: %d index: %d value: %d length: %d\n",
 			ctrl->bRequest, w_index, w_value, w_length);
@@ -1383,12 +1456,6 @@ mtp_function_bind(struct usb_configuration *c, struct usb_function *f)
 
 	dev->cdev = cdev;
 	mtp_log("dev: %pK\n", dev);
-
-	/* ChipIdea controller supports 16K request length for IN endpoint */
-	if (cdev->gadget->is_chipidea && mtp_tx_req_len > 16384) {
-		mtp_log("Truncating Tx Req length to 16K for ChipIdea\n");
-		mtp_tx_req_len = 16384;
-	}
 
 	/* allocate interface ID(s) */
 	id = usb_interface_id(c, f);
@@ -1671,7 +1738,9 @@ static int __mtp_setup(struct mtp_instance *fi_mtp)
 	spin_lock_init(&dev->lock);
 	init_waitqueue_head(&dev->read_wq);
 	init_waitqueue_head(&dev->write_wq);
+#ifndef OPLUS_FEATURE_CHG_BASIC
 	init_waitqueue_head(&dev->intr_wq);
+#endif
 	atomic_set(&dev->open_excl, 0);
 	atomic_set(&dev->ioctl_excl, 0);
 	INIT_LIST_HEAD(&dev->tx_idle);
@@ -1793,10 +1862,6 @@ struct usb_function_instance *alloc_inst_mtp_ptp(bool mtp_config)
 		return ERR_PTR(-ENOMEM);
 	fi_mtp->func_inst.set_inst_name = mtp_set_inst_name;
 	fi_mtp->func_inst.free_func_inst = mtp_free_inst;
-	if (mtp_config)
-		memcpy(fi_mtp->mtp_ext_compat_id, "MTP", 3);
-	else
-		memcpy(fi_mtp->mtp_ext_compat_id, "PTP", 3);
 
 	fi_mtp->mtp_os_desc.ext_compat_id = fi_mtp->mtp_ext_compat_id;
 	INIT_LIST_HEAD(&fi_mtp->mtp_os_desc.ext_prop);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2018-2020,2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s:%s " fmt, KBUILD_MODNAME, __func__
@@ -124,7 +124,7 @@ static char sensor_clients[QMI_TS_MAX_NR][QMI_CLIENT_NAME_LENGTH] = {
 static int32_t encode_qmi(int32_t val)
 {
 	uint32_t shift = 0, local_val = 0;
-	unsigned long temp_val = 0;
+	int32_t temp_val = 0;
 
 	if (val == INT_MAX || val == INT_MIN)
 		return 0;
@@ -134,7 +134,8 @@ static int32_t encode_qmi(int32_t val)
 		temp_val *= -1;
 		local_val |= 1 << QMI_FL_SIGN_BIT;
 	}
-	shift = find_last_bit(&temp_val, sizeof(temp_val) * 8);
+	shift = find_last_bit((const unsigned long *)&temp_val,
+			sizeof(temp_val) * 8);
 	local_val |= ((shift + 127) << QMI_MANTISSA_MSB);
 	temp_val &= ~(1 << shift);
 
@@ -250,6 +251,10 @@ void qmi_ts_ind_cb(struct qmi_handle *qmi, struct sockaddr_qrtr *sq,
 		pr_err("Error invalid temperature field.\n");
 }
 
+bool ts_wait_error = false, ts_send_error = false;
+#ifdef CONFIG_ESOC_MDM_4x
+extern bool modem_force_rst;
+#endif
 static int qmi_ts_request(struct qmi_sensor *qmi_sens,
 				bool send_current_temp_report)
 {
@@ -259,9 +264,16 @@ static int qmi_ts_request(struct qmi_sensor *qmi_sens,
 	struct qmi_ts_instance *ts = qmi_sens->ts;
 	struct qmi_txn txn;
 
+	static int i = 0, j = 0;
+
 	memset(&req, 0, sizeof(req));
 	memset(&resp, 0, sizeof(resp));
-
+#ifdef CONFIG_ESOC_MDM_4x
+	if (modem_force_rst) {
+		i = 0;
+		j = 0;
+	}
+#endif
 	strlcpy(req.sensor_id.sensor_id, qmi_sens->qmi_name,
 		QMI_TS_SENSOR_ID_LENGTH_MAX_V01);
 	req.seq_num = 0;
@@ -278,13 +290,6 @@ static int qmi_ts_request(struct qmi_sensor *qmi_sens,
 			qmi_sens->low_thresh != INT_MIN;
 		req.temp_threshold_low =
 			encode_qmi(qmi_sens->low_thresh);
-
-		pr_debug("Sensor:%s set high_trip:%d, low_trip:%d, high_valid:%d, low_valid:%d\n",
-			qmi_sens->qmi_name,
-			qmi_sens->high_thresh,
-			qmi_sens->low_thresh,
-			req.temp_threshold_high_valid,
-			req.temp_threshold_low_valid);
 	}
 
 	mutex_lock(&ts->mutex);
@@ -304,14 +309,26 @@ static int qmi_ts_request(struct qmi_sensor *qmi_sens,
 	if (ret < 0) {
 		pr_err("qmi txn send failed for %s ret:%d\n",
 			qmi_sens->qmi_name, ret);
+		
+		if ((ret == -5 || ret == -11 || ret == -12 || ret == -110) && i++ >= 15) {
+			ts_send_error = true;
+			i = 0;
+		} 
 		qmi_txn_cancel(&txn);
 		goto qmi_send_exit;
+	} else {
+		ts_send_error = false;
+		i = 0;
 	}
 
 	ret = qmi_txn_wait(&txn, QMI_TS_RESP_TOUT);
 	if (ret < 0) {
 		pr_err("qmi txn wait failed for %s ret:%d\n",
 			qmi_sens->qmi_name, ret);
+		if ((ret == -11 || ret == -12 || ret == -110) && j++ >= 15) {
+			ts_wait_error = true;
+			j = 0;
+		}
 		goto qmi_send_exit;
 	}
 	if (resp.resp.result != QMI_RESULT_SUCCESS_V01) {
@@ -319,9 +336,20 @@ static int qmi_ts_request(struct qmi_sensor *qmi_sens,
 		pr_err("qmi NOT success for %s ret:%d\n",
 			qmi_sens->qmi_name, ret);
 		goto qmi_send_exit;
+	} else {
+		ts_wait_error = false;
+		j = 0;
 	}
-	ret = 0;
 
+	if (resp.resp.result != QMI_RESULT_SUCCESS_V01) {
+		ret = resp.resp.result;
+		pr_err("qmi NOT success for %s ret:%d\n",
+			qmi_sens->qmi_name, ret);
+		goto qmi_send_exit;
+	}
+
+	ret = 0;
+	
 qmi_send_exit:
 	mutex_unlock(&ts->mutex);
 	return ret;

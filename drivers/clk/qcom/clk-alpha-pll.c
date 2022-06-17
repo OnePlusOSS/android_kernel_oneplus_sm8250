@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2015, 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2018-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -30,7 +30,6 @@
 #define PLL_VOTE_FSM_RESET	BIT(21)
 #define PLL_UPDATE		BIT(22)
 #define PLL_UPDATE_BYPASS	BIT(23)
-#define PLL_FSM_LEGACY_MODE	BIT(24)
 #define PLL_ALPHA_EN		BIT(24)
 #define PLL_OFFLINE_ACK		BIT(28)
 #define ALPHA_PLL_ACK_LATCH	BIT(29)
@@ -510,22 +509,9 @@ alpha_pll_calc_rate(u64 prate, u32 l, u32 a, u32 alpha_width)
 	return (prate * l) + ((prate * a) >> ALPHA_SHIFT(alpha_width));
 }
 
-static void zonda_pll_adjust_l_val(unsigned long rate, unsigned long prate,
-									u32 *l)
-{
-	u64 remainder, quotient;
-
-	quotient = rate;
-	remainder = do_div(quotient, prate);
-	*l = quotient;
-
-	if ((remainder * 2) / prate)
-		*l = *l + 1;
-}
-
 static unsigned long
 alpha_pll_round_rate(unsigned long rate, unsigned long prate, u32 *l, u64 *a,
-			u32 alpha_width)
+		     u32 alpha_width)
 {
 	u64 remainder;
 	u64 quotient;
@@ -1279,10 +1265,10 @@ static int clk_zonda_pll_enable(struct clk_hw *hw)
 static void clk_zonda_pll_disable(struct clk_hw *hw)
 {
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
-	u32 val, mask;
+	u32 val, mask, off = pll->offset;
 	int ret;
 
-	ret = regmap_read(pll->clkr.regmap, PLL_MODE(pll), &val);
+	ret = regmap_read(pll->clkr.regmap, off + PLL_MODE(pll), &val);
 	if (ret)
 		return;
 
@@ -1318,13 +1304,12 @@ static int clk_zonda_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 {
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
 	unsigned long rrate;
-	u32 test_ctl_val, alpha_width = pll_alpha_width(pll);
+	u32 test_ctl_val;
 	u32 l;
 	u64 a;
 	int ret;
 
-	rrate = alpha_pll_round_rate(rate, prate, &l, &a, alpha_width);
-
+	rrate = alpha_pll_round_rate(rate, prate, &l, &a, ALPHA_BITWIDTH);
 	/*
 	 * Due to a limited number of bits for fractional rate programming, the
 	 * rounded up rate could be marginally higher than the requested rate.
@@ -1335,14 +1320,8 @@ static int clk_zonda_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 		return -EINVAL;
 	}
 
-	if (a && (a & BIT(15)))
-		zonda_pll_adjust_l_val(rate, prate, &l);
-
 	regmap_write(pll->clkr.regmap, PLL_ALPHA_VAL(pll), a);
 	regmap_write(pll->clkr.regmap, PLL_L_VAL(pll), l);
-
-	if (!clk_hw_is_enabled(hw))
-		return 0;
 
 	/* Wait before polling for the frequency latch */
 	udelay(5);
@@ -1365,33 +1344,16 @@ static int clk_zonda_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	return 0;
 }
 
-static unsigned long alpha_pll_adjust_calc_rate(u64 prate, u32 l, u32 frac,
-		u32 alpha_width)
-{
-	uint64_t tmp;
-
-	frac = 100 - DIV_ROUND_UP_ULL((frac * 100), BIT(alpha_width));
-
-	tmp = frac * prate;
-	do_div(tmp, 100);
-
-	return (l * prate) - tmp;
-}
-
 static unsigned long
 clk_zonda_pll_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
 {
 	struct clk_alpha_pll *pll = to_clk_alpha_pll(hw);
-	u32 l, frac, alpha_width = pll_alpha_width(pll);
+	u32 l, frac;
 
 	regmap_read(pll->clkr.regmap, PLL_L_VAL(pll), &l);
 	regmap_read(pll->clkr.regmap, PLL_ALPHA_VAL(pll), &frac);
 
-	if (frac & BIT(15))
-		return alpha_pll_adjust_calc_rate(parent_rate, l, frac,
-								alpha_width);
-	else
-		return alpha_pll_calc_rate(parent_rate, l, frac, alpha_width);
+	return alpha_pll_calc_rate(parent_rate, l, frac, ALPHA_BITWIDTH);
 }
 
 static void clk_zonda_pll_list_registers(struct seq_file *f, struct clk_hw *hw)
@@ -2114,9 +2076,6 @@ void clk_lucid_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
 				 PLL_UPDATE_BYPASS,
 				 PLL_UPDATE_BYPASS);
 
-	if (pll->flags & SUPPORTS_FSM_LEGACY_MODE)
-		regmap_update_bits(regmap, PLL_MODE(pll), PLL_FSM_LEGACY_MODE,
-						PLL_FSM_LEGACY_MODE);
 	/* Disable PLL output */
 	regmap_update_bits(regmap, PLL_MODE(pll),
 					PLL_OUTCTRL, 0);
@@ -2719,7 +2678,8 @@ static int clk_alpha_pll_calibrate(struct clk_hw *hw)
 	 * So slew pll to the previously set frequency.
 	 */
 	freq_hz = alpha_pll_round_rate(clk_hw_get_rate(hw),
-				clk_hw_get_rate(parent), &l, &a, alpha_width);
+			clk_hw_get_rate(parent), &l, &a, alpha_width);
+
 
 	pr_debug("pll %s: setting back to required rate %lu, freq_hz %ld\n",
 				hw->init->name, clk_hw_get_rate(hw), freq_hz);

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef BTFM_SLIM_SLAVE_H
@@ -97,10 +97,6 @@ enum {
 	QCA_COMANCHE_SOC_ID_0101  = 0x40070101,
 	QCA_COMANCHE_SOC_ID_0110  = 0x40070110,
 	QCA_COMANCHE_SOC_ID_0120  = 0x40070120,
-	QCA_COMANCHE_SOC_ID_0130  = 0x40070130,
-	QCA_COMANCHE_SOC_ID_4130  = 0x40074130,
-	QCA_COMANCHE_SOC_ID_5120  = 0x40075120,
-	QCA_COMANCHE_SOC_ID_5130  = 0x40075130,
 };
 
 enum {
@@ -111,8 +107,6 @@ enum {
 	QCA_HSP_SOC_ID_0100 = 0x400C0100,
 	QCA_HSP_SOC_ID_0110 = 0x400C0110,
 	QCA_HSP_SOC_ID_0200 = 0x400C0200,
-	QCA_HSP_SOC_ID_0210 = 0x400C0210,
-	QCA_HSP_SOC_ID_1211 = 0x400C1211,
 };
 
 /* Function Prototype */

@@ -4,6 +4,10 @@
 #include <linux/cpufreq_times.h>
 #include "sched.h"
 #include "walt.h"
+#ifdef OPLUS_FEATURE_TASK_CPUSTATS
+/* stat cpu usage on each tick. */
+#include <linux/task_cpustats.h>
+#endif
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 
@@ -402,14 +406,30 @@ static void irqtime_account_process_tick(struct task_struct *p, int user_tick,
 		 * Also, p->stime needs to be updated for ksoftirqd.
 		 */
 		account_system_index_time(p, cputime, CPUTIME_SOFTIRQ);
+#ifdef OPLUS_FEATURE_TASK_CPUSTATS
+/* stat cpu usage on each tick. */
+		account_task_time(p, ticks, CPUTIME_SOFTIRQ);
+#endif /* OPLUS_FEATURE_TASK_CPUSTATS */
 	} else if (user_tick) {
 		account_user_time(p, cputime);
+#ifdef OPLUS_FEATURE_TASK_CPUSTATS
+/* stat cpu usage on each tick. */
+		account_task_time(p, ticks, CPUTIME_USER);
+#endif /* OPLUS_FEATURE_TASK_CPUSTATS */
 	} else if (p == rq->idle) {
 		account_idle_time(cputime);
 	} else if (p->flags & PF_VCPU) { /* System time or guest time */
 		account_guest_time(p, cputime);
+#ifdef OPLUS_FEATURE_TASK_CPUSTATS
+/* stat cpu usage on each tick. */
+		account_task_time(p, ticks, CPUTIME_USER);
+#endif /* OPLUS_FEATURE_TASK_CPUSTATS */
 	} else {
 		account_system_index_time(p, cputime, CPUTIME_SYSTEM);
+#ifdef OPLUS_FEATURE_TASK_CPUSTATS
+/* stat cpu usage on each tick. */
+		account_task_time(p, ticks, CPUTIME_SYSTEM);
+#endif /* OPLUS_FEATURE_TASK_CPUSTATS */
 	}
 }
 

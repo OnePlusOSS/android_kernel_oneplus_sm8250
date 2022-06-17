@@ -270,6 +270,13 @@ int f2fs_update_extension_list(struct f2fs_sb_info *sbi, const char *name,
 	return 0;
 }
 
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+static bool is_log_file(const char *filename)
+{
+	return is_extension_exist(filename, "log");
+}
+#endif
+
 static void set_compress_inode(struct f2fs_sb_info *sbi, struct inode *inode,
 						const unsigned char *name)
 {
@@ -333,6 +340,10 @@ static int f2fs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	if (!test_opt(sbi, DISABLE_EXT_IDENTIFY))
 		set_file_temperature(sbi, inode, dentry->d_name.name);
 
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	if (is_log_file(dentry->d_name.name))
+		set_inode_flag(inode, FI_LOG_FILE);
+#endif
 	set_compress_inode(sbi, inode, dentry->d_name.name);
 
 	inode->i_op = &f2fs_file_inode_operations;
@@ -483,7 +494,9 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 	int err = 0;
 	unsigned int root_ino = F2FS_ROOT_INO(F2FS_I_SB(dir));
 	struct f2fs_filename fname;
-
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	struct f2fs_sb_info *sbi = F2FS_I_SB(dir);
+#endif
 	trace_f2fs_lookup_start(dir, dentry, flags);
 
 	if (dentry->d_name.len > F2FS_NAME_LEN) {
@@ -537,6 +550,13 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 		err = -EPERM;
 		goto out_iput;
 	}
+
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+  	if (is_log_file(dentry->d_name.name))
+		set_inode_flag(inode, FI_LOG_FILE);
+	if (!test_opt(sbi, DISABLE_EXT_IDENTIFY) && !file_is_cold(inode))
+		set_file_temperature(sbi, inode, dentry->d_name.name);
+#endif
 out_splice:
 #ifdef CONFIG_UNICODE
 	if (!inode && IS_CASEFOLDED(dir)) {

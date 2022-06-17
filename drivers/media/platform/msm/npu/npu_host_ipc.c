@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  */
 
 /* -------------------------------------------------------------------------
@@ -74,8 +74,6 @@ static int npu_host_ipc_init_hfi(struct npu_device *npu_dev)
 	uint32_t q_size = 0;
 	uint32_t cur_start_offset = 0;
 
-	spin_lock_init(&npu_dev->ipc_lock);
-
 	reg_val = REGR(npu_dev, REG_NPU_FW_CTRL_STATUS);
 
 	/*
@@ -142,7 +140,6 @@ static int npu_host_ipc_init_hfi(struct npu_device *npu_dev)
 	reg_val = REGR(npu_dev, (uint32_t)REG_NPU_HOST_CTRL_STATUS);
 	REGW(npu_dev, (uint32_t)REG_NPU_HOST_CTRL_STATUS, reg_val |
 		HOST_CTRL_STATUS_IPC_ADDRESS_READY_VAL);
-
 	return status;
 }
 
@@ -152,17 +149,13 @@ static int npu_host_ipc_send_cmd_hfi(struct npu_device *npu_dev,
 	int status = 0;
 	uint8_t is_rx_req_set = 0;
 	uint32_t retry_cnt = 5;
-	unsigned long flags;
 
-	spin_lock_irqsave(&npu_dev->ipc_lock, flags);
 	status = ipc_queue_write(npu_dev, q_idx, (uint8_t *)cmd_ptr,
 		&is_rx_req_set);
 
 	if (status == -ENOSPC) {
 		do {
-			spin_unlock_irqrestore(&npu_dev->ipc_lock, flags);
 			msleep(20);
-			spin_lock_irqsave(&npu_dev->ipc_lock, flags);
 			status = ipc_queue_write(npu_dev, q_idx,
 				(uint8_t *)cmd_ptr, &is_rx_req_set);
 		} while ((status == -ENOSPC) && (--retry_cnt > 0));
@@ -172,7 +165,6 @@ static int npu_host_ipc_send_cmd_hfi(struct npu_device *npu_dev,
 		if (is_rx_req_set == 1)
 			status = INTERRUPT_RAISE_NPU(npu_dev);
 	}
-	spin_unlock_irqrestore(&npu_dev->ipc_lock, flags);
 
 	if (status)
 		NPU_ERR("Cmd Msg put on Command Queue - FAILURE\n");
@@ -303,7 +295,7 @@ static int ipc_queue_write(struct npu_device *npu_dev,
 	uint32_t packet_size, new_write_idx;
 	uint32_t empty_space;
 	void *write_ptr;
-	uint32_t read_idx, write_idx;
+	uint32_t read_idx;
 
 	size_t offset = (size_t)IPC_ADDR +
 		sizeof(struct hfi_queue_tbl_header) +
@@ -391,23 +383,6 @@ exit:
 		(uint8_t *)&queue.qhdr_rx_req,
 		sizeof(queue.qhdr_rx_req));
 	*is_rx_req_set = (queue.qhdr_rx_req == 1) ? 1 : 0;
-
-	/* check if queue is empty (consumed by fw) */
-	if (*is_rx_req_set) {
-		MEMR(npu_dev, (void *)((size_t)(offset + (uint32_t)(
-			(size_t)&(queue.qhdr_write_idx) - (size_t)&queue))),
-			(uint8_t *)&write_idx,
-			sizeof(queue.qhdr_write_idx));
-
-		MEMR(npu_dev, (void *)((size_t)(offset + (uint32_t)(
-			(size_t)&(queue.qhdr_read_idx) - (size_t)&queue))),
-			(uint8_t *)&read_idx,
-			sizeof(queue.qhdr_read_idx));
-
-		/* cmd has been consumed by fw, no need to trigger irq */
-		if (read_idx == write_idx)
-			*is_rx_req_set = 0;
-	}
 
 	return status;
 }

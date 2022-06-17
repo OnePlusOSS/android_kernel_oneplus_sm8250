@@ -1,0 +1,8 @@
+config CS_F61_NDT
+	bool "chip sea F61 press sensor"
+	default n
+	help
+	  Say Y here if you have a cs press connected
+	  to your system.
+
+	  If unsure, say N.

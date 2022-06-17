@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020,2021 The Linux Foundation. All rights reserved.
  */
 
 #include <linux/file.h>
@@ -250,8 +250,6 @@ static void kgsl_sync_timeline_value_str(struct dma_fence *fence,
 	struct kgsl_sync_fence *kfence = (struct kgsl_sync_fence *)fence;
 	struct kgsl_sync_timeline *ktimeline = kfence->parent;
 	struct kgsl_context *context = NULL;
-	unsigned long flags;
-	int ret = 0;
 
 	unsigned int timestamp_retired;
 	unsigned int timestamp_queued;
@@ -261,21 +259,17 @@ static void kgsl_sync_timeline_value_str(struct dma_fence *fence,
 	if (!ktimeline->device)
 		goto put_timeline;
 
-	spin_lock_irqsave(&ktimeline->lock, flags);
-	ret = _kgsl_context_get(ktimeline->context);
-	context = ret ? ktimeline->context : NULL;
-	spin_unlock_irqrestore(&ktimeline->lock, flags);
-
-	/* Get the last signaled timestamp if the context is not valid */
 	timestamp_queued = ktimeline->last_timestamp;
 	timestamp_retired = timestamp_queued;
+	if (!ktimeline->detached)
+		context = kgsl_context_get(ktimeline->device,
+					ktimeline->context_id);
 	if (context) {
 		kgsl_readtimestamp(ktimeline->device, context,
 			KGSL_TIMESTAMP_RETIRED, &timestamp_retired);
 
 		kgsl_readtimestamp(ktimeline->device, context,
 			KGSL_TIMESTAMP_QUEUED, &timestamp_queued);
-
 		kgsl_context_put(context);
 	}
 
@@ -312,15 +306,9 @@ int kgsl_sync_timeline_create(struct kgsl_context *context)
 {
 	struct kgsl_sync_timeline *ktimeline;
 
-	/* Put context at detach time */
-	if (!_kgsl_context_get(context))
-		return -ENOENT;
-
 	ktimeline = kzalloc(sizeof(*ktimeline), GFP_KERNEL);
-	if (ktimeline == NULL) {
-		kgsl_context_put(context);
+	if (ktimeline == NULL)
 		return -ENOMEM;
-	}
 
 	kref_init(&ktimeline->kref);
 	ktimeline->name = kasprintf(GFP_KERNEL, "%s_%d-%.15s(%d)-%.15s(%d)",
@@ -333,12 +321,8 @@ int kgsl_sync_timeline_create(struct kgsl_context *context)
 	INIT_LIST_HEAD(&ktimeline->child_list_head);
 	spin_lock_init(&ktimeline->lock);
 	ktimeline->device = context->device;
-
-	/*
-	 * The context pointer is valid till detach time, where we put the
-	 * refcount on the context
-	 */
-	ktimeline->context = context;
+	ktimeline->context_id = context->id;
+	ktimeline->detached = false;
 
 	context->ktimeline = ktimeline;
 
@@ -372,14 +356,7 @@ static void kgsl_sync_timeline_signal(struct kgsl_sync_timeline *ktimeline,
 
 void kgsl_sync_timeline_detach(struct kgsl_sync_timeline *ktimeline)
 {
-	unsigned long flags;
-	struct kgsl_context *context = ktimeline->context;
-
-	/* Set context pointer to NULL and drop our refcount on the context */
-	spin_lock_irqsave(&ktimeline->lock, flags);
-	ktimeline->context = NULL;
-	spin_unlock_irqrestore(&ktimeline->lock, flags);
-	kgsl_context_put(context);
+	ktimeline->detached = true;
 }
 
 static void kgsl_sync_timeline_destroy(struct kref *kref)

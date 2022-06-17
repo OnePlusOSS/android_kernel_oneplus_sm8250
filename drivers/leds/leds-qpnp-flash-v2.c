@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"flashv2: %s: " fmt, __func__
@@ -26,13 +26,10 @@
 #include <linux/log2.h>
 #include "leds.h"
 
-#define	FLASH_LED_REG_PERPH_SUBTYPE(base)		(base + 0x05)
-
 #define	FLASH_LED_REG_LED_STATUS1(base)		(base + 0x08)
 
 #define	FLASH_LED_REG_LED_STATUS2(base)		(base + 0x09)
 #define	FLASH_LED_VPH_DROOP_FAULT_MASK		BIT(4)
-#define	FLASH_LED_THERMAL_OTST_MASK		GENMASK(2, 0)
 
 #define	FLASH_LED_REG_INT_RT_STS(base)		(base + 0x10)
 
@@ -87,14 +84,6 @@
 #define	FLASH_LED_REG_THERMAL_DEBOUNCE(base)	(base + 0x5A)
 #define	FLASH_LED_THERMAL_DEBOUNCE_MASK		GENMASK(1, 0)
 
-#define	FLASH_LED_REG_RGLR_RAMP_RATE(base)	(base + 0x5B)
-#define	FLASH_LED_RAMP_UP_STEP_MASK		GENMASK(6, 4)
-#define	FLASH_LED_RAMP_UP_STEP_SHIFT		4
-#define	FLASH_LED_RAMP_DOWN_STEP_MASK		GENMASK(2, 0)
-#define	FLASH_LED_RAMP_STEP_MIN_NS		200
-#define	FLASH_LED_RAMP_STEP_MAX_NS		25600
-#define	FLASH_LED_RAMP_STEP_DEFAULT_NS		6400
-
 #define	FLASH_LED_REG_VPH_DROOP_THRESHOLD(base)	(base + 0x61)
 #define	FLASH_LED_VPH_DROOP_HYSTERESIS_MASK	GENMASK(5, 4)
 #define	FLASH_LED_VPH_DROOP_THRESHOLD_MASK	GENMASK(2, 0)
@@ -134,9 +123,6 @@
 
 #define	FLASH_LED_REG_CURRENT_DERATE_EN(base)	(base + 0x76)
 #define	FLASH_LED_CURRENT_DERATE_EN_MASK	GENMASK(2, 0)
-
-#define	FLASH_LED_REG_CHICKEN_BITS(base)	(base + 0x87)
-#define	FLASH_LED_EN_ITAR_FLY_BIT	BIT(0)
 
 #define	VPH_DROOP_DEBOUNCE_US_TO_VAL(val_us)	(val_us / 8)
 #define	VPH_DROOP_HYST_MV_TO_VAL(val_mv)	(val_mv / 25)
@@ -200,13 +186,6 @@
 
 /* notifier call chain for flash-led irqs */
 static ATOMIC_NOTIFIER_HEAD(irq_notifier_list);
-
-enum flash_led_subtype {
-	PMI8998_FLASH_SUBTYPE = 3,
-	PM660L_FLASH_SUBTYPE = 3,
-	PM6150L_FLASH_SUBTYPE,
-	PMI632_FLASH_SUBTYPE,
-};
 
 enum flash_charger_mitigation {
 	FLASH_DISABLE_CHARGER_MITIGATION,
@@ -298,8 +277,6 @@ struct flash_led_platform_data {
 	int			thermal_thrsh1;
 	int			thermal_thrsh2;
 	int			thermal_thrsh3;
-	int			ramp_up_step;
-	int			ramp_down_step;
 	int			hw_strobe_option;
 	u32			led1n2_iclamp_low_ma;
 	u32			led1n2_iclamp_mid_ma;
@@ -343,7 +320,6 @@ struct qpnp_flash_led {
 	u16				base;
 	bool				trigger_lmh;
 	bool				trigger_chgr;
-	bool				torch_current_update;
 };
 
 static int thermal_derate_slow_table[] = {
@@ -654,16 +630,6 @@ static int qpnp_flash_led_init_settings(struct qpnp_flash_led *led)
 	if (rc < 0)
 		return rc;
 
-	val = led->pdata->ramp_up_step << FLASH_LED_RAMP_UP_STEP_SHIFT;
-	val |= led->pdata->ramp_down_step;
-	rc = qpnp_flash_led_masked_write(led,
-			FLASH_LED_REG_RGLR_RAMP_RATE(led->base),
-			FLASH_LED_RAMP_UP_STEP_MASK |
-			FLASH_LED_RAMP_DOWN_STEP_MASK,
-			val);
-	if (rc < 0)
-		return rc;
-
 	rc = qpnp_flash_led_masked_write(led,
 			FLASH_LED_REG_VPH_DROOP_DEBOUNCE(led->base),
 			FLASH_LED_VPH_DROOP_DEBOUNCE_MASK,
@@ -714,27 +680,6 @@ static int qpnp_flash_led_init_settings(struct qpnp_flash_led *led)
 			led->pdata->iled_thrsh_val);
 	if (rc < 0)
 		return rc;
-
-	rc = qpnp_flash_led_read(led,
-			FLASH_LED_REG_PERPH_SUBTYPE(led->base),
-			&val);
-	if (rc < 0)
-		return rc;
-
-	/*
-	 * Updating torch current on-the-fly is possible
-	 * from PM6150L onwards.
-	 */
-	if (val >= PM6150L_FLASH_SUBTYPE) {
-		rc = qpnp_flash_led_masked_read(led,
-			FLASH_LED_REG_CHICKEN_BITS(led->base),
-			FLASH_LED_EN_ITAR_FLY_BIT,
-			&val);
-		if (rc < 0)
-			return rc;
-
-		led->torch_current_update = !!val;
-	}
 
 	if (led->pdata->led1n2_iclamp_low_ma) {
 		val = get_current_reg_code(led->pdata->led1n2_iclamp_low_ma,
@@ -1256,7 +1201,6 @@ static int qpnp_flash_led_calc_thermal_current_lim(struct qpnp_flash_led *led,
 	if (rc < 0)
 		return rc;
 
-	otst_status &= FLASH_LED_THERMAL_OTST_MASK;
 	/* Look up current limit based on THERMAL_OTST status */
 	if (otst_status)
 		*thermal_current_lim =
@@ -1614,28 +1558,13 @@ static int qpnp_flash_led_module_enable(struct flash_switch_data *snode)
 static int qpnp_flash_led_switch_set(struct flash_switch_data *snode, bool on)
 {
 	struct qpnp_flash_led *led = dev_get_drvdata(&snode->pdev->dev);
-	struct flash_node_data fnode;
 	int rc, i, addr_offset;
 	u8 val, mask;
-	bool torch_current_update = false;
 
 	if (snode->enabled == on) {
-		if (on && led->torch_current_update) {
-			for (i = 0; i < led->num_fnodes; i++) {
-				fnode = led->fnode[i];
-				if (snode->led_mask & BIT(fnode.id) &&
-						fnode.led_on) {
-					torch_current_update = (fnode.type ==
-						FLASH_LED_TYPE_TORCH);
-				}
-			}
-		}
-
-		if (!torch_current_update) {
-			pr_debug("Switch node is already %s!\n",
-				on ? "enabled" : "disabled");
-			return 0;
-		}
+		pr_debug("Switch node is already %s!\n",
+			on ? "enabled" : "disabled");
+		return 0;
 	}
 
 	if (!on) {
@@ -1663,22 +1592,6 @@ static int qpnp_flash_led_switch_set(struct flash_switch_data *snode, bool on)
 						FLASH_LED_CURRENT_MASK, val);
 	if (rc < 0)
 		return rc;
-
-	if (torch_current_update) {
-		for (i = 0; i < led->num_fnodes; i++) {
-			if (snode->led_mask & BIT(led->fnode[i].id) &&
-					led->fnode[i].led_on) {
-				addr_offset = led->fnode[i].id;
-				rc = qpnp_flash_led_masked_write(led,
-					FLASH_LED_REG_TGR_CURRENT(led->base +
-					addr_offset), FLASH_LED_CURRENT_MASK,
-					led->fnode[i].current_reg_val);
-				if (rc < 0)
-					return rc;
-			}
-		}
-		return 0;
-	}
 
 	val = 0;
 	for (i = 0; i < led->num_fnodes; i++) {
@@ -2958,30 +2871,6 @@ static int qpnp_flash_led_parse_common_dt(struct qpnp_flash_led *led,
 		pr_err("Unable to parse vled_max voltage, rc=%d\n", rc);
 		return rc;
 	}
-
-	val = FLASH_LED_RAMP_STEP_DEFAULT_NS;
-	rc = of_property_read_u32(node, "qcom,ramp-up-step", &val);
-	if (!rc && (val < FLASH_LED_RAMP_STEP_MIN_NS ||
-				val > FLASH_LED_RAMP_STEP_MAX_NS)) {
-		pr_err("Invalid ramp-up-step %d\n", val);
-		return -EINVAL;
-	} else if (rc && rc != -EINVAL) {
-		pr_err("Unable to read ramp-up-step, rc=%d\n", rc);
-		return rc;
-	}
-	led->pdata->ramp_up_step = ilog2(val / 100) - 1;
-
-	val = FLASH_LED_RAMP_STEP_DEFAULT_NS;
-	rc = of_property_read_u32(node, "qcom,ramp-down-step", &val);
-	if (!rc && (val < FLASH_LED_RAMP_STEP_MIN_NS ||
-				val > FLASH_LED_RAMP_STEP_MAX_NS)) {
-		pr_err("Invalid ramp-down-step %d\n", val);
-		return -EINVAL;
-	} else if (rc && rc != -EINVAL) {
-		pr_err("Unable to read ramp-down-step, rc=%d\n", rc);
-		return rc;
-	}
-	led->pdata->ramp_down_step = ilog2(val / 100) - 1;
 
 	rc = qpnp_flash_led_parse_battery_prop_dt(led, node);
 	if (rc < 0)

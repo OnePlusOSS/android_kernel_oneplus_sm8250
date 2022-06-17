@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2013-2018, 2020-2021, The Linux Foundation. All rights reserved. */
+/* Copyright (c) 2013-2018, 2020, The Linux Foundation. All rights reserved. */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -50,11 +50,8 @@ int mdss_dsi_check_panel_status(struct mdss_dsi_ctrl_pdata *ctrl, void *arg)
 	 * then no need to fail this function,
 	 * instead return a positive value.
 	 */
-	if (ctrl->check_status) {
-		mutex_lock(&mfd->sd_lock);
+	if (ctrl->check_status)
 		ret = ctrl->check_status(ctrl);
-		mutex_unlock(&mfd->sd_lock);
-	}
 	else
 		ret = 1;
 	mutex_unlock(&ctl->offlock);
@@ -153,16 +150,14 @@ static int fb_event_callback(struct notifier_block *self,
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	struct mdss_panel_info *pinfo;
 	struct msm_fb_data_type *mfd;
-	char fb_id[7] = {'\0'};
 
 	if (!evdata) {
 		pr_err("%s: event data not available\n", __func__);
 		return NOTIFY_BAD;
 	}
 
-	strlcpy(fb_id, evdata->info->fix.id, 7);
 	/* handle only mdss fb device */
-	if (strcmp("mdssfb", fb_id))
+	if (strcmp("mdssfb", evdata->info->fix.id))
 		return NOTIFY_DONE;
 
 	mfd = evdata->info->par;

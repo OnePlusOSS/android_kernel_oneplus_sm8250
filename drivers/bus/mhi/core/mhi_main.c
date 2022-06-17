@@ -575,7 +575,7 @@ int mhi_queue_dma(struct mhi_device *mhi_dev,
 	if (mhi_chan->dir == DMA_TO_DEVICE)
 		atomic_inc(&mhi_cntrl->pending_pkts);
 
-	read_lock_bh(&mhi_chan->lock);
+        read_lock_bh(&mhi_chan->lock);
 	if (mhi_chan->xfer_type == MHI_XFER_RSC_DMA) {
 		/*
 		 * on RSC channel IPA HW has a minimum credit requirement before

@@ -91,7 +91,7 @@
 #define TWO 2
 #define QSEECOM_UFS_ICE_CE_NUM 10
 #define QSEECOM_SDCC_ICE_CE_NUM 20
-#define QSEECOM_ICE_FDE_KEY_INDEX 31
+#define QSEECOM_ICE_FDE_KEY_INDEX 0
 
 #define PHY_ADDR_4G	(1ULL<<32)
 
@@ -704,7 +704,7 @@ static int qseecom_scm_call2(uint32_t svc_id, uint32_t tz_cmd_id,
 			qseecom.smcinvoke_support = true;
 			smc_id = TZ_OS_REGISTER_LISTENER_SMCINVOKE_ID;
 			ret = __qseecom_scm_call2_locked(smc_id, &desc);
-			if (ret == -EOPNOTSUPP) {
+			if (ret == -EIO) {
 				/* smcinvoke is not supported */
 				qseecom.smcinvoke_support = false;
 				smc_id = TZ_OS_REGISTER_LISTENER_ID;
@@ -2623,6 +2623,14 @@ err_resp:
 		case QSEOS_RESULT_CBACK_REQUEST:
 			pr_warn("get cback req app_id = %d, resp->data = %d\n",
 				data->client.app_id, resp->data);
+//#ifdef OPLUS_BUG_COMPATIBILITY
+			//resp->resp_type = SMCINVOKE_RESULT_INBOUND_REQ_NEEDED;
+			/* We are here because scm call sent to TZ has requested
+			 * for another callback request. This call has been a
+			 * success and hence setting result = 0
+			 */
+			//resp->result = 0;
+//#endif /* OPLUS_BUG_COMPATIBILITY */
 			break;
 		default:
 			pr_err("fail:resp res= %d,app_id = %d,lstr = %d\n",
@@ -3704,8 +3712,8 @@ static int __qseecom_send_cmd(struct qseecom_dev_handle *data,
 				(uint32_t)(__qseecom_uvirt_to_kphys(
 				data, (uintptr_t)req->resp_buf));
 		} else {
-			send_data_req.req_ptr = (uintptr_t)req->cmd_req_buf;
-			send_data_req.rsp_ptr = (uintptr_t)req->resp_buf;
+			send_data_req.req_ptr = (uint32_t)req->cmd_req_buf;
+			send_data_req.rsp_ptr = (uint32_t)req->resp_buf;
 		}
 
 		send_data_req.req_len = req->cmd_req_len;
@@ -3838,59 +3846,53 @@ static int qseecom_send_cmd(struct qseecom_dev_handle *data, void __user *argp)
 
 int __boundary_checks_offset(struct qseecom_send_modfd_cmd_req *req,
 			struct qseecom_send_modfd_listener_resp *lstnr_resp,
-			struct qseecom_dev_handle *data, int i, size_t size)
+			struct qseecom_dev_handle *data, int i)
 {
-	char *curr_field = NULL;
-	char *temp_field = NULL;
-	int j = 0;
 
 	if ((data->type != QSEECOM_LISTENER_SERVICE) &&
 						(req->ifd_data[i].fd > 0)) {
-		if ((req->cmd_req_len < size) ||
+		if ((req->cmd_req_len < sizeof(uint32_t)) ||
 			(req->ifd_data[i].cmd_buf_offset >
-			req->cmd_req_len - size)) {
+			req->cmd_req_len - sizeof(uint32_t))) {
 			pr_err("Invalid offset (req len) 0x%x\n",
 				req->ifd_data[i].cmd_buf_offset);
 			return -EINVAL;
 		}
-
-		curr_field = (char *) (req->cmd_req_buf +
-				req->ifd_data[i].cmd_buf_offset);
-		for (j = 0; j < MAX_ION_FD; j++) {
-			if ((req->ifd_data[j].fd > 0) && i != j) {
-				temp_field = (char *) (req->cmd_req_buf +
-					req->ifd_data[j].cmd_buf_offset);
-				if (temp_field >= curr_field && temp_field <
-					(curr_field + size)) {
-					pr_err("Invalid field offset 0x%x\n",
-					req->ifd_data[i].cmd_buf_offset);
-					return -EINVAL;
-				}
-			}
-		}
 	} else if ((data->type == QSEECOM_LISTENER_SERVICE) &&
 					(lstnr_resp->ifd_data[i].fd > 0)) {
-		if ((lstnr_resp->resp_len < size) ||
+		if ((lstnr_resp->resp_len < sizeof(uint32_t)) ||
 			(lstnr_resp->ifd_data[i].cmd_buf_offset >
-			lstnr_resp->resp_len - size)) {
+			lstnr_resp->resp_len - sizeof(uint32_t))) {
 			pr_err("Invalid offset (lstnr resp len) 0x%x\n",
 				lstnr_resp->ifd_data[i].cmd_buf_offset);
 			return -EINVAL;
 		}
+	}
+	return 0;
+}
 
-		curr_field = (char *) (lstnr_resp->resp_buf_ptr +
+static int __boundary_checks_offset_64(struct qseecom_send_modfd_cmd_req *req,
+			struct qseecom_send_modfd_listener_resp *lstnr_resp,
+			struct qseecom_dev_handle *data, int i)
+{
+
+	if ((data->type != QSEECOM_LISTENER_SERVICE) &&
+						(req->ifd_data[i].fd > 0)) {
+		if ((req->cmd_req_len < sizeof(uint64_t)) ||
+			(req->ifd_data[i].cmd_buf_offset >
+			req->cmd_req_len - sizeof(uint64_t))) {
+			pr_err("Invalid offset (req len) 0x%x\n",
+				req->ifd_data[i].cmd_buf_offset);
+			return -EINVAL;
+		}
+	} else if ((data->type == QSEECOM_LISTENER_SERVICE) &&
+					(lstnr_resp->ifd_data[i].fd > 0)) {
+		if ((lstnr_resp->resp_len < sizeof(uint64_t)) ||
+			(lstnr_resp->ifd_data[i].cmd_buf_offset >
+			lstnr_resp->resp_len - sizeof(uint64_t))) {
+			pr_err("Invalid offset (lstnr resp len) 0x%x\n",
 				lstnr_resp->ifd_data[i].cmd_buf_offset);
-		for (j = 0; j < MAX_ION_FD; j++) {
-			if ((lstnr_resp->ifd_data[j].fd > 0) && i != j) {
-				temp_field = (char *) lstnr_resp->resp_buf_ptr +
-					lstnr_resp->ifd_data[j].cmd_buf_offset;
-				if (temp_field >= curr_field && temp_field <
-					(curr_field + size)) {
-					pr_err("Invalid lstnr field offset 0x%x\n",
-					lstnr_resp->ifd_data[i].cmd_buf_offset);
-					return -EINVAL;
-				}
-			}
+			return -EINVAL;
 		}
 	}
 	return 0;
@@ -3966,10 +3968,8 @@ static int __qseecom_update_cmd_buf(void *msg, bool cleanup,
 		if (sg_ptr->nents == 1) {
 			uint32_t *update;
 
-			if (__boundary_checks_offset(req, lstnr_resp, data, i,
-				sizeof(uint32_t)))
+			if (__boundary_checks_offset(req, lstnr_resp, data, i))
 				goto err;
-
 			if ((data->type == QSEECOM_CLIENT_APP &&
 				(data->client.app_arch == ELFCLASS32 ||
 				data->client.app_arch == ELFCLASS64)) ||
@@ -4000,10 +4000,30 @@ static int __qseecom_update_cmd_buf(void *msg, bool cleanup,
 			struct qseecom_sg_entry *update;
 			int j = 0;
 
-			if (__boundary_checks_offset(req, lstnr_resp, data, i,
-				(SG_ENTRY_SZ * sg_ptr->nents)))
-				goto err;
+			if ((data->type != QSEECOM_LISTENER_SERVICE) &&
+					(req->ifd_data[i].fd > 0)) {
 
+				if ((req->cmd_req_len <
+					 SG_ENTRY_SZ * sg_ptr->nents) ||
+					(req->ifd_data[i].cmd_buf_offset >
+						(req->cmd_req_len -
+						SG_ENTRY_SZ * sg_ptr->nents))) {
+					pr_err("Invalid offset = 0x%x\n",
+					req->ifd_data[i].cmd_buf_offset);
+					goto err;
+				}
+
+			} else if ((data->type == QSEECOM_LISTENER_SERVICE) &&
+					(lstnr_resp->ifd_data[i].fd > 0)) {
+
+				if ((lstnr_resp->resp_len <
+						SG_ENTRY_SZ * sg_ptr->nents) ||
+				(lstnr_resp->ifd_data[i].cmd_buf_offset >
+						(lstnr_resp->resp_len -
+						SG_ENTRY_SZ * sg_ptr->nents))) {
+					goto err;
+				}
+			}
 			if ((data->type == QSEECOM_CLIENT_APP &&
 				(data->client.app_arch == ELFCLASS32 ||
 				data->client.app_arch == ELFCLASS64)) ||
@@ -4223,10 +4243,9 @@ static int __qseecom_update_cmd_buf_64(void *msg, bool cleanup,
 		if (sg_ptr->nents == 1) {
 			uint64_t *update_64bit;
 
-			if (__boundary_checks_offset(req, lstnr_resp, data, i,
-				sizeof(uint64_t)))
+			if (__boundary_checks_offset_64(req, lstnr_resp,
+							data, i))
 				goto err;
-
 				/* 64bit app uses 64bit address */
 			update_64bit = (uint64_t *) field;
 			*update_64bit = cleanup ? 0 :
@@ -4236,9 +4255,30 @@ static int __qseecom_update_cmd_buf_64(void *msg, bool cleanup,
 			struct qseecom_sg_entry_64bit *update_64bit;
 			int j = 0;
 
-			if (__boundary_checks_offset(req, lstnr_resp, data, i,
-				(SG_ENTRY_SZ_64BIT * sg_ptr->nents)))
-				goto err;
+			if ((data->type != QSEECOM_LISTENER_SERVICE) &&
+					(req->ifd_data[i].fd > 0)) {
+
+				if ((req->cmd_req_len <
+					 SG_ENTRY_SZ_64BIT * sg_ptr->nents) ||
+					(req->ifd_data[i].cmd_buf_offset >
+					(req->cmd_req_len -
+					SG_ENTRY_SZ_64BIT * sg_ptr->nents))) {
+					pr_err("Invalid offset = 0x%x\n",
+					req->ifd_data[i].cmd_buf_offset);
+					goto err;
+				}
+
+			} else if ((data->type == QSEECOM_LISTENER_SERVICE) &&
+					(lstnr_resp->ifd_data[i].fd > 0)) {
+
+				if ((lstnr_resp->resp_len <
+					SG_ENTRY_SZ_64BIT * sg_ptr->nents) ||
+				(lstnr_resp->ifd_data[i].cmd_buf_offset >
+						(lstnr_resp->resp_len -
+					SG_ENTRY_SZ_64BIT * sg_ptr->nents))) {
+					goto err;
+				}
+			}
 			/* 64bit app uses 64bit address */
 			update_64bit = (struct qseecom_sg_entry_64bit *)field;
 			for (j = 0; j < sg_ptr->nents; j++) {
@@ -4354,11 +4394,6 @@ static int __qseecom_send_modfd_cmd(struct qseecom_dev_handle *data,
 	/* Allocate kernel buffer for request and response*/
 	ret = __qseecom_alloc_coherent_buf(req.cmd_req_len + req.resp_len,
 					&va, &pa);
-	if (ret) {
-		pr_err("Failed to allocate coherent buf, ret %d\n", ret);
-		return ret;
-	}
-
 	req.cmd_req_buf = va;
 	send_cmd_req.cmd_req_buf = (void *)pa;
 
@@ -5366,8 +5401,10 @@ int qseecom_process_listener_from_smcinvoke(struct scm_desc *desc)
 		pr_err("Failed on cmd %d for lsnr %d session %d, ret = %d\n",
 			(int)desc->ret[0], (int)desc->ret[2],
 			(int)desc->ret[1], ret);
+//#ifdef OPLUS_BUG_COMPATIBILITY
 	desc->ret[0] = resp.result;
 	desc->ret[1] = resp.resp_type;
+//#endif /* OPLUS_BUG_COMPATIBILITY */
 	desc->ret[2] = resp.data;
 	return ret;
 }
@@ -9695,8 +9732,7 @@ static int qseecom_suspend(struct platform_device *pdev, pm_message_t state)
 
 	mutex_unlock(&clk_access_lock);
 	mutex_unlock(&qsee_bw_mutex);
-	if (qseecom.support_bus_scaling)
-		cancel_work_sync(&qseecom.bw_inactive_req_ws);
+	cancel_work_sync(&qseecom.bw_inactive_req_ws);
 
 	return 0;
 }

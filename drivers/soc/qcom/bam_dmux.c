@@ -37,8 +37,6 @@
 #include <linux/soc/qcom/smem_state.h>
 #include <soc/qcom/subsystem_restart.h>
 #include <soc/qcom/subsystem_notif.h>
-#include <linux/irq.h>
-#include <linux/of_irq.h>
 
 #include "bam_dmux_private.h"
 
@@ -76,7 +74,8 @@ static struct bam_ops_if bam_default_ops = {
 	/* smsm */
 	.smsm_change_state_ptr = &qcom_smem_state_update_bits,
 	.smsm_get_state_ptr = &qcom_smem_state_get,
-	.smsm_put_state_ptr = &qcom_smem_state_put,
+	.smsm_state_cb_register_ptr = &qcom_smem_state_register,
+	.smsm_state_cb_deregister_ptr = &qcom_smem_state_unregister,
 
 	/* sps */
 	.sps_connect_ptr = &sps_connect,
@@ -95,6 +94,8 @@ static struct bam_ops_if bam_default_ops = {
 
 	.dma_to = DMA_TO_DEVICE,
 	.dma_from = DMA_FROM_DEVICE,
+	.node = NULL,
+	.smem_state = NULL,
 	.pwr_state = NULL,
 	.pwr_ack_state = NULL,
 };
@@ -265,7 +266,7 @@ static DEFINE_RWLOCK(ul_wakeup_lock);
 static DECLARE_WORK(kickoff_ul_wakeup, kickoff_ul_wakeup_func);
 static int bam_connection_is_active;
 static int wait_for_ack;
-static struct wakeup_source *bam_wakelock;
+static struct wakeup_source bam_wakelock;
 static int a2_pc_disabled;
 static DEFINE_MUTEX(dfab_status_lock);
 static int dfab_is_on;
@@ -298,8 +299,6 @@ static struct notifier_block restart_notifier = {
 };
 static int in_global_reset;
 /* end subsystem restart */
-
-static int ssr_skipped_reconnect;
 
 #define bam_ch_is_open(x)						\
 	(bam_ch[(x)].status == (BAM_CH_LOCAL_OPEN | BAM_CH_REMOTE_OPEN))
@@ -1124,12 +1123,6 @@ int msm_bam_dmux_open(uint32_t id, void *priv,
 		kfree(hdr);
 		return -ENODEV;
 	}
-	if (in_global_reset) {
-		BAM_DMUX_LOG("%s: In SSR... ch_id[%d]\n", __func__, id);
-		spin_unlock_irqrestore(&bam_ch[id].lock, flags);
-		kfree(hdr);
-		return -ENODEV;
-	}
 
 	bam_ch[id].notify = notify;
 	bam_ch[id].priv = priv;
@@ -1205,12 +1198,6 @@ int msm_bam_dmux_close(uint32_t id)
 	if (bam_ch_is_in_reset(id)) {
 		read_unlock(&ul_wakeup_lock);
 		bam_ch[id].status &= ~BAM_CH_IN_RESET;
-		return 0;
-	}
-
-	if (in_global_reset) {
-		BAM_DMUX_LOG("%s: In SSR... ch_id[%d]\n", __func__, id);
-		read_unlock(&ul_wakeup_lock);
 		return 0;
 	}
 
@@ -2009,7 +1996,6 @@ static void reconnect_to_bam(void)
 	int i;
 
 	if (in_global_reset) {
-		ssr_skipped_reconnect = 1;
 		BAM_DMUX_LOG("%s: skipping due to SSR\n", __func__);
 		return;
 	}
@@ -2063,7 +2049,7 @@ static void disconnect_to_bam(void)
 	unsigned long flags;
 	unsigned long time_remaining;
 
-	if (!in_global_reset && !ssr_skipped_reconnect) {
+	if (!in_global_reset) {
 		time_remaining = wait_for_completion_timeout(
 				&shutdown_completion,
 				msecs_to_jiffies(SHUTDOWN_TIMEOUT_MS));
@@ -2118,7 +2104,6 @@ static void disconnect_to_bam(void)
 	mutex_unlock(&bam_rx_pool_mutexlock);
 	toggle_apps_ack();
 	verify_tx_queue_is_empty(__func__);
-	ssr_skipped_reconnect = 0;
 }
 
 static void vote_dfab(void)
@@ -2175,7 +2160,7 @@ static void grab_wakelock(void)
 	BAM_DMUX_LOG("%s: ref count = %d\n", __func__,
 						wakelock_reference_count);
 	if (wakelock_reference_count == 0)
-		__pm_stay_awake(bam_wakelock);
+		__pm_stay_awake(&bam_wakelock);
 	++wakelock_reference_count;
 	spin_unlock_irqrestore(&wakelock_reference_lock, flags);
 }
@@ -2195,7 +2180,7 @@ static void release_wakelock(void)
 						wakelock_reference_count);
 	--wakelock_reference_count;
 	if (wakelock_reference_count == 0)
-		__pm_relax(bam_wakelock);
+		__pm_relax(&bam_wakelock);
 	spin_unlock_irqrestore(&wakelock_reference_lock, flags);
 }
 
@@ -2256,8 +2241,6 @@ static int restart_notifier_cb(struct notifier_block *this,
 	process_dynamic_mtu(false);
 	set_ul_mtu(0, true);
 	dynamic_mtu_enabled = false;
-	if (bam_connection_is_active)
-		ssr_skipped_reconnect = 1;
 
 	/* Cleanup Channel States */
 	mutex_lock(&bam_pdev_mutexlock);
@@ -2483,7 +2466,7 @@ static void toggle_apps_ack(void)
 {
 	static unsigned int clear_bit; /* 0 = set the bit, else clear bit */
 
-	if (in_global_reset || ssr_skipped_reconnect) {
+	if (in_global_reset) {
 		BAM_DMUX_LOG("%s: skipped due to SSR\n", __func__);
 		return;
 	}
@@ -2539,29 +2522,26 @@ static int bam_dmux_smsm_cb(void *state, u32 old_state, u32 new_state)
 	return 0;
 }
 
-static irqreturn_t bam_dmux_smsm_ack_cb(int irq, void *data)
+static int bam_dmux_smsm_ack_cb(void *state, u32 old_state, u32 new_state)
 {
 	int rcu_id;
 
 	rcu_id = srcu_read_lock(&bam_dmux_srcu);
 	DBG_INC_ACK_IN_CNT();
+	BAM_DMUX_LOG("%s: 0x%08x -> 0x%08x\n", __func__, old_state,
+			new_state);
 	complete_all(&ul_wakeup_ack_completion);
 	srcu_read_unlock(&bam_dmux_srcu, rcu_id);
-	return IRQ_HANDLED;
+	return 0;
 }
 
-static irqreturn_t a2_power_on_off_cb(int irq, void *data)
-{
+static const struct qcom_smem_state_ops dmux_smsm_state_ops = {
+	.update_bits = bam_dmux_smsm_cb,
+};
 
-	if (!bam_ops->a2_pwr_state) {
-		bam_dmux_smsm_cb(NULL, 0, SMSM_A2_POWER_CONTROL);
-		bam_ops->a2_pwr_state = SMSM_A2_POWER_CONTROL;
-	} else {
-		bam_dmux_smsm_cb(NULL, SMSM_A2_POWER_CONTROL, 0);
-		bam_ops->a2_pwr_state = 0;
-	}
-	return IRQ_HANDLED;
-}
+static const struct qcom_smem_state_ops dmux_smsm_state_ack_ops = {
+	.update_bits = bam_dmux_smsm_ack_cb,
+};
 
 /**
  * msm_bam_dmux_set_bam_ops() - sets the bam_ops
@@ -2601,6 +2581,10 @@ EXPORT_SYMBOL(msm_bam_dmux_deinit);
 void msm_bam_dmux_reinit(void)
 {
 	bam_mux_initialized = 0;
+	bam_ops->smsm_state_cb_register_ptr(bam_ops->node,
+					&dmux_smsm_state_ops, NULL);
+	bam_ops->smsm_state_cb_register_ptr(bam_ops->node,
+					&dmux_smsm_state_ack_ops, NULL);
 }
 EXPORT_SYMBOL(msm_bam_dmux_reinit);
 
@@ -2665,13 +2649,10 @@ static void set_dl_mtu(int requested_mtu)
 
 static int bam_dmux_probe(struct platform_device *pdev)
 {
-	int rc, i;
+	int rc;
 	struct resource *r;
 	void *subsys_h;
-	u32 requested_dl_mtu;
-	int a2_pwr_ctrl_irq;
-	int a2_pwr_ctrl_ack_irq;
-	u32 bit_pos;
+	uint32_t requested_dl_mtu;
 
 	DBG("%s probe called\n", __func__);
 	if (bam_mux_initialized)
@@ -2685,27 +2666,11 @@ static int bam_dmux_probe(struct platform_device *pdev)
 		}
 		a2_phys_base = r->start;
 		a2_phys_size = (uint32_t)(resource_size(r));
-		a2_bam_irq = of_irq_get_byname(pdev->dev.of_node, "dmux");
-		if (a2_bam_irq < 0) {
-			pr_err("%s: bam dmux irq field missing\n", __func__);
-			return a2_bam_irq;
+		a2_bam_irq = platform_get_irq(pdev, 0);
+		if (a2_bam_irq == -ENXIO) {
+			pr_err("%s: irq field missing\n", __func__);
+			return -ENODEV;
 		}
-
-		a2_pwr_ctrl_irq = of_irq_get_byname(pdev->dev.of_node, "ctrl");
-		if (a2_pwr_ctrl_irq < 0) {
-			pr_err("%s: bam power ctrl irq field missing\n",
-				__func__);
-			return a2_pwr_ctrl_irq;
-		}
-
-		a2_pwr_ctrl_ack_irq = of_irq_get_byname(pdev->dev.of_node,
-							"ack");
-		if (a2_pwr_ctrl_ack_irq < 0) {
-			pr_err("%s: bam power ack irq field missing\n",
-				__func__);
-			return a2_pwr_ctrl_ack_irq;
-		}
-
 		satellite_mode = of_property_read_bool(pdev->dev.of_node,
 						"qcom,satellite-mode");
 
@@ -2756,14 +2721,11 @@ static int bam_dmux_probe(struct platform_device *pdev)
 		a2_bam_irq = A2_BAM_IRQ;
 		num_buffers = DEFAULT_NUM_BUFFERS;
 		set_rx_buffer_ring_pool(num_buffers);
-		a2_pwr_ctrl_irq = -ENODEV;
-		a2_pwr_ctrl_ack_irq = -ENODEV;
 	}
 
 	dma_dev = &pdev->dev;
 	/* The BAM only suports 32 bits of address */
-	dma_dev->dma_mask = devm_kmalloc(&pdev->dev,
-				sizeof(*dma_dev->dma_mask), GFP_KERNEL);
+	dma_dev->dma_mask = kmalloc(sizeof(*dma_dev->dma_mask), GFP_KERNEL);
 	if (!dma_dev->dma_mask) {
 		DMUX_LOG_KERR("%s: cannot allocate dma_mask\n", __func__);
 		return -ENOMEM;
@@ -2771,12 +2733,12 @@ static int bam_dmux_probe(struct platform_device *pdev)
 	*dma_dev->dma_mask = DMA_BIT_MASK(32);
 	dma_dev->coherent_dma_mask = DMA_BIT_MASK(32);
 
-	xo_clk = devm_clk_get(&pdev->dev, "xo");
+	xo_clk = clk_get(&pdev->dev, "xo");
 	if (IS_ERR(xo_clk)) {
 		BAM_DMUX_LOG("%s: did not get xo clock\n", __func__);
 		xo_clk = NULL;
 	}
-	dfab_clk = devm_clk_get(&pdev->dev, "bus_clk");
+	dfab_clk = clk_get(&pdev->dev, "bus_clk");
 	if (IS_ERR(dfab_clk)) {
 		BAM_DMUX_LOG("%s: did not get dfab clock\n", __func__);
 		dfab_clk = NULL;
@@ -2802,20 +2764,21 @@ static int bam_dmux_probe(struct platform_device *pdev)
 
 	bam_mux_tx_workqueue = create_singlethread_workqueue("bam_dmux_tx");
 	if (!bam_mux_tx_workqueue) {
-		rc = -ENOMEM;
-		goto free_wq_rx;
+		destroy_workqueue(bam_mux_rx_workqueue);
+		return -ENOMEM;
 	}
 
-	for (i = 0; i < BAM_DMUX_NUM_CHANNELS; i++) {
-		spin_lock_init(&bam_ch[i].lock);
-		scnprintf(bam_ch[i].name, BAM_DMUX_CH_NAME_MAX_LEN,
-					"bam_dmux_ch_%d", i);
+	for (rc = 0; rc < BAM_DMUX_NUM_CHANNELS; ++rc) {
+		spin_lock_init(&bam_ch[rc].lock);
+		scnprintf(bam_ch[rc].name, BAM_DMUX_CH_NAME_MAX_LEN,
+					"bam_dmux_ch_%d", rc);
 		/* bus 2, ie a2 stream 2 */
-		bam_ch[i].pdev = platform_device_alloc(bam_ch[i].name, 2);
-		if (!bam_ch[i].pdev) {
-			rc = -ENOMEM;
+		bam_ch[rc].pdev = platform_device_alloc(bam_ch[rc].name, 2);
+		if (!bam_ch[rc].pdev) {
 			pr_err("%s: platform device alloc failed\n", __func__);
-			goto free_platform_dev;
+			destroy_workqueue(bam_mux_rx_workqueue);
+			destroy_workqueue(bam_mux_tx_workqueue);
+			return -ENOMEM;
 		}
 	}
 
@@ -2825,81 +2788,64 @@ static int bam_dmux_probe(struct platform_device *pdev)
 	init_completion(&shutdown_completion);
 	complete_all(&shutdown_completion);
 	INIT_DELAYED_WORK(&ul_timeout_work, ul_timeout);
-	bam_wakelock = wakeup_source_register(NULL, "bam_dmux_wakelock");
+	wakeup_source_init(&bam_wakelock, "bam_dmux_wakelock");
 	init_srcu_struct(&bam_dmux_srcu);
 
 	subsys_h = subsys_notif_register_notifier("modem", &restart_notifier);
 	if (IS_ERR(subsys_h)) {
-		rc = PTR_ERR(subsys_h);
+		destroy_workqueue(bam_mux_rx_workqueue);
+		destroy_workqueue(bam_mux_tx_workqueue);
+		rc = (int)PTR_ERR(subsys_h);
 		pr_err("%s: failed to register for ssr rc: %d\n", __func__, rc);
-		goto free_platform_dev;
+		return rc;
 	}
 
-	bam_ops->pwr_state = bam_ops->smsm_get_state_ptr(&pdev->dev,
-						"pwrctrl", &bit_pos);
+	bam_ops->pwr_state = bam_ops->smsm_state_cb_register_ptr(
+			pdev->dev.of_node,
+			&dmux_smsm_state_ops, NULL);
+
 	if (IS_ERR(bam_ops->pwr_state)) {
-		rc = PTR_ERR(bam_ops->pwr_ack_state);
-		pr_err("%s: smsm power control state get failed, rc: %d\n",
-			__func__, rc);
-		goto free_subsys_reg;
+		subsys_notif_unregister_notifier(subsys_h, &restart_notifier);
+		destroy_workqueue(bam_mux_rx_workqueue);
+		destroy_workqueue(bam_mux_tx_workqueue);
+		pr_err("%s: smsm cb register failed, rc: %d\n", __func__, rc);
+		return -ENOMEM;
 	}
 
-	bam_ops->pwr_ack_state = bam_ops->smsm_get_state_ptr(&pdev->dev,
-						"pwrctrlack", &bit_pos);
+	bam_ops->pwr_ack_state = bam_ops->smsm_state_cb_register_ptr(
+			pdev->dev.of_node,
+			&dmux_smsm_state_ack_ops, NULL);
+
 	if (IS_ERR(bam_ops->pwr_ack_state)) {
-		rc = PTR_ERR(bam_ops->pwr_ack_state);
-		pr_err("%s: smsm power control ack state get failed, rc: %d\n",
-			__func__, rc);
-		goto free_pwr_state;
+		subsys_notif_unregister_notifier(subsys_h, &restart_notifier);
+		destroy_workqueue(bam_mux_rx_workqueue);
+		destroy_workqueue(bam_mux_tx_workqueue);
+		bam_ops->smsm_state_cb_deregister_ptr(bam_ops->pwr_state);
+		pr_err("%s: smsm ack cb register failed, rc: %d\n", __func__,
+				rc);
+		for (rc = 0; rc < BAM_DMUX_NUM_CHANNELS; ++rc)
+			platform_device_put(bam_ch[rc].pdev);
+		return -ENOMEM;
 	}
 
-	bam_ops->a2_pwr_state = 0;
-	if (a2_pwr_ctrl_irq >= 0) {
-		rc = devm_request_threaded_irq(dma_dev,
-				a2_pwr_ctrl_irq, NULL,
-				a2_power_on_off_cb,
-				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-				NULL, dma_dev);
-		if (rc < 0)  {
-			dev_err(dma_dev, "smsm power control irq %d attach failed\n",
-				a2_pwr_ctrl_irq);
-			goto free_pwr_ack_state;
-		}
+	bam_ops->smem_state = qcom_smem_get(QCOM_SMEM_HOST_ANY,
+						SMSM_A2_POWER_CONTROL, NULL);
+	if (IS_ERR(bam_ops->smem_state)) {
+		subsys_notif_unregister_notifier(subsys_h, &restart_notifier);
+		destroy_workqueue(bam_mux_rx_workqueue);
+		destroy_workqueue(bam_mux_tx_workqueue);
+		bam_ops->smsm_state_cb_deregister_ptr(bam_ops->pwr_state);
+		bam_ops->smsm_state_cb_deregister_ptr(bam_ops->pwr_ack_state);
+		dev_err(&pdev->dev, "Unable to acquire smem state entry\n");
+		for (rc = 0; rc < BAM_DMUX_NUM_CHANNELS; ++rc)
+			platform_device_put(bam_ch[rc].pdev);
+		return PTR_ERR(bam_ops->smem_state);
 	}
+	bam_ops->node = pdev->dev.of_node;
 
-	if (a2_pwr_ctrl_ack_irq >= 0)  {
-		rc = devm_request_threaded_irq(dma_dev,
-				a2_pwr_ctrl_ack_irq, NULL,
-				bam_dmux_smsm_ack_cb,
-				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-				NULL, dma_dev);
-		if (rc < 0)  {
-			dev_err(dma_dev, "smsm power control ack irq %d attach failed\n",
-				a2_pwr_ctrl_ack_irq);
-			goto free_pwr_ack_state;
-		}
-	}
+	bam_dmux_smsm_cb(NULL, 0, *bam_ops->smem_state);
 
 	return 0;
-
-free_pwr_ack_state:
-	bam_ops->smsm_put_state_ptr(bam_ops->pwr_ack_state);
-free_pwr_state:
-	bam_ops->smsm_put_state_ptr(bam_ops->pwr_state);
-free_subsys_reg:
-	subsys_notif_unregister_notifier(subsys_h, &restart_notifier);
-free_platform_dev:
-	for (i = 0; i < BAM_DMUX_NUM_CHANNELS; i++) {
-		if (bam_ch[i].pdev) {
-			platform_device_put(bam_ch[i].pdev);
-			bam_ch[i].pdev = NULL;
-		}
-	}
-	destroy_workqueue(bam_mux_tx_workqueue);
-free_wq_rx:
-	destroy_workqueue(bam_mux_rx_workqueue);
-
-	return rc;
 }
 
 static const struct of_device_id msm_match_table[] = {

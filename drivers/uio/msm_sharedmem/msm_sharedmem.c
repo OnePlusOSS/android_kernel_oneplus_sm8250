@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  */
 
 #define DRIVER_NAME "msm_sharedmem"
@@ -17,6 +17,10 @@
 
 #define CLIENT_ID_PROP "qcom,client-id"
 #define MPSS_RMTS_CLIENT_ID 1
+#ifdef OPLUS_BUG_STABILITY
+//add for nv backup and restore
+#define MPSS_OEMBACK_CLIENT_ID 4
+#endif /* OPLUS_BUG_STABILITY */
 
 static int uio_get_mem_index(struct uio_info *info, struct vm_area_struct *vma)
 {
@@ -74,10 +78,14 @@ static int setup_shared_ram_perms(u32 client_id, phys_addr_t addr, u32 size,
 	int ret = -EINVAL;
 	u32 source_vmlist[1] = {VMID_HLOS};
 
-	if (client_id != MPSS_RMTS_CLIENT_ID) {
-		pr_err("invalid client id %u\n", client_id);
+	#ifndef OPLUS_BUG_STABILITY
+	//add for nv backup and restore
+	//if (client_id != MPSS_RMTS_CLIENT_ID)
+	//pr_err("invalid client id %u\n", client_id);
+	#else /* OPLUS_BUG_STABILITY */
+	if ((client_id != MPSS_RMTS_CLIENT_ID) && (client_id != MPSS_OEMBACK_CLIENT_ID))
+	#endif /* OPLUS_BUG_STABILITY */
 		return ret;
-	}
 
 	if (vm_nav_path) {
 		int dest_vmids[3] = {VMID_HLOS, VMID_MSS_MSA, VMID_NAV};
@@ -186,8 +194,11 @@ static int msm_sharedmem_probe(struct platform_device *pdev)
 			"qcom,vm-nav-path");
 
 	/* Set up the permissions for the shared ram that was allocated. */
-	setup_shared_ram_perms(client_id, shared_mem_pyhsical,
+	ret = setup_shared_ram_perms(client_id, shared_mem_pyhsical,
 					shared_mem_size, vm_nav_path);
+	if (ret)
+		goto out;
+
 	/* Setup device */
 	info->mmap = sharedmem_mmap; /* Custom mmap function. */
 	info->name = clnt_res->name;

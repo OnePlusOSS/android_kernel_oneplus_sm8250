@@ -438,6 +438,13 @@ config SCHED_WALT
 	used to guide task placement as well as task frequency requirements
 	for cpufreq governors.
 
+config SCHED_WALT_COBUCK
+	bool "Support walt cobuck feature"
+	depends on SCHED_WALT
+	help
+	This feature will allow gold core freq based on the max loading of
+	prime core and gold core loading.
+
 config HAVE_SCHED_AVG_IRQ
 	def_bool y
 	depends on IRQ_TIME_ACCOUNTING || PARAVIRT_TIME_ACCOUNTING

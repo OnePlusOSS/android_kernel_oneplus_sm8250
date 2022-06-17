@@ -2014,17 +2014,15 @@ static int _tmc_disable_etr_sink(struct coresight_device *csdev,
 	/* Complain if we (somehow) got out of sync */
 	WARN_ON_ONCE(drvdata->mode == CS_MODE_DISABLED);
 	if (drvdata->mode != CS_MODE_DISABLED) {
-		drvdata->mode = CS_MODE_DISABLED;
 		if (drvdata->out_mode == TMC_ETR_OUT_MODE_USB) {
 			if (!drvdata->byte_cntr->sw_usb) {
 				__tmc_etr_disable_to_bam(drvdata);
 				spin_unlock_irqrestore(&drvdata->spinlock,
 					flags);
 				tmc_etr_bam_disable(drvdata);
-				mutex_unlock(&drvdata->mem_lock);
 				usb_qdss_close(drvdata->usbch);
-				mutex_lock(&drvdata->mem_lock);
 				drvdata->usbch = NULL;
+				drvdata->mode = CS_MODE_DISABLED;
 				goto out;
 			} else {
 				spin_unlock_irqrestore(&drvdata->spinlock,
@@ -2036,10 +2034,12 @@ static int _tmc_disable_etr_sink(struct coresight_device *csdev,
 		} else {
 			tmc_etr_disable_hw(drvdata);
 		}
+		drvdata->mode = CS_MODE_DISABLED;
 	}
 
 	/* Dissociate from monitored process. */
 	drvdata->pid = -1;
+	drvdata->mode = CS_MODE_DISABLED;
 	/* Reset perf specific data */
 	drvdata->perf_buf = NULL;
 
@@ -2099,25 +2099,23 @@ int tmc_etr_switch_mode(struct tmc_drvdata *drvdata, const char *out_mode)
 		return 0;
 	}
 
-	mutex_unlock(&drvdata->mem_lock);
 	coresight_disable_all_source_link();
-	mutex_lock(&drvdata->mem_lock);
 	_tmc_disable_etr_sink(drvdata->csdev, true);
 	old_mode = drvdata->out_mode;
 	drvdata->out_mode = new_mode;
 	if (tmc_enable_etr_sink_sysfs(drvdata->csdev)) {
 		drvdata->out_mode = old_mode;
 		tmc_enable_etr_sink_sysfs(drvdata->csdev);
-		mutex_unlock(&drvdata->mem_lock);
 		coresight_enable_all_source_link();
 		dev_err(drvdata->dev, "Switch to %s failed. Fall back to %s.\n",
 			str_tmc_etr_out_mode[new_mode],
 			str_tmc_etr_out_mode[old_mode]);
+		mutex_unlock(&drvdata->mem_lock);
 		return -EINVAL;
 	}
 
-	mutex_unlock(&drvdata->mem_lock);
 	coresight_enable_all_source_link();
+	mutex_unlock(&drvdata->mem_lock);
 	return 0;
 }
 

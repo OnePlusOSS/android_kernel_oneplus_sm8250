@@ -4,6 +4,10 @@
 
 #include <linux/types.h>
 
+//#ifdef OPLUS_FEATURE_NWPOWER
+#include <net/oplus_nwpower.h>
+//#endif /* OPLUS_FEATURE_NWPOWER */
+
 struct sk_buff;
 
 /* endpoint node id auto assignment */

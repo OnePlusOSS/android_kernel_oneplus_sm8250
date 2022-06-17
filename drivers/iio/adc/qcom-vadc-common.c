@@ -246,7 +246,81 @@ static const struct vadc_map_pt adcmap_batt_therm_100k_6125[] = {
  * Voltage to temperature table for 30k pull up for bat_therm with
  * Alium.
  */
-static const struct vadc_map_pt adcmap_batt_therm_30k[] = {
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	static const struct vadc_map_pt adcmap_batt_therm_30k[] = {
+	{	1623	,	-400	},
+	{	1600	,	-380	},
+	{	1575	,	-360	},
+	{	1548	,	-340	},
+	{	1520	,	-320	},
+	{	1491	,	-300	},
+	{	1460	,	-280	},
+	{	1429	,	-260	},
+	{	1396	,	-240	},
+	{	1363	,	-220	},
+	{	1328	,	-200	},
+	{	1293	,	-180	},
+	{	1258	,	-160	},
+	{	1222	,	-140	},
+	{	1186	,	-120	},
+	{	1150	,	-100	},
+	{	1114	,	-80 },
+	{	1078	,	-60 },
+	{	1042	,	-40 },
+	{	1008	,	-20 },
+	{	973 	,	0	},
+	{	940 	,	20	},
+	{	907 	,	40	},
+	{	875 	,	60	},
+	{	845 	,	80	},
+	{	815 	,	100 },
+	{	786 	,	120 },
+	{	759 	,	140 },
+	{	732 	,	160 },
+	{	707 	,	180 },
+	{	683 	,	200 },
+	{	660 	,	220 },
+	{	638 	,	240 },
+	{	618 	,	260 },
+	{	598 	,	280 },
+	{	579 	,	300 },
+	{	562 	,	320 },
+	{	545 	,	340 },
+	{	529 	,	360 },
+	{	514 	,	380 },
+	{	501 	,	400 },
+	{	487 	,	420 },
+	{	475 	,	440 },
+	{	463 	,	460 },
+	{	452 	,	480 },
+	{	442 	,	500 },
+	{	433 	,	520 },
+	{	423 	,	540 },
+	{	415 	,	560 },
+	{	407 	,	580 },
+	{	399 	,	600 },
+	{	392 	,	620 },
+	{	386 	,	640 },
+	{	379 	,	660 },
+	{	374 	,	680 },
+	{	368 	,	700 },
+	{	363 	,	720 },
+	{	358 	,	740 },
+	{	353 	,	760 },
+	{	349 	,	780 },
+	{	345 	,	800 },
+	{	341 	,	820 },
+	{	338 	,	840 },
+	{	334 	,	860 },
+	{	331 	,	880 },
+	{	328 	,	900 },
+	{	325 	,	920 },
+	{	323 	,	940 },
+	{	320 	,	960 },
+	{	318 	,	980 },
+	};
+#else
+	static const struct vadc_map_pt adcmap_batt_therm_30k[] = {
 	{1864,	-400},
 	{1863,	-380},
 	{1861,	-360},
@@ -317,7 +391,9 @@ static const struct vadc_map_pt adcmap_batt_therm_30k[] = {
 	{349,	940},
 	{332,	960},
 	{315,	980}
-};
+	};
+#endif
+
 
 /*
  * Voltage to temperature table for 30k pull up for bat_therm with
@@ -759,61 +835,6 @@ static const struct vadc_map_pt adcmap7_100k[] = {
 	{ 2420, 130048 }
 };
 
-/* Voltage to temperature */
-static const struct vadc_map_pt adcmap_batt_therm_qrd_215[] = {
-	{1575,  -200},
-	{1549,  -180},
-	{1522,  -160},
-	{1493,  -140},
-	{1463,  -120},
-	{1431,  -100},
-	{1398,  -80},
-	{1364,  -60},
-	{1329,  -40},
-	{1294,  -20},
-	{1258,  0},
-	{1222,  20},
-	{1187,  40},
-	{1151,  60},
-	{1116,  80},
-	{1082,  100},
-	{1049,  120},
-	{1016,  140},
-	{985,   160},
-	{955,   180},
-	{926,   200},
-	{899,   220},
-	{873,   240},
-	{849,   260},
-	{825,   280},
-	{804,   300},
-	{783,   320},
-	{764,   340},
-	{746,   360},
-	{729,   380},
-	{714,   400},
-	{699,   420},
-	{686,   440},
-	{673,   460},
-	{662,   480},
-	{651,   500},
-	{641,   520},
-	{632,   540},
-	{623,   560},
-	{615,   580},
-	{608,   600},
-	{601,   620},
-	{595,   640},
-	{589,   660},
-	{583,   680},
-	{578,   700},
-	{574,   720},
-	{569,   740},
-	{565,   760},
-	{562,   780},
-	{558,   800}
-};
-
 static int qcom_vadc_map_voltage_temp(const struct vadc_map_pt *pts,
 				      u32 tablesize, s32 input, s64 *output)
 {
@@ -885,10 +906,6 @@ static int qcom_vadc_scale_volt(const struct vadc_linear_graph *calib_graph,
 
 	voltage = voltage * prescale->den;
 	result = div64_s64(voltage, prescale->num);
-
-	if (!absolute)
-		result *= 1000;
-
 	*result_uv = result;
 
 	return 0;
@@ -918,29 +935,6 @@ static int qcom_vadc_scale_therm(const struct vadc_linear_graph *calib_graph,
 
 	return 0;
 }
-
-static int qcom_vadc_scale_therm_qrd_215(
-				const struct vadc_linear_graph *calib_graph,
-				const struct vadc_prescale_ratio *prescale,
-				bool absolute, u16 adc_code,
-				int *result_mdec)
-{
-	s64 voltage = 0, result = 0;
-	int ret;
-
-	qcom_vadc_scale_calib(calib_graph, adc_code, absolute, &voltage);
-
-	ret = qcom_vadc_map_voltage_temp(adcmap_batt_therm_qrd_215,
-					 ARRAY_SIZE(adcmap_batt_therm_qrd_215),
-					 voltage, &result);
-	if (ret)
-		return ret;
-
-	*result_mdec = result;
-
-	return 0;
-}
-
 
 static int qcom_vadc_scale_die_temp(const struct vadc_linear_graph *calib_graph,
 				    const struct vadc_prescale_ratio *prescale,
@@ -1387,10 +1381,6 @@ int qcom_vadc_scale(enum vadc_scale_fn_type scaletype,
 	case SCALE_THERM_100K_PULLUP:
 	case SCALE_XOTHERM:
 		return qcom_vadc_scale_therm(calib_graph, prescale,
-					     absolute, adc_code,
-					     result);
-	case SCALE_BATT_THERM_QRD_215:
-		return qcom_vadc_scale_therm_qrd_215(calib_graph, prescale,
 					     absolute, adc_code,
 					     result);
 	case SCALE_PMIC_THERM:

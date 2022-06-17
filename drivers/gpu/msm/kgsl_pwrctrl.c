@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2010-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2010-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/msm-bus.h>
@@ -1428,6 +1428,26 @@ static ssize_t gpu_busy_percentage_show(struct device *dev,
 	return ret;
 }
 
+#ifdef CONFIG_OPLUS_FEATURE_MIDAS
+static ssize_t gpu_status_time_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	struct kgsl_device *device = dev_get_drvdata(dev);
+	struct kgsl_pwrctrl *pwr;
+
+	u64 slumber_time = 0;
+
+	if (device == NULL)
+		return 0;
+	pwr = &device->pwrctrl;
+
+	slumber_time = pwr->gpu_stats.gpu_pwr_stats[PWR_STAT_SLUMBER].total;
+
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", slumber_time);
+}
+#endif
+
 static ssize_t min_clock_mhz_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
@@ -1524,29 +1544,23 @@ static ssize_t temp_show(struct device *dev,
 					char *buf)
 {
 	struct kgsl_device *device = dev_get_drvdata(dev);
-	struct device *_dev;
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	struct thermal_zone_device *thermal_dev;
-	int temperature = INT_MIN, max_temp = INT_MIN;
-	const char *name;
-	struct property *prop;
+	int ret, temperature = 0;
 
-	_dev = &device->pdev->dev;
+	if (!pwr->tzone_name)
+		return 0;
 
-	of_property_for_each_string(_dev->of_node,
-		"qcom,tzone-names", prop, name) {
-		thermal_dev = thermal_zone_get_zone_by_name(name);
+	thermal_dev = thermal_zone_get_zone_by_name((char *)pwr->tzone_name);
+	if (thermal_dev == NULL)
+		return 0;
 
-		if (IS_ERR(thermal_dev))
-			continue;
-
-		if (thermal_zone_get_temp(thermal_dev, &temperature))
-			continue;
-
-		max_temp = max(temperature, max_temp);
-	}
+	ret = thermal_zone_get_temp(thermal_dev, &temperature);
+	if (ret)
+		return 0;
 
 	return scnprintf(buf, PAGE_SIZE, "%d\n",
-			max_temp);
+			temperature);
 }
 
 static ssize_t pwrscale_store(struct device *dev,
@@ -1609,6 +1623,9 @@ static DEVICE_ATTR_RW(max_clock_mhz);
 static DEVICE_ATTR_RO(clock_mhz);
 static DEVICE_ATTR_RO(freq_table_mhz);
 static DEVICE_ATTR_RW(pwrscale);
+#ifdef CONFIG_OPLUS_FEATURE_MIDAS
+static DEVICE_ATTR_RO(gpu_status_time);
+#endif
 
 static const struct attribute *pwrctrl_attr_list[] = {
 	&dev_attr_gpuclk.attr,
@@ -1638,6 +1655,9 @@ static const struct attribute *pwrctrl_attr_list[] = {
 	&dev_attr_freq_table_mhz.attr,
 	&dev_attr_temp.attr,
 	&dev_attr_pwrscale.attr,
+#ifdef CONFIG_OPLUS_FEATURE_MIDAS
+	&dev_attr_gpu_status_time.attr,
+#endif
 	NULL,
 };
 
@@ -2433,6 +2453,10 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 
 	kgsl_pwrctrl_vbif_init(device);
 
+	/* temperature sensor name */
+	of_property_read_string(pdev->dev.of_node, "qcom,tzone-name",
+		&pwr->tzone_name);
+
 	return result;
 
 error_cleanup_bus_ib:
@@ -3039,6 +3063,11 @@ int kgsl_pwrctrl_change_state(struct kgsl_device *device, int state)
 
 		_record_pwrevent(device, t, KGSL_PWREVENT_STATE);
 	}
+
+#ifdef CONFIG_OPLUS_FEATURE_MIDAS
+	oplus_pwrctrl_update_stats_info(device);
+#endif
+
 	return status;
 }
 EXPORT_SYMBOL(kgsl_pwrctrl_change_state);
@@ -3429,3 +3458,38 @@ int kgsl_pwrctrl_set_default_gpu_pwrlevel(struct kgsl_device *device)
 	/* Request adjusted DCVS level */
 	return kgsl_clk_set_rate(device, pwr->active_pwrlevel);
 }
+
+#ifdef CONFIG_OPLUS_FEATURE_MIDAS
+/**
+ * oplus_pwrctrl_update_stats_info() - update oplus gpu_info
+ * @device: Pointer to the kgsl_device struct
+ *
+ * Update gpu state changes in gpu_info only, now only
+ * consider KGSL_STATE_SLUMBER status.
+ */
+void oplus_pwrctrl_update_stats_info(struct kgsl_device *device)
+{
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
+	u64 total;
+	ktime_t tmp;
+
+	tmp = ktime_get();
+	total = ktime_us_delta(tmp, pwr->gpu_stats.timestamp);
+
+	if (pwr->gpu_stats.last_state == KGSL_STATE_NONE) {
+		if(device->state == KGSL_STATE_SLUMBER)
+	        goto update;
+	}
+	else {
+		// it means we met state transition
+		if(pwr->gpu_stats.last_state == KGSL_STATE_SLUMBER) {
+			pwr->gpu_stats.gpu_pwr_stats[PWR_STAT_SLUMBER].total += total;
+			goto update;
+		}
+	}
+
+update:
+	pwr->gpu_stats.timestamp = tmp;
+	pwr->gpu_stats.last_state = device->state;
+}
+#endif

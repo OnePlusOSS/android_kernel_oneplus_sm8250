@@ -13,6 +13,13 @@
 #include <linux/slab.h>
 #include <linux/soc/qcom/smem.h>
 
+#ifdef OPLUS_FEATURE_AGINGTEST
+#include <linux/string.h>
+#include <linux/kallsyms.h>
+
+#define SMEM_DUMP_INFO    129
+#endif /*OPLUS_FEATURE_AGINGTEST*/
+
 /*
  * The Qualcomm shared memory system is a allocate only heap structure that
  * consists of one of more memory areas that can be accessed by the processors
@@ -777,6 +784,69 @@ phys_addr_t qcom_smem_virt_to_phys(void *p)
 }
 EXPORT_SYMBOL(qcom_smem_virt_to_phys);
 
+#ifdef OPLUS_FEATURE_AGINGTEST
+static char caller_function_name[KSYM_SYMBOL_LEN];
+char *parse_function_builtin_return_address(unsigned long function_address)
+{
+	char *cur = caller_function_name;
+
+	if (!function_address)
+		return NULL;
+
+	sprint_symbol(caller_function_name, function_address);
+	strsep(&cur, "+");
+
+	return caller_function_name;
+}
+EXPORT_SYMBOL(parse_function_builtin_return_address);
+
+void save_dump_reason_to_smem(char *reason, char *function_name)
+{
+	int reason_len = 0, name_len = 0;
+	int ret;
+	size_t size;
+	static int flag = 0;
+	struct dump_info *dp_info;
+
+	if (flag)
+		return;
+
+	size = sizeof(struct dump_info);
+	ret = qcom_smem_alloc(QCOM_SMEM_HOST_ANY, SMEM_DUMP_INFO, size);
+	if (ret < 0 && ret != -EEXIST) {
+		pr_err("%s:unable to allocate dp_info \n", __func__);
+		return;
+	}
+
+	dp_info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_DUMP_INFO, &size);
+	if (IS_ERR_OR_NULL(dp_info))
+		pr_err("%s: get dp_info failure\n", __func__);
+	else {
+		if (reason != NULL) {
+			pr_err("%s: info : %s\n",__func__, reason);
+			reason_len = strlen(reason);
+			reason_len = (reason_len < DUMP_REASON_SIZE)? reason_len:DUMP_REASON_SIZE;
+			if (((strlen(dp_info->dump_reason) + reason_len) < DUMP_REASON_SIZE)) {
+				strcat(dp_info->dump_reason, reason);
+			}
+		}
+		if (function_name != NULL) {
+			name_len = strlen(function_name);
+			name_len = (name_len < DUMP_REASON_SIZE)? name_len:DUMP_REASON_SIZE;
+			if (((strlen(dp_info->dump_reason) + name_len + 1) < DUMP_REASON_SIZE)) {
+				strcat(dp_info->dump_reason, ":");
+				strcat(dp_info->dump_reason, function_name);
+			}
+		}
+	}
+	pr_err("\r%s: dump_reason : %s reason_len=%d function caused panic :%s name_len=%d \n", __func__,
+							(reason != NULL)?reason:"unknown", reason_len, (function_name != NULL)?function_name:"unknown", name_len);
+	/* Make sure save_dump_reason_to_smem() is called only once  during subsystem crash */
+	flag++;
+}
+EXPORT_SYMBOL(save_dump_reason_to_smem);
+#endif /*OPLUS_FEATURE_AGINGTEST*/
+
 static int qcom_smem_get_sbl_version(struct qcom_smem *smem)
 {
 	struct smem_header *header;
@@ -1061,27 +1131,15 @@ static int qcom_smem_map_toc(struct qcom_smem *smem, struct device *dev,
 	return 0;
 }
 
-static int qcom_smem_map_legacy(struct qcom_smem *smem)
+static int qcom_smem_mamp_legacy(struct qcom_smem *smem)
 {
 	struct smem_header *header;
 	u32 phys_addr;
 	u32 p_size;
-	unsigned long flags;
-	int ret;
 
 	phys_addr = smem->regions[0].aux_base;
-	header = (struct smem_header __iomem *)smem->regions[0].virt_base;
-
-	ret = hwspin_lock_timeout_irqsave(smem->hwlock,
-					  HWSPINLOCK_TIMEOUT,
-					  &flags);
-	if (ret)
-		return ret;
-
-	p_size = readl_relaxed(&header->available) +
-			readl_relaxed(&header->free_offset);
-
-	hwspin_unlock_irqrestore(smem->hwlock, &flags);
+	header = smem->regions[0].virt_base;
+	p_size = header->available;
 
 	/* unmap previously mapped starting 4k for smem header */
 	devm_iounmap(smem->dev, smem->regions[0].virt_base);
@@ -1133,17 +1191,6 @@ static int qcom_smem_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	hwlock_id = of_hwspin_lock_get_id(pdev->dev.of_node, 0);
-	if (hwlock_id < 0) {
-		if (hwlock_id != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "failed to retrieve hwlock\n");
-		return hwlock_id;
-	}
-
-	smem->hwlock = hwspin_lock_request_specific(hwlock_id);
-	if (!smem->hwlock)
-		return -ENXIO;
-
 	version = qcom_smem_get_sbl_version(smem);
 	switch (version >> 16) {
 	case SMEM_GLOBAL_PART_VERSION:
@@ -1153,7 +1200,7 @@ static int qcom_smem_probe(struct platform_device *pdev)
 		smem->item_count = qcom_smem_get_item_count(smem);
 		break;
 	case SMEM_GLOBAL_HEAP_VERSION:
-		qcom_smem_map_legacy(smem);
+		qcom_smem_mamp_legacy(smem);
 		smem->item_count = SMEM_ITEM_COUNT;
 		break;
 	default:
@@ -1164,6 +1211,17 @@ static int qcom_smem_probe(struct platform_device *pdev)
 	ret = qcom_smem_enumerate_partitions(smem, SMEM_HOST_APPS);
 	if (ret < 0 && ret != -ENOENT)
 		return ret;
+
+	hwlock_id = of_hwspin_lock_get_id(pdev->dev.of_node, 0);
+	if (hwlock_id < 0) {
+		if (hwlock_id != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "failed to retrieve hwlock\n");
+		return hwlock_id;
+	}
+
+	smem->hwlock = hwspin_lock_request_specific(hwlock_id);
+	if (!smem->hwlock)
+		return -ENXIO;
 
 	__smem = smem;
 

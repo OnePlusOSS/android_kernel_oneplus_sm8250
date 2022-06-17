@@ -23,7 +23,6 @@
 #include <linux/hugetlb.h>
 #include <linux/memcontrol.h>
 #include <linux/mm_inline.h>
-
 #include "internal.h"
 
 bool can_do_mlock(void)
@@ -795,6 +794,7 @@ static int apply_mlockall_flags(int flags)
 		mlock_fixup(vma, &prev, vma->vm_start, vma->vm_end, newflags);
 		cond_resched();
 	}
+
 out:
 	return 0;
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved. */
+/* Copyright (c) 2018-2020, The Linux Foundation. All rights reserved. */
 
 #include <linux/debugfs.h>
 #include <linux/delay.h>
@@ -395,8 +395,7 @@ int mhi_pm_m0_transition(struct mhi_controller *mhi_cntrl)
 
 		read_lock_irq(&mhi_chan->lock);
 		/* only ring DB if ring is not empty */
-		if (tre_ring->base && tre_ring->wp  != tre_ring->rp &&
-		    mhi_chan->ch_state == MHI_CH_STATE_ENABLED)
+		if (tre_ring->base && tre_ring->wp  != tre_ring->rp)
 			mhi_ring_chan_db(mhi_cntrl, mhi_chan);
 		read_unlock_irq(&mhi_chan->lock);
 	}
@@ -1045,6 +1044,10 @@ error_dev_ctxt:
 }
 EXPORT_SYMBOL(mhi_async_power_up);
 
+#ifdef OPLUS_BUG_STABILITY
+extern bool direct_panic;
+#endif
+
 /* Transition MHI into error state and notify critical clients */
 void mhi_control_error(struct mhi_controller *mhi_cntrl)
 {
@@ -1060,10 +1063,15 @@ void mhi_control_error(struct mhi_controller *mhi_cntrl)
 		memcpy(sfr_info->str, sfr_info->buf_addr, sfr_info->len);
 		MHI_CNTRL_ERR("mhi:%s sfr: %s\n", mhi_cntrl->name,
 				sfr_info->buf_addr);
+#ifdef OPLUS_BUG_STABILITY
+		if(strstr(sfr_info->buf_addr, "remotefs_sahara.c")) {
+			direct_panic = true;
+		}
+#endif
 	}
 
-	/* link is not down if device supports RDDM */
-	transition_state = (mhi_cntrl->rddm_supported) ?
+	/* link is not down if device is in RDDM */
+	transition_state = (mhi_cntrl->ee == MHI_EE_RDDM) ?
 		MHI_PM_DEVICE_ERR_DETECT : MHI_PM_LD_ERR_FATAL_DETECT;
 
 	write_lock_irq(&mhi_cntrl->pm_lock);
@@ -1142,10 +1150,18 @@ int mhi_sync_power_up(struct mhi_controller *mhi_cntrl)
 	if (ret)
 		return ret;
 
+#ifndef OPLUS_BUG_STABILITY
+	//Modify for: mhi timeout 10s to 20s
 	wait_event_timeout(mhi_cntrl->state_event,
 			   MHI_IN_MISSION_MODE(mhi_cntrl->ee) ||
 			   MHI_PM_IN_ERROR_STATE(mhi_cntrl->pm_state),
 			   msecs_to_jiffies(mhi_cntrl->timeout_ms));
+#else /* OPLUS_BUG_STABILITY */
+	wait_event_timeout(mhi_cntrl->state_event,
+			   MHI_IN_MISSION_MODE(mhi_cntrl->ee) ||
+			   MHI_PM_IN_ERROR_STATE(mhi_cntrl->pm_state),
+			   msecs_to_jiffies(20000));
+#endif /* OPLUS_BUG_STABILITY */
 
 	if (MHI_IN_MISSION_MODE(mhi_cntrl->ee))
 		return 0;

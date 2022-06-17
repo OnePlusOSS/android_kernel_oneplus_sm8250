@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <asm/cacheflush.h>
@@ -176,7 +176,9 @@ kgsl_pool_reduce(unsigned int target_pages, bool exit)
 		if (!pool->allocation_allowed && !exit)
 			continue;
 
-		nr_removed = total_pages - target_pages - pcount;
+		total_pages -= pcount;
+
+		nr_removed = total_pages - target_pages;
 		if (nr_removed <= 0)
 			return pcount;
 
@@ -316,6 +318,7 @@ int kgsl_pool_alloc_page(int *page_size, struct page **pages,
 	if (page == NULL) {
 		gfp_t gfp_mask = kgsl_gfp_mask(order);
 
+#ifndef OPLUS_FEATURE_SPECIALOPT
 		/* Only allocate non-reserved memory for certain pools */
 		if (!pool->allocation_allowed && pool_idx > 0) {
 			size = PAGE_SIZE <<
@@ -324,6 +327,16 @@ int kgsl_pool_alloc_page(int *page_size, struct page **pages,
 		}
 
 		page = alloc_pages(gfp_mask, order);
+#else
+		page = alloc_pages(gfp_mask, order);
+
+		/* Only allocate non-reserved memory for certain pools */
+		if (!page &&!pool->allocation_allowed && pool_idx > 0) {
+			size = PAGE_SIZE <<
+					kgsl_pools[pool_idx-1].pool_order;
+			goto eagain;
+		}
+#endif
 
 		if (!page) {
 			if (pool_idx > 0) {

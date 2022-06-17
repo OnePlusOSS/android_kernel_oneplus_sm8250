@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2008-2019, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2019, The Linux Foundation. All rights reserved.
  */
 
 #include "kgsl_device.h"
@@ -84,20 +84,6 @@ static const struct kgsl_ioctl kgsl_ioctl_funcs[] = {
 			kgsl_ioctl_sparse_bind),
 	KGSL_IOCTL_FUNC(IOCTL_KGSL_GPU_SPARSE_COMMAND,
 			kgsl_ioctl_gpu_sparse_command),
-	KGSL_IOCTL_FUNC(IOCTL_KGSL_GPU_AUX_COMMAND,
-			kgsl_ioctl_gpu_aux_command),
-	KGSL_IOCTL_FUNC(IOCTL_KGSL_TIMELINE_CREATE,
-			kgsl_ioctl_timeline_create),
-	KGSL_IOCTL_FUNC(IOCTL_KGSL_TIMELINE_WAIT,
-			kgsl_ioctl_timeline_wait),
-	KGSL_IOCTL_FUNC(IOCTL_KGSL_TIMELINE_FENCE_GET,
-			kgsl_ioctl_timeline_fence_get),
-	KGSL_IOCTL_FUNC(IOCTL_KGSL_TIMELINE_QUERY,
-			kgsl_ioctl_timeline_query),
-	KGSL_IOCTL_FUNC(IOCTL_KGSL_TIMELINE_SIGNAL,
-			kgsl_ioctl_timeline_signal),
-	KGSL_IOCTL_FUNC(IOCTL_KGSL_TIMELINE_DESTROY,
-			kgsl_ioctl_timeline_destroy),
 };
 
 long kgsl_ioctl_copy_in(unsigned int kernel_cmd, unsigned int user_cmd,
@@ -181,6 +167,8 @@ long kgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 			return device->ftbl->compat_ioctl(dev_priv, cmd, arg);
 		else if (device->ftbl->ioctl != NULL)
 			return device->ftbl->ioctl(dev_priv, cmd, arg);
+
+		dev_err(device->dev, "invalid ioctl code 0x%08X\n", cmd);
 	}
 
 	return ret;

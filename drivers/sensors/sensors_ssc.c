@@ -21,6 +21,7 @@
 #include <linux/sysfs.h>
 #include <linux/workqueue.h>
 
+#include <linux/regulator/consumer.h>
 #include <soc/qcom/subsystem_restart.h>
 
 #define IMAGE_LOAD_CMD 1
@@ -349,6 +350,10 @@ static int sensors_ssc_probe(struct platform_device *pdev)
 {
 	int ret = slpi_loader_init_sysfs(pdev);
 
+#ifdef OPLUS_BUG_STABILITY
+	struct regulator *vdd_2v8 = NULL;
+	struct regulator *vddio_1v8 = NULL;
+#endif
 	if (ret != 0) {
 		dev_err(&pdev->dev, "%s: Error in initing sysfs\n", __func__);
 		return ret;
@@ -389,6 +394,32 @@ static int sensors_ssc_probe(struct platform_device *pdev)
 	}
 
 	INIT_WORK(&slpi_ldr_work, slpi_load_fw);
+#ifdef OPLUS_BUG_STABILITY
+	vdd_2v8 = regulator_get(&pdev->dev, "vdd");
+	vddio_1v8 = regulator_get(&pdev->dev, "vddio");
+
+	if (vdd_2v8 != NULL) {
+		dev_err(&pdev->dev,"%s: vdd_2v8 is not NULL\n", __func__);
+		regulator_set_voltage(vdd_2v8, 2800000, 3104000);
+		regulator_set_load(vdd_2v8, 200000);
+		ret = regulator_enable(vdd_2v8);
+		if (ret)
+			dev_err(&pdev->dev,"%s: vdd_2v8 enable fail\n", __func__);
+	} else {
+		dev_err(&pdev->dev,"%s: vdd_2v8 is NULL\n", __func__);
+	}
+	msleep(10);
+	if (vddio_1v8 != NULL) {
+		dev_err(&pdev->dev,"%s: vddio_1v8 is not NULL\n", __func__);
+		regulator_set_voltage(vddio_1v8, 1800000, 1952000);
+		regulator_set_load(vddio_1v8, 200000);
+		ret = regulator_enable(vddio_1v8);
+		if (ret)
+			dev_err(&pdev->dev,"%s: vddio_1v8 enable fail\n", __func__);
+	} else {
+		dev_err(&pdev->dev,"%s: vddio_1v8 is NULL\n", __func__);
+	}
+#endif//OPLUS_BUG_STABILITY
 
 	return 0;
 

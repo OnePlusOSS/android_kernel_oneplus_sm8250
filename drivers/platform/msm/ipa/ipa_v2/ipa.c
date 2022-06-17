@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2012-2018, 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2018, 2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -654,11 +654,15 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		   sizeof(struct ipa_ioc_nat_dma_cmd) +
 		   pre_entry * sizeof(struct ipa_ioc_nat_dma_one);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
 			break;
 		}
 
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
+			break;
+		}
 		/* add check in case user-space module compromised */
 		if (unlikely(((struct ipa_ioc_nat_dma_cmd *)param)->entries
 			!= pre_entry)) {
@@ -698,8 +702,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		   sizeof(struct ipa_ioc_add_hdr) +
 		   pre_entry * sizeof(struct ipa_hdr_add);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -734,8 +742,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		   sizeof(struct ipa_ioc_del_hdr) +
 		   pre_entry * sizeof(struct ipa_hdr_del);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -770,8 +782,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		   sizeof(struct ipa_ioc_add_rt_rule) +
 		   pre_entry * sizeof(struct ipa_rt_rule_add);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -807,8 +823,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		   sizeof(struct ipa_ioc_mdfy_rt_rule) +
 		   pre_entry * sizeof(struct ipa_rt_rule_mdfy);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -843,8 +863,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		   sizeof(struct ipa_ioc_del_rt_rule) +
 		   pre_entry * sizeof(struct ipa_rt_rule_del);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -878,8 +902,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		   sizeof(struct ipa_ioc_add_flt_rule) +
 		   pre_entry * sizeof(struct ipa_flt_rule_add);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -915,8 +943,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		   sizeof(struct ipa_ioc_del_flt_rule) +
 		   pre_entry * sizeof(struct ipa_flt_rule_del);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -951,8 +983,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		   sizeof(struct ipa_ioc_mdfy_flt_rule) +
 		   pre_entry * sizeof(struct ipa_flt_rule_mdfy);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -1084,8 +1120,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		pyld_sz = sz + pre_entry *
 			sizeof(struct ipa_ioc_tx_intf_prop);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -1126,8 +1166,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		pyld_sz = sz + pre_entry *
 			sizeof(struct ipa_ioc_rx_intf_prop);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -1167,8 +1211,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		pyld_sz = sz + pre_entry *
 			sizeof(struct ipa_ioc_ext_intf_prop);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -1201,8 +1249,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		pyld_sz = sizeof(struct ipa_msg_meta) +
 		   pre_entry;
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -1337,8 +1389,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		   sizeof(struct ipa_ioc_add_hdr_proc_ctx) +
 		   pre_entry * sizeof(struct ipa_hdr_proc_ctx_add);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -1372,8 +1428,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		   sizeof(struct ipa_ioc_del_hdr_proc_ctx) +
 		   pre_entry * sizeof(struct ipa_hdr_proc_ctx_del);
 		param = memdup_user((const void __user *)arg, pyld_sz);
-		if (IS_ERR(param)) {
+		if (!param) {
 			retval = -ENOMEM;
+			break;
+		}
+		if (copy_from_user(param, (const void __user *)arg, pyld_sz)) {
+			retval = -EFAULT;
 			break;
 		}
 		/* add check in case user-space module compromised */
@@ -1430,8 +1490,7 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
 		return -ENOTTY;
 	}
-	if (!IS_ERR(param))
-		kfree(param);
+	kfree(param);
 
 	IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
 

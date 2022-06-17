@@ -1067,6 +1067,18 @@ static struct sock_tag *get_sock_stat_nl(const struct sock *sk)
 	return sock_tag_tree_search(&sock_tag_tree, sk);
 }
 
+static struct sock_tag *get_sock_stat(const struct sock *sk)
+{
+	struct sock_tag *sock_tag_entry;
+	MT_DEBUG("qtaguid: get_sock_stat(sk=%p)\n", sk);
+	if (!sk)
+		return NULL;
+	spin_lock_bh(&sock_tag_list_lock);
+	sock_tag_entry = get_sock_stat_nl(sk);
+	spin_unlock_bh(&sock_tag_list_lock);
+	return sock_tag_entry;
+}
+
 static int ipx_proto(const struct sk_buff *skb,
 		     struct xt_action_param *par)
 {
@@ -1301,15 +1313,12 @@ static void if_tag_stat_update(const char *ifname, uid_t uid,
 	 * Look for a tagged sock.
 	 * It will have an acct_uid.
 	 */
-	spin_lock_bh(&sock_tag_list_lock);
-	sock_tag_entry = sk ? get_sock_stat_nl(sk) : NULL;
+	sock_tag_entry = get_sock_stat(sk);
 	if (sock_tag_entry) {
 		tag = sock_tag_entry->tag;
 		acct_tag = get_atag_from_tag(tag);
 		uid_tag = get_utag_from_tag(tag);
-	}
-	spin_unlock_bh(&sock_tag_list_lock);
-	if (!sock_tag_entry) {
+	} else {
 		acct_tag = make_atag_from_value(0);
 		tag = combine_atag_with_uid(acct_tag, uid);
 		uid_tag = make_tag_from_uid(uid);
@@ -2415,20 +2424,15 @@ int qtaguid_untag(struct socket *el_socket, bool kernel)
 	 * At first, we want to catch user-space code that is not
 	 * opening the /dev/xt_qtaguid.
 	 */
-	if (IS_ERR_OR_NULL(pqd_entry))
+	if (IS_ERR_OR_NULL(pqd_entry) || !sock_tag_entry->list.next) {
 		pr_warn_once("qtaguid: %s(): "
 			     "User space forgot to open /dev/xt_qtaguid? "
 			     "pid=%u tgid=%u sk_pid=%u, uid=%u\n", __func__,
 			     current->pid, current->tgid, sock_tag_entry->pid,
 			     from_kuid(&init_user_ns, current_fsuid()));
-	/*
-	 * This check is needed because tagging from a process that
-	 * didn’t open /dev/xt_qtaguid still adds the sock_tag_entry
-	 * to sock_tag_tree.
-	 */
-	if (sock_tag_entry->list.next)
+	} else {
 		list_del(&sock_tag_entry->list);
-
+	}
 	spin_unlock_bh(&uid_tag_data_tree_lock);
 	/*
 	 * We don't free tag_ref from the utd_entry here,

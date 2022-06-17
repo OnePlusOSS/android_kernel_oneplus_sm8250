@@ -26,8 +26,6 @@
 
 #include "uvcvideo.h"
 
-#define CONFIG_DMA_NONCOHERENT 1
-
 /* ------------------------------------------------------------------------
  * UVC Controls
  */

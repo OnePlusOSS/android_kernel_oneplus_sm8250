@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2020-2021, Linux Foundation. All rights reserved.
+ * Copyright (c) 2020, Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -290,8 +290,7 @@ int cqhci_crypto_qti_init_crypto(struct cqhci_host *host,
 	if (!cqhci_ice_memres) {
 		pr_debug("%s ICE not supported\n", __func__);
 		host->icemmio = NULL;
-		host->caps &= ~CQHCI_CAP_CRYPTO_SUPPORT;
-		return err;
+		return PTR_ERR(cqhci_ice_memres);
 	}
 
 	host->icemmio = devm_ioremap(&msm_host->pdev->dev,
@@ -371,9 +370,6 @@ int cqhci_crypto_qti_prep_desc(struct cqhci_host *host, struct mmc_request *mrq,
 	if (!(atomic_read(&keycache) & (1 << bc->bc_keyslot))) {
 		if (bc->is_ext4)
 			cmdq_use_default_du_size = true;
-		else
-			cmdq_use_default_du_size = false;
-
 		ret = cqhci_crypto_qti_keyslot_program(host->ksm, bc->bc_key,
 						       bc->bc_keyslot);
 		if (ret) {

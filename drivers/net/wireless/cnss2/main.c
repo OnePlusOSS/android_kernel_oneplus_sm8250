@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2016-2021, The Linux Foundation. All rights reserved. */
+/* Copyright (c) 2016-2020, The Linux Foundation. All rights reserved. */
 
 #include <linux/delay.h>
 #include <linux/jiffies.h>
@@ -12,6 +12,17 @@
 #include <linux/suspend.h>
 #include <linux/timer.h>
 #include <soc/qcom/minidump.h>
+#include <soc/qcom/ramdump.h>
+#include <soc/qcom/subsystem_notif.h>
+#ifdef OPLUS_BUG_STABILITY
+//Add for: disable wifi while power off charging because modem img will not mount
+#include <soc/oplus/boot_mode.h>
+#endif /* OPLUS_BUG_STABILITY */
+
+#ifdef CONFIG_OPLUS_KEVENT_UPLOAD
+//Add for: pcie self recovery statistics
+#include <linux/oplus_kevent.h>
+#endif /* CONFIG_OPLUS_KEVENT_UPLOAD */
 
 #include "main.h"
 #include "bus.h"
@@ -41,7 +52,6 @@
 #define CNSS_QMI_TIMEOUT_DEFAULT	10000
 #define CNSS_BDF_TYPE_DEFAULT		CNSS_BDF_ELF
 #define CNSS_TIME_SYNC_PERIOD_DEFAULT	900000
-#define CNSS_MIN_TIME_SYNC_PERIOD	2000
 
 static struct cnss_plat_data *plat_env;
 
@@ -65,6 +75,49 @@ struct cnss_driver_event {
 	int ret;
 	void *data;
 };
+
+#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+//Add for wifi switch monitor
+static unsigned int cnssprobestate = 0;
+#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
+
+#ifdef CONFIG_OPLUS_KEVENT_UPLOAD
+//Add for: pcie self recovery statistics
+int cnss_stats_self_recovery(void)
+{
+	const char* cnss_event_tag = "wifi_fool_proof";
+	const char* cnss_event_id = "wifi_pci_linkdown";
+	const char* cnss_event_payload = "cnss_pcie_self_recovery";
+	struct kernel_packet_info* cnss_event;
+	void *buffer = NULL;
+	int len, size;
+	cnss_pr_err("%s\n", __func__);
+
+	len = strlen(cnss_event_payload);
+	size = sizeof(struct kernel_packet_info) + len + 1;
+
+	buffer = kmalloc(size, GFP_KERNEL);
+	if (!buffer) {
+		cnss_pr_err("%s: Allocation failed\n", __func__);
+		return -ENOMEM;
+	}
+
+	memset(buffer, 0, size);
+	cnss_event = (struct kernel_packet_info *)buffer;
+	cnss_event->type = 1;
+
+	memcpy(cnss_event->log_tag, cnss_event_tag, strlen(cnss_event_tag) + 1);
+	memcpy(cnss_event->event_id, cnss_event_id, strlen(cnss_event_id) + 1);
+
+	cnss_event->payload_length = len + 1;
+	memcpy(cnss_event->payload, cnss_event_payload, cnss_event->payload_length);
+
+	kevent_send_to_user(cnss_event);
+	kfree(buffer);
+
+	return 0;
+}
+#endif /* CONFIG_OPLUS_KEVENT_UPLOAD */
 
 static void cnss_set_plat_priv(struct platform_device *plat_dev,
 			       struct cnss_plat_data *plat_priv)
@@ -607,38 +660,6 @@ out:
 	return ret;
 }
 
-/**
- * cnss_get_timeout - Get timeout for corresponding type.
- * @plat_priv: Pointer to platform driver context.
- * @cnss_timeout_type: Timeout type.
- *
- * Return: Timeout in milliseconds.
- */
-unsigned int cnss_get_timeout(struct cnss_plat_data *plat_priv,
-			      enum cnss_timeout_type timeout_type)
-{
-	unsigned int qmi_timeout = cnss_get_qmi_timeout(plat_priv);
-
-	switch (timeout_type) {
-	case CNSS_TIMEOUT_QMI:
-		return qmi_timeout;
-	case CNSS_TIMEOUT_POWER_UP:
-		return (qmi_timeout << 2);
-	case CNSS_TIMEOUT_IDLE_RESTART:
-		return ((qmi_timeout << 1) + WLAN_WD_TIMEOUT_MS);
-	case CNSS_TIMEOUT_CALIBRATION:
-		return (qmi_timeout << 2);
-	case CNSS_TIMEOUT_WLAN_WATCHDOG:
-		return ((qmi_timeout << 1) + WLAN_WD_TIMEOUT_MS);
-	case CNSS_TIMEOUT_RDDM:
-		return CNSS_RDDM_TIMEOUT_MS;
-	case CNSS_TIMEOUT_RECOVERY:
-		return RECOVERY_TIMEOUT;
-	default:
-		return qmi_timeout;
-	}
-}
-
 unsigned int cnss_get_boot_timeout(struct device *dev)
 {
 	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(dev);
@@ -648,7 +669,7 @@ unsigned int cnss_get_boot_timeout(struct device *dev)
 		return 0;
 	}
 
-	return cnss_get_timeout(plat_priv, CNSS_TIMEOUT_QMI);
+	return cnss_get_qmi_timeout(plat_priv);
 }
 EXPORT_SYMBOL(cnss_get_boot_timeout);
 
@@ -674,14 +695,13 @@ int cnss_power_up(struct device *dev)
 	if (plat_priv->device_id == QCA6174_DEVICE_ID)
 		goto out;
 
-	timeout = cnss_get_timeout(plat_priv, CNSS_TIMEOUT_POWER_UP);
+	timeout = cnss_get_boot_timeout(dev);
 
 	reinit_completion(&plat_priv->power_up_complete);
 	ret = wait_for_completion_timeout(&plat_priv->power_up_complete,
-					  msecs_to_jiffies(timeout));
+					  msecs_to_jiffies(timeout) << 2);
 	if (!ret) {
-		cnss_pr_err("Timeout (%ums) waiting for power up to complete\n",
-			    timeout);
+		cnss_pr_err("Timeout waiting for power up to complete\n");
 		ret = -EAGAIN;
 		goto out;
 	}
@@ -747,9 +767,10 @@ int cnss_idle_restart(struct device *dev)
 		goto out;
 	}
 
-	timeout = cnss_get_timeout(plat_priv, CNSS_TIMEOUT_IDLE_RESTART);
+	timeout = cnss_get_boot_timeout(dev);
 	ret = wait_for_completion_timeout(&plat_priv->power_up_complete,
-					  msecs_to_jiffies(timeout));
+					  msecs_to_jiffies((timeout << 1) +
+							   WLAN_WD_TIMEOUT_MS));
 	if (plat_priv->power_up_error) {
 		ret = plat_priv->power_up_error;
 		clear_bit(CNSS_DRIVER_IDLE_RESTART, &plat_priv->driver_state);
@@ -759,8 +780,7 @@ int cnss_idle_restart(struct device *dev)
 	}
 
 	if (!ret) {
-		cnss_pr_err("Timeout (%ums) waiting for idle restart to complete\n",
-			    timeout);
+		cnss_pr_err("Timeout waiting for idle restart to complete\n");
 		ret = -ETIMEDOUT;
 		goto out;
 	}
@@ -784,7 +804,6 @@ EXPORT_SYMBOL(cnss_idle_restart);
 int cnss_idle_shutdown(struct device *dev)
 {
 	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(dev);
-	unsigned int timeout;
 	int ret;
 
 	if (!plat_priv) {
@@ -804,12 +823,10 @@ int cnss_idle_shutdown(struct device *dev)
 		goto skip_wait;
 
 	reinit_completion(&plat_priv->recovery_complete);
-	timeout = cnss_get_timeout(plat_priv, CNSS_TIMEOUT_RECOVERY);
 	ret = wait_for_completion_timeout(&plat_priv->recovery_complete,
-					  msecs_to_jiffies(timeout));
+					  msecs_to_jiffies(RECOVERY_TIMEOUT));
 	if (!ret) {
-		cnss_pr_err("Timeout (%ums) waiting for recovery to complete\n",
-			    timeout);
+		cnss_pr_err("Timeout waiting for recovery to complete\n");
 		CNSS_ASSERT(0);
 	}
 
@@ -1172,6 +1189,11 @@ self_recovery:
 
 	cnss_bus_dev_powerup(plat_priv);
 
+	#ifdef CONFIG_OPLUS_KEVENT_UPLOAD
+	//Add for: pcie self recovery statistics
+	cnss_stats_self_recovery();
+	#endif /* CONFIG_OPLUS_KEVENT_UPLOAD */
+
 	return 0;
 }
 
@@ -1351,7 +1373,6 @@ EXPORT_SYMBOL(cnss_force_fw_assert);
 int cnss_force_collect_rddm(struct device *dev)
 {
 	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(dev);
-	unsigned int timeout;
 	int ret = 0;
 
 	if (!plat_priv) {
@@ -1387,14 +1408,11 @@ int cnss_force_collect_rddm(struct device *dev)
 		return ret;
 
 	reinit_completion(&plat_priv->rddm_complete);
-	timeout = cnss_get_timeout(plat_priv, CNSS_TIMEOUT_RDDM);
-	ret = wait_for_completion_timeout(&plat_priv->rddm_complete,
-					  msecs_to_jiffies(timeout));
-	if (!ret) {
-		cnss_pr_err("Timeout (%ums) waiting for RDDM to complete\n",
-			    timeout);
+	ret = wait_for_completion_timeout
+		(&plat_priv->rddm_complete,
+		 msecs_to_jiffies(CNSS_RDDM_TIMEOUT_MS));
+	if (!ret)
 		ret = -ETIMEDOUT;
-	}
 
 	return ret;
 }
@@ -2330,33 +2348,6 @@ static void cnss_unregister_bus_scale(struct cnss_plat_data *plat_priv)
 		msm_bus_scale_unregister_client(bus_bw_info->bus_client);
 }
 
-static ssize_t qtime_sync_period_show(struct device *dev,
-				      struct device_attribute *attr,
-				      char *buf)
-{
-	struct cnss_plat_data *plat_priv = dev_get_drvdata(dev);
-
-	return scnprintf(buf, PAGE_SIZE, "%u\n",
-			plat_priv->ctrl_params.time_sync_period);
-}
-
-static ssize_t qtime_sync_period_store(struct device *dev,
-				       struct device_attribute *attr,
-				       const char *buf, size_t count)
-{
-	unsigned int qtime_sync_period = 0;
-
-	if (sscanf(buf, "%du", &qtime_sync_period) != 1) {
-		cnss_pr_err("Invalid qtime sync sysfs command\n");
-		return -EINVAL;
-	}
-
-	if (qtime_sync_period >= CNSS_MIN_TIME_SYNC_PERIOD)
-		cnss_pci_update_qtime_sync_period(dev, qtime_sync_period);
-
-	return count;
-}
-
 static ssize_t recovery_store(struct device *dev,
 			      struct device_attribute *attr,
 			      const char *buf, size_t count)
@@ -2447,13 +2438,11 @@ static ssize_t fs_ready_store(struct device *dev,
 static DEVICE_ATTR_WO(fs_ready);
 static DEVICE_ATTR_WO(shutdown);
 static DEVICE_ATTR_WO(recovery);
-static DEVICE_ATTR_RW(qtime_sync_period);
 
 static struct attribute *cnss_attrs[] = {
 	&dev_attr_fs_ready.attr,
 	&dev_attr_shutdown.attr,
 	&dev_attr_recovery.attr,
-	&dev_attr_qtime_sync_period.attr,
 	NULL,
 };
 
@@ -2609,6 +2598,10 @@ static void cnss_init_control_params(struct cnss_plat_data *plat_priv)
 				  "cnss-daemon-support"))
 		plat_priv->ctrl_params.quirks |= BIT(ENABLE_DAEMON_SUPPORT);
 
+	if (of_property_read_bool(plat_priv->plat_dev->dev.of_node,
+				  "cnss-enable-self-recovery"))
+		plat_priv->ctrl_params.quirks |= BIT(LINK_DOWN_SELF_RECOVERY);
+
 	plat_priv->ctrl_params.mhi_timeout = CNSS_MHI_TIMEOUT_DEFAULT;
 	plat_priv->ctrl_params.mhi_m2_timeout = CNSS_MHI_M2_TIMEOUT_DEFAULT;
 	plat_priv->ctrl_params.qmi_timeout = CNSS_QMI_TIMEOUT_DEFAULT;
@@ -2658,6 +2651,42 @@ static const struct of_device_id cnss_of_match_table[] = {
 };
 MODULE_DEVICE_TABLE(of, cnss_of_match_table);
 
+#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+//Add for wifi switch monitor
+static void icnss_create_fw_state_kobj(void);
+static void icnss_remove_fw_state_kobj(void);
+static ssize_t icnss_show_fw_ready(struct device_driver *driver, char *buf)
+{
+	bool firmware_ready = false;
+	bool bdfloadsuccess = false;
+	bool regdbloadsuccess = false;
+	bool cnssprobesuccess = false;
+	if (!plat_env) {
+           cnss_pr_err("icnss_show_fw_ready plat_env is NULL!\n");
+	} else {
+           firmware_ready = test_bit(CNSS_FW_READY, &plat_env->driver_state);
+           regdbloadsuccess = test_bit(CNSS_LOAD_REGDB_SUCCESS, &plat_env->loadRegdbState);
+           bdfloadsuccess = test_bit(CNSS_LOAD_BDF_SUCCESS, &plat_env->loadBdfState);
+	}
+	cnssprobesuccess = (cnssprobestate == CNSS_PROBE_SUCCESS);
+	return sprintf(buf, "%s:%s:%s:%s",
+           (firmware_ready ? "fwstatus_ready" : "fwstatus_not_ready"),
+           (regdbloadsuccess ? "regdb_loadsuccess" : "regdb_loadfail"),
+           (bdfloadsuccess ? "bdf_loadsuccess" : "bdf_loadfail"),
+           (cnssprobesuccess ? "cnssprobe_success" : "cnssprobe_fail")
+           );
+}
+
+struct driver_attribute fw_ready_attr = {
+	.attr = {
+		.name = "firmware_ready",
+		.mode = S_IRUGO,
+	},
+	.show = icnss_show_fw_ready,
+	//read only so we don't need to impl store func
+};
+#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
+
 static inline bool
 cnss_use_nv_mac(struct cnss_plat_data *plat_priv)
 {
@@ -2671,6 +2700,16 @@ static int cnss_probe(struct platform_device *plat_dev)
 	struct cnss_plat_data *plat_priv;
 	const struct of_device_id *of_id;
 	const struct platform_device_id *device_id;
+
+#ifdef OPLUS_BUG_STABILITY
+	//Add for: disable wifi while power off charging because modem img will not mount
+	if (qpnp_is_power_off_charging() &&
+		(get_boot_mode() != MSM_BOOT_MODE__WLAN) &&
+		(get_boot_mode() != MSM_BOOT_MODE__RF)) {
+		cnss_pr_err("charge mode do not load wifi!\n");
+		goto out;
+	}
+#endif /* OPLUS_BUG_STABILITY */
 
 	if (cnss_get_plat_priv(plat_dev)) {
 		cnss_pr_err("Driver is already initialized!\n");
@@ -2708,6 +2747,11 @@ static int cnss_probe(struct platform_device *plat_dev)
 	cnss_get_wlaon_pwr_ctrl_info(plat_priv);
 	cnss_get_cpr_info(plat_priv);
 	cnss_init_control_params(plat_priv);
+
+    #ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+    //Add for wifi switch monitor
+	icnss_create_fw_state_kobj();
+	#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
 
 	ret = cnss_get_resources(plat_priv);
 	if (ret)
@@ -2756,6 +2800,11 @@ static int cnss_probe(struct platform_device *plat_dev)
 	if (ret < 0)
 		cnss_pr_err("CNSS genl init failed %d\n", ret);
 
+    #ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+    //Add for wifi switch monitor
+	cnssprobestate = CNSS_PROBE_SUCCESS;
+	#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
+
 	cnss_pr_info("Platform driver probed successfully.\n");
 
 	return 0;
@@ -2780,9 +2829,17 @@ power_off:
 free_res:
 	cnss_put_resources(plat_priv);
 reset_ctx:
+	#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+	//Add for wifi switch monitor
+	icnss_remove_fw_state_kobj();
+	#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
 	platform_set_drvdata(plat_dev, NULL);
 	cnss_set_plat_priv(plat_dev, NULL);
 out:
+    #ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+    //Add for wifi switch monitor   
+	cnssprobestate = CNSS_PROBE_FAIL;
+    #endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
 	return ret;
 }
 
@@ -2819,6 +2876,19 @@ static struct platform_driver cnss_platform_driver = {
 #endif
 	},
 };
+
+#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+//Add for wifi switch monitor
+static void icnss_create_fw_state_kobj(void) {
+	if (driver_create_file(&(cnss_platform_driver.driver), &fw_ready_attr)) {
+		cnss_pr_info("failed to create %s", fw_ready_attr.attr.name);
+	}
+}
+
+static void icnss_remove_fw_state_kobj(void) {
+	driver_remove_file(&(cnss_platform_driver.driver), &fw_ready_attr);
+}
+#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
 
 static int __init cnss_initialize(void)
 {

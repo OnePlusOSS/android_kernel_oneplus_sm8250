@@ -109,3 +109,37 @@ obj-$(CONFIG_PERCPU_STATS) += percpu-stats.o
 obj-$(CONFIG_HMM) += hmm.o
 obj-$(CONFIG_MEMFD_CREATE) += memfd.o
 obj-$(CONFIG_PROCESS_RECLAIM)	+= process_reclaim.o
+
+#ifdef OPLUS_FEATURE_HEALTHINFO
+obj-y += healthinfo/
+#endif /* OPLUS_FEATURE_HEALTHINFO */
+
+#ifdef OPLUS_FEATURE_MEMORY_ISOLATE
+obj-$(CONFIG_OPLUS_MEMORY_ISOLATE) += memory_isolate/
+#endif /*OPLUS_FEATURE_MEMORY_ISOLATE*/
+
+#ifdef OPLUS_FEATURE_MULTI_KSWAPD
+obj-$(CONFIG_OPLUS_MULTI_KSWAPD) += multi_kswapd/
+#endif /*OPLUS_FEATURE_MULTI_KSWAPD*/
+
+#if defined(OPLUS_FEATURE_PROCESS_RECLAIM)
+ifeq ($(OPLUS_FEATURE_PROCESS_RECLAIM), yes)
+obj-$(CONFIG_PROCESS_RECLAIM_ENHANCE) += process_mm_reclaim.o
+else
+obj-$(CONFIG_PROCESS_RECLAIM_ENHANCE) += process_mm_reclaim_weak.o
+endif
+#endif /*defined(OPLUS_FEATURE_PROCESS_RECLAIM)
+
+#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY)
+obj-$(CONFIG_VIRTUAL_RESERVE_MEMORY) += reserve_area.o
+#endif
+
+#if defined(OPLUS_FEATURE_MULTI_FREEAREA)
+obj-$(CONFIG_PHYSICAL_ANTI_FRAGMENTATION) += multi_freearea.o
+#endif
+
+#if defined(OPLUS_FEATURE_MEMLEAK_DETECT)
+ifeq ($(OPLUS_FEATURE_MEMLEAK_DETECT), yes)
+obj-$(CONFIG_DUMP_TASKS_MEM) += task_mem/
+endif
+#endif /*defined(OPLUS_FEATURE_MEMLEAK_DETECT)

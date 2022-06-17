@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
 ccflags-y += -I$(src)
+#ifdef OPLUS_BUG_STABILITY
+ccflags-y += -I$(srctree)/techpack/display/oplus
+#endif /*OPLUS_BUG_STABILITY*/
 
 msm_kgsl_core-y = \
 	kgsl.o \
@@ -17,8 +20,7 @@ msm_kgsl_core-y = \
 	kgsl_rgmu.o \
 	kgsl_hfi.o \
 	kgsl_pool.o \
-	kgsl_reclaim.o \
-	kgsl_timeline.o
+	kgsl_reclaim.o
 
 msm_kgsl_core-$(CONFIG_QCOM_KGSL_IOMMU) += kgsl_iommu.o
 msm_kgsl_core-$(CONFIG_DEBUG_FS) += kgsl_debugfs.o

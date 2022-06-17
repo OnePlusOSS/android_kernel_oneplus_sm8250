@@ -31,6 +31,10 @@
 #include <linux/sched/clock.h>
 #include <linux/cpumask.h>
 #include <uapi/linux/sched/types.h>
+
+/*use self-defined utils*/
+#include "oplus_watchdog_util.h"
+
 #ifdef CONFIG_QCOM_INITIAL_LOGBUF
 #include <linux/kallsyms.h>
 #include <linux/math64.h>
@@ -58,6 +62,7 @@
 #define COMPARE_RET		-1
 
 typedef int (*compare_t) (const void *lhs, const void *rhs);
+extern void oplus_show_utc_time(void);
 
 #ifdef CONFIG_QCOM_INITIAL_LOGBUF
 #define LOGBUF_TIMEOUT		100000U
@@ -69,8 +74,12 @@ static dma_addr_t log_buf_paddr;
 #endif
 
 static struct msm_watchdog_data *wdog_data;
-
+#ifndef OPLUS_BUG_STABILITY
+/*use self-defined utils*/
 static int cpu_idle_pc_state[NR_CPUS];
+#else
+int cpu_idle_pc_state[NR_CPUS];
+#endif
 
 struct irq_info {
 	unsigned int irq;
@@ -410,13 +419,26 @@ static void keep_alive_response(void *info)
  * If this function does not return, it implies one of the
  * other cpu's is not responsive.
  */
+#ifdef OPLUS_BUG_STABILITY
+/*add for debug cpu hang */
+static int wdog_cpu = 0;
+#endif /* OPLUS_BUG_STABILITY */
 static void ping_other_cpus(struct msm_watchdog_data *wdog_dd)
 {
+#ifndef OPLUS_BUG_STABILITY
+/* add for debug cpu hang */
 	int cpu;
-
+#endif /* OPLUS_BUG_STABILITY */
+#ifdef OPLUS_BUG_STABILITY
+/* print more info on pet watchdog */
+	cpumask_t mask;
+	get_cpu_ping_mask(&mask);
+#endif /*OPLUS_BUG_STABILITY*/
 	cpumask_clear(&wdog_dd->alive_mask);
 	/* Make sure alive mask is cleared and set in order */
 	smp_mb();
+#ifndef OPLUS_BUG_STABILITY
+/* only ping cpu need ping */
 	for_each_cpu(cpu, cpu_online_mask) {
 		if (!cpu_idle_pc_state[cpu] && !cpu_isolated(cpu)) {
 			wdog_dd->ping_start[cpu] = sched_clock();
@@ -424,6 +446,15 @@ static void ping_other_cpus(struct msm_watchdog_data *wdog_dd)
 						 wdog_dd, 1);
 		}
 	}
+#else
+	for_each_cpu(wdog_cpu, &mask) {
+		if (!cpu_idle_pc_state[wdog_cpu] && !cpu_isolated(wdog_cpu)) {
+			wdog_dd->ping_start[wdog_cpu] = sched_clock();
+			smp_call_function_single(wdog_cpu, keep_alive_response,
+						 wdog_dd, 1);
+		}
+	}
+#endif /* OPLUS_BUG_STABILITY */
 }
 
 static void pet_task_wakeup(struct timer_list *t)
@@ -646,6 +677,10 @@ static __ref int watchdog_kthread(void *arg)
 			delay_time = msecs_to_jiffies(wdog_dd->pet_time);
 			pet_watchdog(wdog_dd);
 		}
+#ifdef OPLUS_BUG_STABILITY
+		/* for UCT time print, over 30s print once */
+		oplus_show_utc_time();
+#endif
 		/* Check again before scheduling
 		 * Could have been changed on other cpu
 		 */
@@ -759,10 +794,29 @@ static irqreturn_t wdog_bark_handler(int irq, void *dev_id)
 	nanosec_rem = do_div(wdog_dd->last_pet, 1000000000);
 	dev_info(wdog_dd->dev, "Watchdog last pet at %lu.%06lu\n",
 			(unsigned long) wdog_dd->last_pet, nanosec_rem / 1000);
-	if (wdog_dd->do_ipi_ping)
+	if (wdog_dd->do_ipi_ping) {
 		dump_cpu_alive_mask(wdog_dd);
+#ifdef OPLUS_BUG_STABILITY
+/* print online cpu */
+		dump_cpu_online_mask();
+#endif
+	}
+#ifdef OPLUS_BUG_STABILITY
+/*print more info about cpu the wdog on */
+	if (try_to_recover_pending(wdog_dd->watchdog_task)) {
+		pet_watchdog(wdog_dd);
+		return IRQ_HANDLED;
+	}
 
+	print_smp_call_cpu();
+	dump_wdog_cpu(wdog_dd->watchdog_task);
+#endif
+#ifdef OPLUS_BUG_STABILITY
+/*delete trigger wdog bite, panic will trigger wdog if in dload mode*/
+	panic("Handle a watchdog bite! - Falling back to kernel panic!");
+#else
 	msm_trigger_wdog_bite();
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -1051,6 +1105,14 @@ static int msm_watchdog_probe(struct platform_device *pdev)
 	md_entry.id = MINIDUMP_DEFAULT_ID;
 	if (msm_minidump_add_region(&md_entry) < 0)
 		pr_info("Failed to add Watchdog data in Minidump\n");
+
+#ifdef OPLUS_BUG_STABILITY
+        /* Add for init oplus watch dog log, checklist 64*/
+	ret = init_oplus_watchlog();
+    if (ret < 0) {
+    	pr_info("Failed to init oplus watchlog");
+    }
+#endif
 
 	return 0;
 err:

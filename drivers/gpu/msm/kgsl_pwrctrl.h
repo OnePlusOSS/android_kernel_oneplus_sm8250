@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2010-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2010-2020, The Linux Foundation. All rights reserved.
  */
 #ifndef __KGSL_PWRCTRL_H
 #define __KGSL_PWRCTRL_H
@@ -77,6 +77,41 @@ enum kgsl_pwrctrl_timer_type {
 #define CYCLE_ACTIVE	2
 
 struct platform_device;
+
+#ifdef CONFIG_OPLUS_FEATURE_MIDAS
+// KGSL_MAX_PWRLEVELS + SLUMBER
+#define MAX_GPU_PWR_STAT  KGSL_MAX_PWRLEVELS + 1
+#define PWR_STAT_SLUMBER KGSL_MAX_PWRLEVELS
+
+/**
+ * struct gpu_pwr_stats - Struct holding different gpu power info obtained from
+ * pwrscale and pwrctrl
+ * @total:         total us seconds are sampled in this power level
+ * @busy:          total busy us seconds in this power level when sampled
+ * @ram_time:      total ram read+write us seconds  in this power level when sampled
+ * @ram_wait:      total ram wait us seconds  in this power level when sampled
+ */
+struct gpu_pwr_stats {
+	u64 total;
+	u64 busy;
+	u64 ram_time;
+	u64 ram_wait;
+};
+
+/**
+ * struct gpu_info - Struct holding gpu info we want to record
+ * @gpu_pwr_stats:  gpu_pwr_stats of each power level + SLUMBER
+ * @gpu_total:      total us seconds are sampled
+ * @timestamp:      last timestamp when sampled
+ * @last_state:     last KGSL device state when sampled
+ */
+struct gpu_info {
+	struct gpu_pwr_stats gpu_pwr_stats[MAX_GPU_PWR_STAT];
+	u64 gpu_total;
+	ktime_t timestamp;
+	int last_state;
+};
+#endif
 
 struct kgsl_clk_stats {
 	unsigned int busy;
@@ -180,6 +215,7 @@ struct gpu_cx_ipeak_client {
  * @cx_ipeak_pwr_limit - pointer to the cx_ipeak limits node
  * isense_clk_indx - index of isense clock, 0 if no isense
  * isense_clk_on_level - isense clock rate is XO rate below this level.
+ * tzone_name - pointer to thermal zone name of GPU temperature sensor
  * gpu_cx_ipeak_client - CX Ipeak clients used by GPU
  */
 
@@ -239,7 +275,12 @@ struct kgsl_pwrctrl {
 	struct kgsl_pwr_limit *cx_ipeak_pwr_limit;
 	unsigned int gpu_bimc_int_clk_freq;
 	bool gpu_bimc_interface_enabled;
+	const char *tzone_name;
 	struct gpu_cx_ipeak_client gpu_ipeak_client[2];
+#ifdef CONFIG_OPLUS_FEATURE_MIDAS
+/* gpu_stats - collect gpu power status of each pwrlevel */
+	struct gpu_info gpu_stats;
+#endif
 };
 
 int kgsl_pwrctrl_init(struct kgsl_device *device);
@@ -290,4 +331,7 @@ int kgsl_pwrctrl_set_default_gpu_pwrlevel(struct kgsl_device *device);
 void kgsl_pwrctrl_disable_unused_opp(struct kgsl_device *device,
 		struct device *dev);
 
+#ifdef CONFIG_OPLUS_FEATURE_MIDAS
+void oplus_pwrctrl_update_stats_info(struct kgsl_device *device);
+#endif
 #endif /* __KGSL_PWRCTRL_H */

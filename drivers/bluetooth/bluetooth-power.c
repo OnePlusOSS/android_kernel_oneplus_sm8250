@@ -448,6 +448,10 @@ static void bt_free_gpios(void)
 {
 	if (bt_power_pdata->bt_gpio_sys_rst > 0)
 		gpio_free(bt_power_pdata->bt_gpio_sys_rst);
+	if (bt_power_pdata->wl_gpio_sys_rst > 0)
+		gpio_free(bt_power_pdata->wl_gpio_sys_rst);
+	if  (bt_power_pdata->bt_gpio_sw_ctrl  >  0)
+		gpio_free(bt_power_pdata->bt_gpio_sw_ctrl);
 	if  (bt_power_pdata->bt_gpio_debug  >  0)
 		gpio_free(bt_power_pdata->bt_gpio_debug);
 }
@@ -659,10 +663,13 @@ vdd_xtal_fail:
 			bt_vreg_unvote(bt_power_pdata->bt_vdd_rfa2);
 		if (bt_power_pdata->bt_vdd_rfa1)
 			bt_vreg_unvote(bt_power_pdata->bt_vdd_rfa1);
+		/*
+		 * if did't have pm8009 dig power and aon power disable enter Retention mode
 		if (bt_power_pdata->bt_vdd_dig)
 			bt_vreg_unvote(bt_power_pdata->bt_vdd_dig);
 		if (bt_power_pdata->bt_vdd_aon)
 			bt_vreg_unvote(bt_power_pdata->bt_vdd_aon);
+		*/
 	} else {
 		BT_PWR_ERR("Invalid power mode: %d", on);
 		rc = -1;
@@ -1149,9 +1156,7 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			soc_id = chipset_version;
 			if (soc_id == QCA_HSP_SOC_ID_0100 ||
 				soc_id == QCA_HSP_SOC_ID_0110 ||
-				soc_id == QCA_HSP_SOC_ID_0200 ||
-				soc_id == QCA_HSP_SOC_ID_0210 ||
-				soc_id == QCA_HSP_SOC_ID_1211) {
+				soc_id == QCA_HSP_SOC_ID_0200) {
 				ret = bt_disable_asd();
 			}
 		} else {

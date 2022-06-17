@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2010-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2010-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -413,6 +413,10 @@ setup_fail:
 	return ret;
 }
 
+#ifdef OPLUS_FEATURE_SSR
+#define CAUSENAME_SIZE 128
+#endif /*OPLUS_FEATURE_SSR*/
+
 /**
  * print_aux_minidump_tocs() - Print the ToC for an auxiliary minidump entry
  * @desc: PIL descriptor for the subsystem for which minidump is collected
@@ -440,6 +444,35 @@ static void print_aux_minidump_tocs(struct pil_desc *desc)
 	}
 }
 
+#ifdef OPLUS_FEATURE_SSR
+void __adsp_send_uevent(struct device *dev, char *reason)
+{
+	int ret_val;
+	char adsp_event[] = "ADSP_EVENT=adsp_crash";
+	char adsp_reason[300] = {0};
+	char *envp[3];
+
+	envp[0] = (char *)&adsp_event;
+	if(reason){
+		snprintf(adsp_reason, sizeof(adsp_reason),"ADSP_REASON=%s", reason);
+	}else{
+	    snprintf(adsp_reason, sizeof(adsp_reason),"ADSP_REASON=unkown");
+	}
+	adsp_reason[299] = 0;
+	envp[1] = (char *)&adsp_reason;
+	envp[2] = 0;
+
+	if(dev){
+		ret_val = kobject_uevent_env(&(dev->kobj), KOBJ_CHANGE, envp);
+		if(!ret_val){
+			pr_info("adsp_crash:kobject_uevent_env success!\n");
+		}else{
+			pr_info("adsp_crash:kobject_uevent_env fail,error=%d!\n", ret_val);
+		}
+	}
+}
+#endif /*OPLUS_FEATURE_SSR*/
+
 /**
  * pil_do_ramdump() - Ramdump an image
  * @desc: descriptor from pil_desc_init()
@@ -456,16 +489,29 @@ int pil_do_ramdump(struct pil_desc *desc,
 	struct pil_seg *seg;
 	int count = 0, ret;
 
+#ifdef OPLUS_FEATURE_SSR
+	unsigned char payload[100] = "";
+#endif /*OPLUS_FEATURE_SSR*/
+
 	if (desc->minidump_ss) {
-		pr_debug("Minidump : md_ss_toc->md_ss_toc_init is 0x%x\n",
+#ifdef OPLUS_FEATURE_MODEM_MINIDUMP
+	//Add for customized subsystem ramdump to skip generate dump cause by SAU
+	if (SKIP_GENERATE_RAMDUMP) {
+		pil_err(desc, "%s: Skip ramdump cuase by ap normal trigger.\n %s",
+			__func__, desc->name);
+		SKIP_GENERATE_RAMDUMP = false;
+		return -1;
+	}
+#endif
+		pr_info("Minidump : md_ss_toc->md_ss_toc_init is 0x%x\n",
 			(unsigned int)desc->minidump_ss->md_ss_toc_init);
-		pr_debug("Minidump : md_ss_toc->md_ss_enable_status is 0x%x\n",
+		pr_info("Minidump : md_ss_toc->md_ss_enable_status is 0x%x\n",
 			(unsigned int)desc->minidump_ss->md_ss_enable_status);
-		pr_debug("Minidump : md_ss_toc->encryption_status is 0x%x\n",
+		pr_info("Minidump : md_ss_toc->encryption_status is 0x%x\n",
 			(unsigned int)desc->minidump_ss->encryption_status);
-		pr_debug("Minidump : md_ss_toc->ss_region_count is 0x%x\n",
+		pr_info("Minidump : md_ss_toc->ss_region_count is 0x%x\n",
 			(unsigned int)desc->minidump_ss->ss_region_count);
-		pr_debug("Minidump : md_ss_toc->md_ss_smem_regions_baseptr is 0x%x\n",
+		pr_info("Minidump : md_ss_toc->md_ss_smem_regions_baseptr is 0x%x\n",
 			(unsigned int)
 			desc->minidump_ss->md_ss_smem_regions_baseptr);
 
@@ -479,12 +525,19 @@ int pil_do_ramdump(struct pil_desc *desc,
 			(desc->minidump_ss->md_ss_toc_init == true) &&
 			(desc->minidump_ss->md_ss_enable_status ==
 				MD_SS_ENABLED)) {
+			#ifndef OPLUS_FEATURE_MODEM_MINIDUMP
+			//Add for skip mini dump encryption
 			if (desc->minidump_ss->encryption_status ==
 			    MD_SS_ENCR_DONE) {
-				pr_debug("Dumping Minidump for %s\n",
+				pr_info("Dumping Minidump for %s\n",
 					desc->name);
 				return pil_do_minidump(desc, minidump_dev);
 			}
+			#else
+				pr_debug("Minidump : Dumping for %s\n",
+					desc->name);
+				return pil_do_minidump(desc, minidump_dev);
+			#endif
 			pr_debug("Minidump aborted for %s\n", desc->name);
 			return -EINVAL;
 		}
@@ -514,6 +567,15 @@ int pil_do_ramdump(struct pil_desc *desc,
 	if (ret)
 		pil_err(desc, "%s: Ramdump collection failed for subsys %s rc:%d\n",
 				__func__, desc->name, ret);
+
+#ifdef OPLUS_FEATURE_SSR
+	if(strlen(desc->name) > 0 && (strncmp(desc->name,"adsp",strlen(desc->name)) == 0)) {
+		scnprintf(payload, sizeof(payload), "payload@@%s", desc->name);
+		if(desc->dev){
+			__adsp_send_uevent(desc->dev, payload);
+		}
+	}
+#endif /* OPLUS_FEATURE_SSR */
 
 	if (desc->subsys_vmid > 0)
 		ret = pil_assign_mem_to_subsys(desc, priv->region_start,
@@ -776,12 +838,11 @@ static int pil_init_entry_addr(struct pil_priv *priv, const struct pil_mdt *mdt)
 }
 
 static int pil_alloc_region(struct pil_priv *priv, phys_addr_t min_addr,
-				phys_addr_t max_addr, size_t align,
-				size_t mdt_size)
+				phys_addr_t max_addr, size_t align)
 {
 	void *region;
 	size_t size = max_addr - min_addr;
-	size_t aligned_size = max(size, mdt_size);
+	size_t aligned_size;
 
 	/* Don't reallocate due to fragmentation concerns, just sanity check */
 	if (priv->region) {
@@ -821,8 +882,7 @@ static int pil_alloc_region(struct pil_priv *priv, phys_addr_t min_addr,
 	return 0;
 }
 
-static int pil_setup_region(struct pil_priv *priv, const struct pil_mdt *mdt,
-				size_t mdt_size)
+static int pil_setup_region(struct pil_priv *priv, const struct pil_mdt *mdt)
 {
 	const struct elf32_phdr *phdr;
 	phys_addr_t min_addr_r, min_addr_n, max_addr_r, max_addr_n, start, end;
@@ -867,8 +927,7 @@ static int pil_setup_region(struct pil_priv *priv, const struct pil_mdt *mdt,
 	max_addr_r = ALIGN(max_addr_r, SZ_4K);
 
 	if (relocatable) {
-		ret = pil_alloc_region(priv, min_addr_r, max_addr_r, align,
-					mdt_size);
+		ret = pil_alloc_region(priv, min_addr_r, max_addr_r, align);
 	} else {
 		priv->region_start = min_addr_n;
 		priv->region_end = max_addr_n;
@@ -899,15 +958,14 @@ static int pil_cmp_seg(void *priv, struct list_head *a, struct list_head *b)
 	return ret;
 }
 
-static int pil_init_mmap(struct pil_desc *desc, const struct pil_mdt *mdt,
-			size_t mdt_size)
+static int pil_init_mmap(struct pil_desc *desc, const struct pil_mdt *mdt)
 {
 	struct pil_priv *priv = desc->priv;
 	const struct elf32_phdr *phdr;
 	struct pil_seg *seg;
 	int i, ret;
 
-	ret = pil_setup_region(priv, mdt, mdt_size);
+	ret = pil_setup_region(priv, mdt);
 	if (ret)
 		return ret;
 
@@ -1279,7 +1337,7 @@ int pil_boot(struct pil_desc *desc)
 		goto release_fw;
 	}
 
-	ret = pil_init_mmap(desc, mdt, fw->size);
+	ret = pil_init_mmap(desc, mdt);
 	if (ret)
 		goto release_fw;
 
@@ -1292,8 +1350,7 @@ int pil_boot(struct pil_desc *desc)
 
 	pil_log("before_init_image", desc);
 	if (desc->ops->init_image)
-		ret = desc->ops->init_image(desc, fw->data, fw->size,
-				priv->region_start, priv->region);
+		ret = desc->ops->init_image(desc, fw->data, fw->size);
 	if (ret) {
 		pil_err(desc, "Initializing image failed(rc:%d)\n", ret);
 		goto err_boot;

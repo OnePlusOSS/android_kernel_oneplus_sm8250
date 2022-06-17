@@ -1843,6 +1843,17 @@ static inline void free_secdata(void *secdata)
 { }
 #endif /* CONFIG_SECURITY */
 
+#ifdef CONFIG_OPLUS_SECURE_GUARD
+#ifdef CONFIG_SECURITY
+extern int get_current_security_context(char **context, u32 *context_len);
+#else
+static inline int get_current_security_context(char **context, u32 *context_len)
+{
+	return -EOPNOTSUPP;
+}
+#endif
+#endif /* CONFIG_OPLUS_SECURE_GUARD */
+
 #ifdef CONFIG_PERF_EVENTS
 struct perf_event_attr;
 struct perf_event;
