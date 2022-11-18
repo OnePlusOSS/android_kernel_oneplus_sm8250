@@ -137,6 +137,8 @@ static int bcl_soc_probe(struct platform_device *pdev)
 	bcl_perph->ops.get_temp = bcl_read_soc;
 	bcl_perph->ops.set_trips = bcl_set_soc;
 	INIT_WORK(&bcl_perph->soc_eval_work, bcl_evaluate_soc);
+#ifndef OPLUS_BUG_STABILITY
+// Bin.Xu @ BSP.Kernel.Stability, 2020/4/3, add checklist: Fix dump caused by bcl
 	bcl_perph->psy_nb.notifier_call = battery_supply_callback;
 	ret = power_supply_reg_notifier(&bcl_perph->psy_nb);
 	if (ret < 0) {
@@ -155,6 +157,26 @@ static int bcl_soc_probe(struct platform_device *pdev)
 		goto bcl_soc_probe_exit;
 	}
 	thermal_zone_device_update(bcl_perph->tz_dev, THERMAL_DEVICE_UP);
+#else
+	bcl_perph->tz_dev = thermal_zone_of_sensor_register(&pdev->dev,
+				0, bcl_perph, &bcl_perph->ops);
+	if (IS_ERR(bcl_perph->tz_dev)) {
+		pr_err("soc TZ register failed. err:%ld\n",
+				PTR_ERR(bcl_perph->tz_dev));
+		ret = PTR_ERR(bcl_perph->tz_dev);
+		bcl_perph->tz_dev = NULL;
+		goto bcl_soc_probe_exit;
+	}
+	thermal_zone_device_update(bcl_perph->tz_dev, THERMAL_DEVICE_UP);
+	bcl_perph->psy_nb.notifier_call = battery_supply_callback;
+	ret = power_supply_reg_notifier(&bcl_perph->psy_nb);
+	if (ret < 0) {
+		pr_err("soc notifier registration error. defer. err:%d\n",
+			ret);
+		ret = -EPROBE_DEFER;
+		goto bcl_soc_probe_exit;
+	}
+#endif /* OPLUS_BUG_STABILITY */
 	schedule_work(&bcl_perph->soc_eval_work);
 
 	dev_set_drvdata(&pdev->dev, bcl_perph);

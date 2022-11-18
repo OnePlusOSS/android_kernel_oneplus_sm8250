@@ -54,6 +54,11 @@ config ANDROID_BINDER_IPC_SELFTEST
 	  exhaustively with combinations of various buffer sizes and
 	  alignments.
 
+config OPLUS_BINDER_STRATEGY
+	default n
+	bool "config binder control"
+	help
+	  it helps to reduce anr by restricting background app binder behavior.
 endif # if ANDROID
 
 endmenu

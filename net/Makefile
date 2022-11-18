@@ -87,3 +87,49 @@ endif
 obj-$(CONFIG_QRTR)		+= qrtr/
 obj-$(CONFIG_NET_NCSI)		+= ncsi/
 obj-$(CONFIG_XDP_SOCKETS)	+= xdp/
+
+#ifdef OPLUS_FEATURE_NWPOWER
+obj-y				+= oplus_nwpower/
+#endif /* OPLUS_FEATURE_NWPOWER */
+#ifdef OPLUS_FEATURE_WIFI_SLA
+obj-y                   	+= oplus_connectivity_sla/
+#endif /* OPLUS_FEATURE_WIFI_SLA */
+
+#ifdef OPLUS_FEATURE_WIFI_ROUTERBOOST
+obj-$(CONFIG_OPLUS_FEATURE_WIFI_ROUTERBOOST) += oplus_connectivity_routerboost/
+#endif /* OPLUS_FEATURE_WIFI_ROUTERBOOST */
+
+#ifdef OPLUS_FEATURE_IPV6_OPTIMIZE
+obj-y                   	+= oplus_ipv6/
+#endif /* OPLUS_FEATURE_IPV6_OPTIMIZE */
+
+OPLUS_FEATURE_WIFI_LUCKYMONEY=1
+ifneq ($(OPLUS_FEATURE_WIFI_LUCKYMONEY),)
+obj-y				+= oplus_nf_hooks/
+endif #/* OPLUS_FEATURE_WIFI_LUCKYMONEY */
+
+#ifdef OPLUS_FEATURE_APP_MONITOR
+#Add for apps network monitors
+obj-y				+= oplus_apps_monitor/
+#endif /* OPLUS_FEATURE_APP_MONITOR */
+
+#ifdef OPLUS_FEATURE_DATA_EVAL
+obj-$(CONFIG_OPLUS_FEATURE_DATA_EVAL) += oplus_score/
+#endif /* OPLUS_FEATURE_DATA_EVAL */
+
+OPLUS_FEATURE_DHCP=1
+ifneq ($(OPLUS_FEATURE_DHCP),)
+obj-y				+= oplus_dhcp/
+endif #/* OPLUS_FEATURE_DHCP */
+
+OPLUS_FEATURE_WIFI_CAP_CENTER=1
+ifneq ($(OPLUS_FEATURE_WIFI_CAP_CENTER),)
+obj-y				+= oplus_wificapcenter/
+endif #/* OPLUS_FEATURE_WIFI_CAP_CENTER */
+
+ifneq ($(OPLUS_FEATURE_WIFI_ROUTERBOOST),)
+obj-y				+= oplus_router_boost/
+endif #/* OPLUS_FEATURE_WIFI_ROUTERBOOST */
+
+obj-y                           += oplus_modules/
+

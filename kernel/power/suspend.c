@@ -332,9 +332,18 @@ MODULE_PARM_DESC(pm_test_delay,
 static int suspend_test(int level)
 {
 #ifdef CONFIG_PM_DEBUG
+	#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+	pr_info("%s pm_test_level:%d, level:%d\n", __func__,
+		pm_test_level, level);
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 	if (pm_test_level == level) {
+		#ifndef OPLUS_FEATURE_POWERINFO_STANDBY
 		pr_info("suspend debug: Waiting for %d second(s).\n",
 				pm_test_delay);
+		#else
+		pr_err("suspend debug: Waiting for %d second(s).\n",
+				pm_test_delay);
+		#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 		mdelay(pm_test_delay * 1000);
 		return 1;
 	}
@@ -403,8 +412,15 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	int error, last_dev;
 
 	error = platform_suspend_prepare(state);
+	#ifndef OPLUS_FEATURE_POWERINFO_STANDBY
 	if (error)
 		goto Platform_finish;
+	#else
+	if (error) {
+		pr_info("%s platform_suspend_prepare fail\n", __func__);
+		goto Platform_finish;
+	}
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
 	error = dpm_suspend_late(PMSG_SUSPEND);
 	if (error) {
@@ -416,8 +432,15 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 		goto Platform_finish;
 	}
 	error = platform_suspend_prepare_late(state);
+	#ifndef OPLUS_FEATURE_POWERINFO_STANDBY
 	if (error)
 		goto Devices_early_resume;
+	#else
+	if (error) {
+		pr_info("%s prepare late fail\n", __func__);
+		goto Devices_early_resume;
+	}
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
 	if (state == PM_SUSPEND_TO_IDLE && pm_test_level != TEST_PLATFORM) {
 		s2idle_loop();
@@ -434,11 +457,25 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 		goto Platform_early_resume;
 	}
 	error = platform_suspend_prepare_noirq(state);
+	#ifndef OPLUS_FEATURE_POWERINFO_STANDBY
 	if (error)
 		goto Platform_wake;
+	#else
+	if (error) {
+		pr_info("%s prepare_noirq fail\n", __func__);
+		goto Platform_wake;
+	}
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
+	#ifndef OPLUS_FEATURE_POWERINFO_STANDBY
 	if (suspend_test(TEST_PLATFORM))
 		goto Platform_wake;
+	#else
+	if (suspend_test(TEST_PLATFORM)) {
+		pr_info("%s test_platform fail\n", __func__);
+		goto Platform_wake;
+	}
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
 	error = disable_nonboot_cpus();
 	if (error || suspend_test(TEST_CPUS)) {
@@ -448,6 +485,9 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 
 	arch_suspend_disable_irqs();
 	BUG_ON(!irqs_disabled());
+	#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+	pr_info("%s syscore_suspend\n", __func__);
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
 	system_state = SYSTEM_SUSPEND;
 
@@ -498,14 +538,28 @@ int suspend_devices_and_enter(suspend_state_t state)
 	int error;
 	bool wakeup = false;
 
+	#ifndef OPLUS_FEATURE_POWERINFO_STANDBY
 	if (!sleep_state_supported(state))
 		return -ENOSYS;
+	#else
+	if (!sleep_state_supported(state)) {
+		pr_info("sleep_state_supported false\n");
+		return -ENOSYS;
+	}
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
 	pm_suspend_target_state = state;
 
 	error = platform_suspend_begin(state);
+	#ifndef OPLUS_FEATURE_POWERINFO_STANDBY
 	if (error)
 		goto Close;
+	#else
+	if (error) {
+		pr_info("%s platform_suspend_begin fail\n", __func__);
+		goto Close;
+	}
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
 	suspend_console();
 	suspend_test_start();
@@ -517,12 +571,23 @@ int suspend_devices_and_enter(suspend_state_t state)
 		goto Recover_platform;
 	}
 	suspend_test_finish("suspend devices");
+	#ifndef OPLUS_FEATURE_POWERINFO_STANDBY
 	if (suspend_test(TEST_DEVICES))
 		goto Recover_platform;
+	#else
+	if (suspend_test(TEST_DEVICES)) {
+		pr_info("%s TEST_DEVICES fail\n", __func__);
+		goto Recover_platform;
+	}
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
 	do {
 		error = suspend_enter(state, &wakeup);
 	} while (!error && !wakeup && platform_suspend_again(state));
+
+	#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+	pr_info("suspend_enter end, error:%d, wakeup:%d\n", error, wakeup);
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
  Resume_devices:
 	suspend_test_start();
@@ -555,6 +620,68 @@ static void suspend_finish(void)
 	pm_restore_console();
 }
 
+#ifdef OPLUS_BUG_STABILITY
+/**
+* Sync the filesystem in seperate workqueue.
+* Then check it finishing or not periodically and
+* abort if any wakeup source comes in. That can reduce
+* the wakeup latency
+*
+*/
+static bool sys_sync_completed = false;
+static void sys_sync_work_func(struct work_struct *work);
+static DECLARE_WORK(sys_sync_work, sys_sync_work_func);
+static DECLARE_WAIT_QUEUE_HEAD(sys_sync_wait);
+static void sys_sync_work_func(struct work_struct *work)
+{
+    trace_suspend_resume(TPS("sync_filesystems"), 0, true);
+    pr_info(KERN_INFO "PM: Syncing filesystems ... ");
+    ksys_sync();
+    pr_cont("done.\n");
+    trace_suspend_resume(TPS("sync_filesystems"), 0, false);
+    sys_sync_completed = true;
+    wake_up(&sys_sync_wait);
+}
+
+static int sys_sync_queue(void)
+{
+    int work_status = work_busy(&sys_sync_work);
+
+    /*maybe some irq coming here before pending check*/
+    pm_wakeup_clear(true);
+
+    /*Check if the previous work still running.*/
+    if (!(work_status & WORK_BUSY_PENDING)) {
+        if (work_status & WORK_BUSY_RUNNING) {
+            while (wait_event_timeout(sys_sync_wait, sys_sync_completed,
+                        msecs_to_jiffies(100)) == 0) {
+                if (pm_wakeup_pending()) {
+                    pr_info("PM: Pre-Syncing abort\n");
+                    goto abort;
+                }
+            }
+            pr_info("PM: Pre-Syncing done\n");
+        }
+        sys_sync_completed = false;
+        schedule_work(&sys_sync_work);
+    }
+
+    while (wait_event_timeout(sys_sync_wait, sys_sync_completed,
+                    msecs_to_jiffies(100)) == 0) {
+        if (pm_wakeup_pending()) {
+            pr_info("PM: Syncing abort\n");
+            goto abort;
+        }
+    }
+
+    pr_info("PM: Syncing done\n");
+    return 0;
+abort:
+    return -EAGAIN;
+}
+#endif /*OPLUS_BUG_STABILITY*/
+
+
 /**
  * enter_state - Do common work needed to enter system sleep state.
  * @state: System sleep state to enter.
@@ -576,27 +703,57 @@ static int enter_state(suspend_state_t state)
 		}
 #endif
 	} else if (!valid_state(state)) {
+		#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+		pr_info("%s invalid_state\n", __func__);
+		#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 		return -EINVAL;
 	}
+
+	#ifndef OPLUS_FEATURE_POWERINFO_STANDBY
 	if (!mutex_trylock(&system_transition_mutex))
 		return -EBUSY;
+	#else
+	if (!mutex_trylock(&system_transition_mutex)) {
+		pr_info("%s mutex_trylock fail\n", __func__);
+		return -EBUSY;
+	}
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
 	if (state == PM_SUSPEND_TO_IDLE)
 		s2idle_begin();
 
 #ifndef CONFIG_SUSPEND_SKIP_SYNC
+#ifndef OPLUS_BUG_STABILITY
 	trace_suspend_resume(TPS("sync_filesystems"), 0, true);
 	pr_info("Syncing filesystems ... ");
 	ksys_sync();
 	pr_cont("done.\n");
 	trace_suspend_resume(TPS("sync_filesystems"), 0, false);
+#else
+    error = sys_sync_queue();
+    if (error) {
+        pr_err("%s sys_sync_queue fail\n", __func__);
+        goto Unlock;
+    }
+#endif /* OPLUS_BUG_STABILITY */
 #endif
 
 	pm_pr_dbg("Preparing system for sleep (%s)\n", mem_sleep_labels[state]);
 	pm_suspend_clear_flags();
 	error = suspend_prepare(state);
+	#ifndef OPLUS_FEATURE_POWERINFO_STANDBY
 	if (error)
 		goto Unlock;
+	#else
+	if (error) {
+		pr_info("%s suspend_prepare error:%d\n", __func__, error);
+		goto Unlock;
+	}
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
+
+	#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+	pr_info("%s suspend_prepare success\n", __func__);
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
 	if (suspend_test(TEST_FREEZER))
 		goto Finish;
@@ -606,6 +763,9 @@ static int enter_state(suspend_state_t state)
 	pm_restrict_gfp_mask();
 	error = suspend_devices_and_enter(state);
 	pm_restore_gfp_mask();
+	#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+	pr_info("%s suspend_devices_and_enter end\n", __func__);
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
  Finish:
 	events_check_enabled = false;

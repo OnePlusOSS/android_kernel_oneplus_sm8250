@@ -583,6 +583,10 @@ static int inotify_new_watch(struct fsnotify_group *group,
 
 	/* increment the number of watches the user has */
 	if (!inc_inotify_watches(group->inotify_data.ucounts)) {
+#ifdef VENDOR_EDIT
+		if (printk_ratelimit())
+			printk(KERN_ERR "inotify_new_watch:return false,uid=%ul\n", current_uid());
+#endif
 		inotify_remove_from_idr(group, tmp_i_mark);
 		ret = -ENOSPC;
 		goto out_err;

@@ -64,6 +64,7 @@ struct fscrypt_operations {
 			   void *fs_data);
 	const union fscrypt_context *(*get_dummy_context)(
 		struct super_block *sb);
+	bool (*dummy_context)(struct inode *);
 	bool (*empty_dir)(struct inode *inode);
 	unsigned int max_namelen;
 	bool (*has_stable_inodes)(struct super_block *sb);

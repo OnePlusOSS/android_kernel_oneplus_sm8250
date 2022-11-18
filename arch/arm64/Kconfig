@@ -1395,6 +1395,7 @@ config RELOCATABLE
 
 config RANDOMIZE_BASE
 	bool "Randomize the address of the kernel image"
+	depends on !KASAN
 	select ARM64_MODULE_PLTS if MODULES
 	select RELOCATABLE
 	help

@@ -5,3 +5,8 @@ config SENSORS_SSC
 	  Add support for sensors SSC driver.
 	  This driver is used for exercising sensors use case,
 	  time syncing with ADSP clock.
+
+config SENSORS_SIMULATED_HALL
+	bool "Enable SIMULATED_HALL Driver"
+	help
+	  Add support for SIMULATED HALL SENSOR.

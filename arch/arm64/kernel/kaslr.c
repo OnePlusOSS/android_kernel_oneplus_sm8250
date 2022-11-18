@@ -35,6 +35,13 @@ static __init u64 get_kaslr_seed(void *fdt)
 	if (node < 0)
 		return 0;
 
+#ifdef OPLUS_BUG_STABILITY
+/* Aging/kasan version disable kaslr, easier to analysis problem */
+#ifdef CONFIG_KASAN
+	return 0;
+#endif
+#endif
+
 	prop = fdt_getprop_w(fdt, node, "kaslr-seed", &len);
 	if (!prop || len != sizeof(u64))
 		return 0;

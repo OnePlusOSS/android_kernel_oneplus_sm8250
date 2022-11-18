@@ -459,6 +459,9 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 	INIT_DELAYED_WORK(&host->sdio_irq_work, sdio_irq_work);
 	timer_setup(&host->retune_timer, mmc_retune_timer, 0);
 
+#ifdef CONFIG_EMMC_SDCARD_OPTIMIZE
+    host->detect_change_retry = 5;
+#endif /* CONFIG_EMMC_SDCARD_OPTIMIZE */
 	/*
 	 * By default, hosts do not support SGIO or large requests.
 	 * They have to set these according to their abilities.

@@ -14,4 +14,7 @@
 int msm_cvp_handle_syscall(struct msm_cvp_inst *inst, struct cvp_kmd_arg *arg);
 int msm_cvp_session_init(struct msm_cvp_inst *inst);
 int msm_cvp_session_deinit(struct msm_cvp_inst *inst);
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+int msm_cvp_session_queue_stop(struct msm_cvp_inst *inst);
+#endif
 #endif

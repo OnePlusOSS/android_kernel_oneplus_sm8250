@@ -76,6 +76,15 @@
 
 #include "ufs.h"
 #include "ufshci.h"
+#ifdef OPLUS_FEATURE_UFS_SHOW_LATENCY
+#include "ufs_latency_hist.h"
+#endif
+#if defined(CONFIG_UFSFEATURE)
+#include "ufsfeature.h"
+#endif
+#ifdef OPLUS_FEATURE_PADL_STATISTICS
+#include "ufs_signal_quality.h"
+#endif
 
 #define UFSHCD "ufshcd"
 #define UFSHCD_DRIVER_VERSION "0.3"
@@ -232,6 +241,9 @@ struct ufshcd_lrb {
 #endif /* CONFIG_SCSI_UFS_CRYPTO */
 
 	bool req_abort_skip;
+#if defined(CONFIG_UFSFEATURE) && defined(CONFIG_UFSHPB)
+	int hpb_ctx_id;
+#endif
 };
 
 /**
@@ -748,6 +760,35 @@ struct ufshcd_cmd_log {
 	u32 seq_num;
 };
 
+#ifdef OPLUS_FEATURE_MIDAS
+/* Add t for ufs transmission_status for midas */
+struct ufs_transmission_status_t
+{
+	u8  transmission_status_enable;
+
+	u64 gear_min_write_sec;
+	u64 gear_max_write_sec;
+	u64 gear_min_read_sec;
+	u64 gear_max_read_sec;
+
+	u64 gear_min_write_us;
+	u64 gear_max_write_us;
+	u64 gear_min_read_us;
+	u64 gear_max_read_us;
+
+	u64 gear_min_dev_us;
+	u64 gear_max_dev_us;
+
+	u64 gear_min_other_sec;
+	u64 gear_max_other_sec;
+	u64 gear_min_other_us;
+	u64 gear_max_other_us;
+
+	u64 scsi_send_count;
+	u64 dev_cmd_count;
+};
+#endif /*OPLUS_FEATURE_MIDAS*/
+
 /**
  * struct ufs_hba - per adapter private structure
  * @mmio_base: UFSHCI base register address
@@ -1021,6 +1062,13 @@ struct ufs_hba {
 #ifdef CONFIG_DEBUG_FS
 	struct debugfs_files debugfs_files;
 #endif
+#ifdef OPLUS_FEATURE_UFS_SHOW_LATENCY
+/* add latency_hist node for ufs latency calculate in sysfs */
+	int latency_hist_enabled;
+	struct io_latency_state io_lat_read;
+	struct io_latency_state io_lat_write;
+	struct io_latency_state io_lat_other;
+#endif
 
 	struct ufs_vreg_info vreg_info;
 	struct list_head clk_list_head;
@@ -1114,6 +1162,13 @@ struct ufs_hba {
 
 	bool phy_init_g4;
 	bool force_g4;
+#if defined(CONFIG_UFSFEATURE)
+	struct ufsf_feature ufsf;
+#endif
+#ifdef OPLUS_FEATURE_PADL_STATISTICS
+/* add unipro statistic information */
+	struct unipro_signal_quality_ctrl signalCtrl;
+#endif
 	bool wb_enabled;
 
 #ifdef CONFIG_SCSI_UFS_CRYPTO
@@ -1123,6 +1178,12 @@ struct ufs_hba {
 	u32 crypto_cfg_register;
 	struct keyslot_manager *ksm;
 #endif /* CONFIG_SCSI_UFS_CRYPTO */
+
+#ifdef OPLUS_FEATURE_MIDAS
+/* Add t for ufs transmission_status for midas */
+	struct ufs_transmission_status_t ufs_transmission_status;
+	struct device_attribute ufs_transmission_status_attr;
+#endif
 
 	ANDROID_KABI_RESERVE(1);
 	ANDROID_KABI_RESERVE(2);
@@ -1410,6 +1471,15 @@ u32 ufshcd_get_local_unipro_ver(struct ufs_hba *hba);
 
 void ufshcd_scsi_block_requests(struct ufs_hba *hba);
 void ufshcd_scsi_unblock_requests(struct ufs_hba *hba);
+#if defined(CONFIG_UFSFEATURE)
+int ufshcd_exec_dev_cmd(struct ufs_hba *hba,
+			enum dev_cmd_type cmd_type, int timeout);
+int ufshcd_hibern8_hold(struct ufs_hba *hba, bool async);
+void ufshcd_hold_all(struct ufs_hba *hba);
+void ufshcd_release_all(struct ufs_hba *hba);
+int ufshcd_comp_scsi_upiu(struct ufs_hba *hba, struct ufshcd_lrb *lrbp);
+int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp);
+#endif
 
 /* Wrapper functions for safely calling variant operations */
 static inline const char *ufshcd_get_var_name(struct ufs_hba *hba)

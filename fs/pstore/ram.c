@@ -52,6 +52,12 @@ static ulong ramoops_ftrace_size = MIN_MEM_SIZE;
 module_param_named(ftrace_size, ramoops_ftrace_size, ulong, 0400);
 MODULE_PARM_DESC(ftrace_size, "size of ftrace log");
 
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+static ulong ramoops_device_info_size = MIN_MEM_SIZE;
+module_param_named(device_info_size, ramoops_device_info_size, ulong, 0400);
+MODULE_PARM_DESC(device_info_size, "size of device info");
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
+
 static ulong ramoops_pmsg_size = MIN_MEM_SIZE;
 module_param_named(pmsg_size, ramoops_pmsg_size, ulong, 0400);
 MODULE_PARM_DESC(pmsg_size, "size of user space message log");
@@ -82,7 +88,8 @@ MODULE_PARM_DESC(ramoops_ecc,
 		"if non-zero, the option enables ECC support and specifies "
 		"ECC buffer size in bytes (1 is a special value, means 16 "
 		"bytes ECC)");
-
+#ifndef OPLUS_FEATURE_DUMPDEVICE 
+/*move this define to  pstore.h*/
 struct ramoops_context {
 	struct persistent_ram_zone **dprzs;	/* Oops dump zones */
 	struct persistent_ram_zone *cprz;	/* Console zone */
@@ -106,8 +113,10 @@ struct ramoops_context {
 	unsigned int max_ftrace_cnt;
 	unsigned int ftrace_read_cnt;
 	unsigned int pmsg_read_cnt;
+	
 	struct pstore_info pstore;
 };
+#endif
 
 static struct platform_device *dummy;
 static struct ramoops_platform_data *dummy_data;
@@ -120,6 +129,9 @@ static int ramoops_pstore_open(struct pstore_info *psi)
 	cxt->console_read_cnt = 0;
 	cxt->ftrace_read_cnt = 0;
 	cxt->pmsg_read_cnt = 0;
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+	cxt->device_info_read_cnt = 0;
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 	return 0;
 }
 
@@ -284,6 +296,13 @@ static ssize_t ramoops_pstore_read(struct pstore_record *record)
 					   1, &record->id, &record->type,
 					   PSTORE_TYPE_PMSG, 0);
 
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+	if (!prz_ok(prz))
+		prz = ramoops_get_next_prz(&cxt->dprz, &cxt->device_info_read_cnt,
+					1, &record->id, &record->type,
+					PSTORE_TYPE_DEVICE_INFO, 0);
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
+
 	/* ftrace is last since it may want to dynamically allocate memory. */
 	if (!prz_ok(prz)) {
 		if (!(cxt->flags & RAMOOPS_FLAG_FTRACE_PER_CPU)) {
@@ -301,7 +320,6 @@ static ssize_t ramoops_pstore_read(struct pstore_record *record)
 					  GFP_KERNEL);
 			if (!tmp_prz)
 				return -ENOMEM;
-			prz = tmp_prz;
 			free_prz = true;
 
 			while (cxt->ftrace_read_cnt < cxt->max_ftrace_cnt) {
@@ -324,6 +342,7 @@ static ssize_t ramoops_pstore_read(struct pstore_record *record)
 					goto out;
 			}
 			record->id = 0;
+			prz = tmp_prz;
 		}
 	}
 
@@ -406,6 +425,13 @@ static int notrace ramoops_pstore_write(struct pstore_record *record)
 	} else if (record->type == PSTORE_TYPE_PMSG) {
 		pr_warn_ratelimited("PMSG shouldn't call %s\n", __func__);
 		return -EINVAL;
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+	} else if (record->type == PSTORE_TYPE_DEVICE_INFO) {
+		if (!cxt->dprz)
+			return -ENOMEM;
+		persistent_ram_write(cxt->dprz, record->buf, record->size);
+		return 0;
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 	}
 
 	if (record->type != PSTORE_TYPE_DMESG)
@@ -436,17 +462,6 @@ static int notrace ramoops_pstore_write(struct pstore_record *record)
 		return -ENOSPC;
 
 	prz = cxt->dprzs[cxt->dump_write_cnt];
-
-	/*
-	 * Since this is a new crash dump, we need to reset the buffer in
-	 * case it still has an old dump present. Without this, the new dump
-	 * will get appended, which would seriously confuse anything trying
-	 * to check dump file contents. Specifically, ramoops_read_kmsg_hdr()
-	 * expects to find a dump header in the beginning of buffer data, so
-	 * we must to reset the buffer values, in order to ensure that the
-	 * header will be written to the beginning of the buffer.
-	 */
-	persistent_ram_zap(prz);
 
 	/* Build header and append record contents. */
 	hlen = ramoops_write_kmsg_hdr(prz, record);
@@ -496,6 +511,11 @@ static int ramoops_pstore_erase(struct pstore_record *record)
 	case PSTORE_TYPE_PMSG:
 		prz = cxt->mprz;
 		break;
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+	case PSTORE_TYPE_DEVICE_INFO:
+		prz = cxt->dprz;
+		break;
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 	default:
 		return -EINVAL;
 	}
@@ -714,6 +734,9 @@ static int ramoops_parse_dt(struct platform_device *pdev,
 	parse_size("console-size", pdata->console_size);
 	parse_size("ftrace-size", pdata->ftrace_size);
 	parse_size("pmsg-size", pdata->pmsg_size);
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+	parse_size("devinfo-size", pdata->device_info_size);
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 	parse_size("ecc-size", pdata->ecc_info.ecc_size);
 	parse_size("flags", pdata->flags);
 
@@ -757,7 +780,9 @@ static int ramoops_probe(struct platform_device *pdev)
 	}
 
 	if (!pdata->mem_size || (!pdata->record_size && !pdata->console_size &&
-			!pdata->ftrace_size && !pdata->pmsg_size)) {
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+			!pdata->ftrace_size && !pdata->pmsg_size  && !pdata->device_info_size)) {
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 		pr_err("The memory size and the record/console size must be "
 			"non-zero\n");
 		goto fail_out;
@@ -771,6 +796,10 @@ static int ramoops_probe(struct platform_device *pdev)
 		pdata->ftrace_size = rounddown_pow_of_two(pdata->ftrace_size);
 	if (pdata->pmsg_size && !is_power_of_2(pdata->pmsg_size))
 		pdata->pmsg_size = rounddown_pow_of_two(pdata->pmsg_size);
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+	if (pdata->device_info_size && !is_power_of_2(pdata->device_info_size))
+		pdata->device_info_size = rounddown_pow_of_two(pdata->device_info_size);
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 
 	cxt->size = pdata->mem_size;
 	cxt->phys_addr = pdata->mem_address;
@@ -782,11 +811,16 @@ static int ramoops_probe(struct platform_device *pdev)
 	cxt->dump_oops = pdata->dump_oops;
 	cxt->flags = pdata->flags;
 	cxt->ecc_info = pdata->ecc_info;
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+	cxt->device_info_size = pdata->device_info_size;
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 
 	paddr = cxt->phys_addr;
 
 	dump_mem_sz = cxt->size - cxt->console_size - cxt->ftrace_size
-			- cxt->pmsg_size;
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+			- cxt->pmsg_size  - cxt->device_info_size;
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 	err = ramoops_init_przs("dump", dev, cxt, &cxt->dprzs, &paddr,
 				dump_mem_sz, cxt->record_size,
 				&cxt->max_dump_cnt, 0, 0);
@@ -813,7 +847,13 @@ static int ramoops_probe(struct platform_device *pdev)
 				cxt->pmsg_size, 0);
 	if (err)
 		goto fail_init_mprz;
-
+	
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+	err = ramoops_init_prz("devinfo", dev, cxt, &cxt->dprz, &paddr,
+                cxt->device_info_size, 0);
+	if (err)
+		goto fail_init_dprz;
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 	cxt->pstore.data = cxt;
 	/*
 	 * Prepare frontend flags based on which areas are initialized.
@@ -864,6 +904,10 @@ static int ramoops_probe(struct platform_device *pdev)
 	ramoops_pmsg_size = pdata->pmsg_size;
 	ramoops_ftrace_size = pdata->ftrace_size;
 
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+	ramoops_device_info_size = pdata->device_info_size;
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
+
 	pr_info("attached 0x%lx@0x%llx, ecc: %d/%d\n",
 		cxt->size, (unsigned long long)cxt->phys_addr,
 		cxt->ecc_info.ecc_size, cxt->ecc_info.block_size);
@@ -875,6 +919,10 @@ fail_buf:
 fail_clear:
 	cxt->pstore.bufsize = 0;
 	persistent_ram_free(cxt->mprz);
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+fail_init_dprz:
+	persistent_ram_free(cxt->dprz);
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 fail_init_mprz:
 fail_init_fprz:
 	persistent_ram_free(cxt->cprz);
@@ -895,6 +943,9 @@ static int ramoops_remove(struct platform_device *pdev)
 
 	persistent_ram_free(cxt->mprz);
 	persistent_ram_free(cxt->cprz);
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+	persistent_ram_free(cxt->dprz);
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 	ramoops_free_przs(cxt);
 
 	return 0;
@@ -947,6 +998,9 @@ static void __init ramoops_register_dummy(void)
 	dummy_data->record_size = record_size;
 	dummy_data->console_size = ramoops_console_size;
 	dummy_data->ftrace_size = ramoops_ftrace_size;
+#ifdef OPLUS_FEATURE_DUMPDEVICE
+	dummy_data->device_info_size = ramoops_device_info_size;
+#endif /* OPLUS_FEATURE_DUMPDEVICE */
 	dummy_data->pmsg_size = ramoops_pmsg_size;
 	dummy_data->dump_oops = dump_oops;
 	dummy_data->flags = RAMOOPS_FLAG_FTRACE_PER_CPU;

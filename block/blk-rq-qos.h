@@ -29,7 +29,11 @@ struct rq_qos_ops {
 	void (*track)(struct rq_qos *, struct request *, struct bio *);
 	void (*issue)(struct rq_qos *, struct request *);
 	void (*requeue)(struct rq_qos *, struct request *);
+#if defined(OPLUS_FEATURE_SCHED_ASSIST) && defined(CONFIG_OPLUS_FEATURE_UXIO_FIRST)
+	void (*done)(struct rq_qos *, struct request *, bool);
+#else
 	void (*done)(struct rq_qos *, struct request *);
+#endif
 	void (*done_bio)(struct rq_qos *, struct bio *);
 	void (*cleanup)(struct rq_qos *, struct bio *);
 	void (*exit)(struct rq_qos *);
@@ -96,7 +100,11 @@ bool rq_depth_scale_down(struct rq_depth *rqd, bool hard_throttle);
 bool rq_depth_calc_max_depth(struct rq_depth *rqd);
 
 void rq_qos_cleanup(struct request_queue *, struct bio *);
+#if defined(OPLUS_FEATURE_SCHED_ASSIST) && defined(CONFIG_OPLUS_FEATURE_UXIO_FIRST)
+void rq_qos_done(struct request_queue *, struct request *, bool);
+#else
 void rq_qos_done(struct request_queue *, struct request *);
+#endif
 void rq_qos_issue(struct request_queue *, struct request *);
 void rq_qos_requeue(struct request_queue *, struct request *);
 void rq_qos_done_bio(struct request_queue *q, struct bio *bio);

@@ -208,6 +208,9 @@ struct adc_data {
 	const struct adc_channels *adc_chans;
 	unsigned int	*decimation;
 	unsigned int	*hw_settle;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	int  battemp_for_adc;
+#endif
 };
 
 int qcom_vadc_scale(enum vadc_scale_fn_type scaletype,
