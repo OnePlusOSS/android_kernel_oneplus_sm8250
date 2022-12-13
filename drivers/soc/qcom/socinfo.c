@@ -22,6 +22,8 @@
 #include <linux/soc/qcom/smem.h>
 #include <soc/qcom/boot_stats.h>
 
+#include <soc/oplus/system/oplus_project.h>
+
 #define BUILD_ID_LENGTH 32
 #define CHIP_ID_LENGTH 32
 #define SMEM_IMAGE_VERSION_BLOCKS_COUNT 32
@@ -229,6 +231,18 @@ static union {
 /* max socinfo format version supported */
 #define MAX_SOCINFO_FORMAT SOCINFO_VERSION(0, 15)
 
+#ifdef OPLUS_ARCH_EXTENDS
+static char *fake_cpu_id = "SM8150";
+#ifdef CONFIG_ARCH_LITO
+static char *real_cpu_id = "SDM765G 5G";
+#else
+static char *real_cpu_id = "SM8250";
+#endif /*CONFIG_ARCH_LITO*/
+static char *real_cpu_id_20161_models = "SM8250_AC";
+static char *real_cpu_id_20057_20058 = "SDM750G";
+static char *real_cpu_id_20669_20750_20751  = "SDM750G";
+#endif /*OPLUS_ARCH_EXTENDS*/
+
 static struct msm_soc_info cpu_of_id[] = {
 	[0]  = {MSM_CPU_UNKNOWN, "Unknown CPU"},
 	/* 8960 IDs */
@@ -325,8 +339,11 @@ static struct msm_soc_info cpu_of_id[] = {
 	[496] = {MSM_CPU_KONA, "KONA"},
 
 	/* Lito ID */
+#ifdef OPLUS_ARCH_EXTENDS
+	[400] = {MSM_CPU_LITO, "SDM765G 5G"},
+#else
 	[400] = {MSM_CPU_LITO, "LITO"},
-	[440] = {MSM_CPU_LITO, "LITO"},
+#endif
 
 	/* Orchid ID */
 	[476] = {MSM_CPU_ORCHID, "ORCHID"},
@@ -390,7 +407,36 @@ static struct msm_soc_info cpu_of_id[] = {
 	 * considered as unknown CPU.
 	 */
 };
+#ifdef OPLUS_ARCH_EXTENDS
+static struct msm_soc_info cpu_of_id_19125 = {
+	.generic_soc_type = MSM_CPU_LITO,
+	.soc_id_string = "SDM765 5G"
+};
 
+static struct msm_soc_info cpu_of_id_21615 = {
+	.generic_soc_type = MSM_CPU_KONA,
+	.soc_id_string = "SM8250_AC"
+};
+static struct msm_soc_info cpu_of_id_20828 = {
+	.generic_soc_type = MSM_CPU_KONA,
+	.soc_id_string = "SM8250_AC"
+};
+
+static struct msm_soc_info cpu_of_id_op8 = {
+         .generic_soc_type = MSM_CPU_KONA,
+         .soc_id_string = "SM8250"
+};
+
+static struct msm_soc_info cpu_of_id_20127 = {
+        .generic_soc_type = MSM_CPU_LITO,
+        .soc_id_string = "SDM768G 5G"
+};
+
+static struct msm_soc_info cpu_of_id_2065c = {
+        .generic_soc_type = MSM_CPU_LITO,
+        .soc_id_string = "SDM768G"
+};
+#endif
 static enum msm_cpu cur_cpu;
 static int current_image;
 static uint32_t socinfo_format;
@@ -408,6 +454,26 @@ EXPORT_SYMBOL(socinfo_get_id);
 
 char *socinfo_get_id_string(void)
 {
+#ifdef OPLUS_ARCH_EXTENDS
+	if((get_project() == 19125) ||(get_project() == 19126)){
+		return cpu_of_id_19125.soc_id_string;
+	}
+	if (!is_confidential() && get_project() == 20127){
+		return cpu_of_id_20127.soc_id_string;
+	}
+	if (!is_confidential() && (get_project() == 132700 || get_project() == 132701)){
+		return cpu_of_id_2065c.soc_id_string;
+	}
+	if ((get_project() == 21615)||(get_project() == 21619)||(get_project() == 0x2161A)||(get_project() == 0x2169A)||(get_project() == 0x2169B)||(get_project() == 21623)||(get_project() == 21732)||(get_project() == 21733) || (get_project() == 22671) ) {
+		return cpu_of_id_21615.soc_id_string;
+	}
+	if ((get_project() == 19811) || (get_project() == 19821) || (get_project() == 19805) || (get_project() == 19855) || (get_project() == 20809)) {
+		return cpu_of_id_op8.soc_id_string;
+	}
+	if (get_project() == 20828) {
+		return cpu_of_id_20828.soc_id_string;
+        }
+#endif
 	return (socinfo) ? cpu_of_id[socinfo->v0_1.id].soc_id_string : NULL;
 }
 EXPORT_SYMBOL(socinfo_get_id_string);
@@ -434,9 +500,36 @@ static char *msm_read_hardware_id(void)
 		goto err_path;
 	if (!cpu_of_id[socinfo->v0_1.id].soc_id_string)
 		goto err_path;
-
-	ret = strlcat(msm_soc_str, cpu_of_id[socinfo->v0_1.id].soc_id_string,
-			sizeof(msm_soc_str));
+#ifdef OPLUS_ARCH_EXTENDS
+	if((get_project() == 19125) ||(get_project() == 19126)){
+		ret = strlcat(msm_soc_str, cpu_of_id_19125.soc_id_string,
+				sizeof(msm_soc_str));
+	}
+	else if (!is_confidential() && get_project() == 20127) {
+		ret = strlcat(msm_soc_str, cpu_of_id_20127.soc_id_string,
+				sizeof(msm_soc_str));
+	}
+	else if (!is_confidential() && (get_project() == 132700 || get_project() == 132701)) {
+		ret = strlcat(msm_soc_str, cpu_of_id_2065c.soc_id_string,
+				sizeof(msm_soc_str));
+	}
+	else if ((get_project() == 21615)||(get_project() == 21619)||(get_project() == 0x2161A)||(get_project() == 0x2169A)||(get_project() == 0x2169B)||(get_project() == 21623)||(get_project() == 21732)||(get_project() == 21733)||(get_project() == 22671)) {
+		ret = strlcat(msm_soc_str, cpu_of_id_21615.soc_id_string,
+				sizeof(msm_soc_str));
+	}
+	else if ((get_project() == 19811) || (get_project() == 19821) || (get_project() == 19805) || (get_project() == 19855) || (get_project() == 20809)) {
+		ret = strlcat(msm_soc_str, cpu_of_id_op8.soc_id_string,
+				sizeof(msm_soc_str));
+	}
+	else if (get_project() == 20828){
+		ret = strlcat(msm_soc_str, cpu_of_id_20828.soc_id_string,
+				sizeof(msm_soc_str));
+	}
+	else{
+#endif
+		ret = strlcat(msm_soc_str, cpu_of_id[socinfo->v0_1.id].soc_id_string,
+				sizeof(msm_soc_str));
+	}
 	if (ret > sizeof(msm_soc_str))
 		goto err_path;
 
@@ -1707,6 +1800,41 @@ int __init socinfo_init(void)
 		pr_warn("New IDs added! ID => CPU mapping needs an update.\n");
 
 	cur_cpu = cpu_of_id[socinfo->v0_1.id].generic_soc_type;
+#ifdef OPLUS_ARCH_EXTENDS
+	if (is_confidential()) {
+#if defined(CONFIG_ARCH_LITO)
+		if((get_project() == 19191) || (get_project() == 19192)
+			|| (get_project() == 19015) || (get_project() == 19016)
+			|| (get_project() == 19591) || (get_project() == 19525)
+			|| (get_project() == 19101) || (get_project() == 19102)
+			|| (get_project() == 19501) || (get_project() == 19125)
+			|| (get_project() == 19126) || (get_project() == 19127)
+			|| (get_project() == 19128) || (get_project() == 19521)
+			|| (get_project() == 19335) || (get_project() == 20801)
+			|| (get_project() == 20804))
+			cpu_of_id[socinfo->v0_1.id].soc_id_string = real_cpu_id;
+		else if((get_project() == 20057) || (get_project() == 20058
+			|| get_project() == 20813) || get_project() == 20814)
+			cpu_of_id[socinfo->v0_1.id].soc_id_string = real_cpu_id_20057_20058;
+		else if((get_project() == 20669) || (get_project() == 20750) || (get_project() == 20751))
+			cpu_of_id[socinfo->v0_1.id].soc_id_string = real_cpu_id_20669_20750_20751;
+		else
+			cpu_of_id[socinfo->v0_1.id].soc_id_string = fake_cpu_id;
+#else
+		cpu_of_id[socinfo->v0_1.id].soc_id_string = fake_cpu_id;
+#endif
+	} else {
+		if((get_project() == 20057) || (get_project() == 20058
+			|| get_project() == 20813) || get_project() == 20814)
+			cpu_of_id[socinfo->v0_1.id].soc_id_string = real_cpu_id_20057_20058;
+		else if((get_project() == 20669) || (get_project() == 20750) || (get_project() == 20751))
+			cpu_of_id[socinfo->v0_1.id].soc_id_string = real_cpu_id_20669_20750_20751;
+		else if((get_project() == 20061) || (get_project() == 20161) || (get_project() == 20163) || (get_project() == 20351) || (get_project() == 21027))
+			cpu_of_id[socinfo->v0_1.id].soc_id_string = real_cpu_id_20161_models;
+		else
+			cpu_of_id[socinfo->v0_1.id].soc_id_string = real_cpu_id;
+	}
+#endif
 	boot_stats_init();
 	socinfo_print();
 	arch_read_hardware_id = msm_read_hardware_id;

@@ -212,7 +212,7 @@ void cpufreq_stats_create_table(struct cpufreq_policy *policy)
 
 	/* We failed, release resources */
 	policy->stats = NULL;
-	kfree(stats->time_in_state);
+
 free_stat:
 	kfree(stats);
 }

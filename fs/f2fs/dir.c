@@ -1065,6 +1065,10 @@ static int f2fs_readdir(struct file *file, struct dir_context *ctx)
 	struct f2fs_dentry_ptr d;
 	struct fscrypt_str fstr = FSTR_INIT(NULL, 0);
 	int err = 0;
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	int readdir_ra = F2FS_I_SB(inode)->readdir_ra;
+	struct blk_plug plug;
+#endif
 
 	if (IS_ENCRYPTED(inode)) {
 		err = fscrypt_get_encryption_info(inode);
@@ -1080,12 +1084,20 @@ static int f2fs_readdir(struct file *file, struct dir_context *ctx)
 		err = f2fs_read_inline_dir(file, ctx, &fstr);
 		goto out_free;
 	}
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	if (readdir_ra == 1)
+		blk_start_plug(&plug);
+#endif
 
 	for (; n < npages; n++, ctx->pos = n * NR_DENTRY_IN_BLOCK) {
 
 		/* allow readdir() to be interrupted */
 		if (fatal_signal_pending(current)) {
 			err = -ERESTARTSYS;
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+			if (readdir_ra == 1)
+				blk_finish_plug(&plug);
+#endif
 			goto out_free;
 		}
 		cond_resched();
@@ -1094,14 +1106,18 @@ static int f2fs_readdir(struct file *file, struct dir_context *ctx)
 		if (npages - n > 1 && !ra_has_index(ra, n))
 			page_cache_sync_readahead(inode->i_mapping, ra, file, n,
 				min(npages - n, (pgoff_t)MAX_DIR_RA_PAGES));
-
 		dentry_page = f2fs_find_data_page(inode, n);
-		if (IS_ERR(dentry_page)) {
+
+          	if (IS_ERR(dentry_page)) {
 			err = PTR_ERR(dentry_page);
 			if (err == -ENOENT) {
 				err = 0;
 				continue;
 			} else {
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+				if (readdir_ra == 1)
+					blk_finish_plug(&plug);
+#endif
 				goto out_free;
 			}
 		}
@@ -1116,9 +1132,12 @@ static int f2fs_readdir(struct file *file, struct dir_context *ctx)
 			f2fs_put_page(dentry_page, 0);
 			break;
 		}
-
-		f2fs_put_page(dentry_page, 0);
+        f2fs_put_page(dentry_page, 0);
 	}
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	if (readdir_ra == 1)
+		blk_finish_plug(&plug);
+#endif
 out_free:
 	fscrypt_fname_free_buffer(&fstr);
 out:

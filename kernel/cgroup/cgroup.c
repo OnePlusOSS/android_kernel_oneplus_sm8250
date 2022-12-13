@@ -5057,6 +5057,9 @@ static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
 	struct cgroup_subsys_state *parent_css = cgroup_css(parent, ss);
 	struct cgroup_subsys_state *css;
 	int err;
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+	static char name[MAX_CGROUP_TYPE_NAMELEN];
+#endif
 
 	lockdep_assert_held(&cgroup_mutex);
 
@@ -5068,6 +5071,13 @@ static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
 
 	init_and_link_css(css, ss, cgrp);
 
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+	if(ss->id == cpuset_cgrp_id) {
+		cgroup_name(cgrp, name, MAX_CGROUP_TYPE_NAMELEN);
+		pr_warn("%s: cgroup=%s cgid=%d cgroup_subsys=%s ssid=%d cpuset_cgrp_id=%d", __func__, name, cgrp->id, ss->name, ss->id, cpuset_cgrp_id);
+		cpuset_add_cg(cgrp->id, name);
+	}
+#endif
 	err = percpu_ref_init(&css->refcnt, css_release, 0, GFP_KERNEL);
 	if (err)
 		goto err_free_css;

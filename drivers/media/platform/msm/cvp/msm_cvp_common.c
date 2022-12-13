@@ -405,7 +405,7 @@ int wait_for_sess_signal_receipt(struct msm_cvp_inst *inst,
 	}
 	return rc;
 }
-
+#ifndef OPLUS_FEATURE_CAMERA_COMMON
 int wait_for_sess_signal_receipt_fence(struct msm_cvp_inst *inst,
 	enum hal_command_response cmd)
 {
@@ -453,7 +453,7 @@ int wait_for_sess_signal_receipt_fence(struct msm_cvp_inst *inst,
 
 	return rc;
 }
-
+#endif
 static int wait_for_state(struct msm_cvp_inst *inst,
 	enum instance_state flipped_state,
 	enum instance_state desired_state,
@@ -773,14 +773,14 @@ static void handle_session_close(enum hal_command_response cmd, void *data)
 	show_stats(inst);
 	cvp_put_inst(inst);
 }
-
+#ifndef OPLUS_FEATURE_CAMERA_COMMON
 static void handle_operation_config(enum hal_command_response cmd, void *data)
 {
 	dprintk(CVP_ERR,
 			"%s: is called\n",
 			__func__);
 }
-
+#endif
 void cvp_handle_cmd_response(enum hal_command_response cmd, void *data)
 {
 	dprintk(CVP_DBG, "Command response = %d\n", cmd);
@@ -794,9 +794,10 @@ void cvp_handle_cmd_response(enum hal_command_response cmd, void *data)
 	case HAL_SESSION_INIT_DONE:
 		handle_session_init_done(cmd, data);
 		break;
+#ifndef OPLUS_FEATURE_CAMERA_COMMON
 	case HAL_SESSION_CVP_OPERATION_CONFIG:
 		handle_operation_config(cmd, data);
-		break;
+#endif
 	case HAL_SESSION_RELEASE_RESOURCE_DONE:
 		handle_release_res_done(cmd, data);
 		break;

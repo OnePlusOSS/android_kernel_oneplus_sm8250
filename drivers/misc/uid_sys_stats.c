@@ -29,6 +29,14 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+#include <linux/module.h>
+#include <linux/spinlock.h>
+#include <linux/perf_event.h>
+#include <linux/freezer.h>
+#include <linux/cpuset.h>
+#include <linux/cpufreq.h>
+#endif
 
 #define UID_HASH_BITS	10
 DECLARE_HASHTABLE(hash_table, UID_HASH_BITS);
@@ -75,6 +83,11 @@ struct uid_entry {
 	struct hlist_node hash;
 #ifdef CONFIG_UID_SYS_STATS_DEBUG
 	DECLARE_HASHTABLE(task_entries, UID_HASH_BITS);
+#endif
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+	long long counts[UID_PERF_EVENTS];
+	atomic64_t checkout[UID_PERF_EVENTS];
+	atomic64_t cg_checkout[UID_GROUP_SIZE]; /* MUSTFIX only inst pevent for calc */
 #endif
 };
 
@@ -329,6 +342,534 @@ static struct uid_entry *find_or_register_uid(uid_t uid)
 	return uid_entry;
 }
 
+
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+static bool uid_perf_debug;
+module_param_named(uid_perf_debug, uid_perf_debug, bool, 0664);
+
+static bool uid_perf_enable;
+
+static int uid_perf_event_id[UID_PERF_EVENTS] = {
+	0x8,  /* "raw-inst-retired"    */
+	0x11, /* "raw-cpu-cycles"      */
+	0x24 /* "raw-stall-backend"   */
+};
+
+static int uid_perf_event_type[UID_PERF_EVENTS] = {
+	PERF_TYPE_RAW,
+	PERF_TYPE_RAW,
+	PERF_TYPE_RAW
+};
+
+static int uid_perf_event_pin[UID_PERF_EVENTS] = {
+	0,
+	0,
+	0
+};
+
+module_param_array(uid_perf_event_id, int, NULL, 0664);
+module_param_array(uid_perf_event_type, int, NULL, 0664);
+module_param_array(uid_perf_event_pin, int, NULL, 0664);
+
+static DEFINE_SPINLOCK(uid_perf_lock);
+static struct task_struct *uid_perf_add_thread;
+static struct task_struct *uid_perf_remove_thread;
+static struct list_head uid_perf_add_list = LIST_HEAD_INIT(uid_perf_add_list);
+static struct list_head uid_perf_remove_list = LIST_HEAD_INIT(uid_perf_remove_list);
+
+static bool snapshot_active = false;
+bool get_uid_perf_enable(void)
+{
+	return (uid_perf_enable && snapshot_active);
+}
+
+struct uid_work {
+	struct task_struct *task;
+	struct list_head node;
+};
+
+void uid_perf_work_add(struct task_struct *task, bool force)
+{
+	unsigned long flag;
+	struct uid_work *work;
+
+	if (!uid_perf_enable && !force)
+		return;
+
+	work = kmalloc(sizeof(struct uid_work), GFP_ATOMIC);
+	if (!work)
+		return;
+
+	if (uid_perf_debug)
+		pr_err("add task %s %d to add list\n", task->comm, task->pid);
+
+	spin_lock_irqsave(&uid_perf_lock, flag);
+	get_task_struct(task);
+	work->task = task;
+	list_add_tail(&work->node, &uid_perf_add_list);
+	spin_unlock_irqrestore(&uid_perf_lock, flag);
+
+	wake_up_process(uid_perf_add_thread);
+}
+
+static void uid_perf_work_remove(struct task_struct *task)
+{
+	unsigned long flag;
+	struct uid_work *work;
+
+	work = kmalloc(sizeof(struct uid_work), GFP_ATOMIC);
+	if (!work)
+		return;
+
+	if (uid_perf_debug)
+		pr_err("add task %s %d to remove list\n", task->comm, task->pid);
+
+	spin_lock_irqsave(&uid_perf_lock, flag);
+	get_task_struct(task);
+	work->task = task;
+	list_add_tail(&work->node, &uid_perf_remove_list);
+	spin_unlock_irqrestore(&uid_perf_lock, flag);
+
+	wake_up_process(uid_perf_remove_thread);
+}
+
+static inline void reset_group_data(struct task_struct *task)
+{
+	int i;
+
+	for (i = 0; i < UID_GROUP_SIZE; ++i) {
+		task->uid_group_prev_counts[i] = 0;
+		task->uid_group[i] = 0;
+	}
+}
+
+static inline void uid_remove_and_disable_one_pevent(struct task_struct  *task, int idx)
+{
+	if (!task->uid_pevents[idx])
+		return;
+
+	perf_event_disable(task->uid_pevents[idx]);
+	perf_event_release_kernel(task->uid_pevents[idx]);
+	task->uid_prev_counts[idx] = 0;
+	task->uid_pevents[idx] = NULL;
+	reset_group_data(task);
+
+	if (uid_perf_debug)
+		pr_err("task %s %d disable pevent %d\n", task->comm, task->pid, idx);
+}
+
+static void uid_create_and_enable_one_pevent(struct task_struct *task, int idx, bool grouping)
+{
+	struct perf_event *pevent;
+	struct perf_event_attr attr;
+
+	if (uid_perf_event_id[idx] == -1)
+		return;
+
+	if (!task->uid_pevents[idx]) {
+		memset(&attr, 0, sizeof(struct perf_event_attr));
+		attr.size = sizeof(struct perf_event_attr);
+		attr.inherit = 0;
+		attr.read_format = 7;
+		attr.sample_type = 455;
+		attr.config = uid_perf_event_id[idx];
+		attr.type = uid_perf_event_type[idx];
+		attr.pinned = uid_perf_event_pin[idx];
+		if (grouping) {
+			attr.read_format = PERF_FORMAT_GROUP;
+			attr.inherit = 1;
+		}
+
+		/* TODO add overflow handler */
+		pevent = perf_event_create_kernel_counter(&attr, -1, task, NULL, NULL);
+		if (IS_ERR(pevent)) {
+			pr_err("task %s %d pevent %d create failed\n", task->comm, task->pid, idx);
+		} else {
+			task->uid_pevents[idx] = pevent;
+			if (uid_perf_debug)
+				pr_err("task %s %d pevent %d created\n",
+					task->comm, task->pid, idx);
+		}
+	}
+}
+
+void uid_check_out_pevent(struct task_struct *task)
+{
+	struct uid_entry *uid_entry = NULL;
+	u64 val, enabled, running, delta, cg_delta;
+	uid_t uid;
+	int i, idx;
+	struct task_struct *tgid = NULL;
+
+	for (i = 0; i < UID_PERF_EVENTS; ++i) {
+		if (task->uid_pevents[i]) {
+			val = perf_event_read_value(task->uid_pevents[i], &enabled, &running);
+			delta = val - task->uid_prev_counts[i];
+			/* MUSTFIX only calc instruction counter for cpuset */
+			if (i == 0) {
+				idx = cpuset_get_cgrp_idx(task);
+				if (idx > -1)
+					cg_delta = val - task->uid_group_prev_counts[idx];
+				else
+					pr_err("%s: idx is invalid value idx=%d task=%s pid=%d", __func__, idx, task->comm, task->pid);
+			}
+			uid_remove_and_disable_one_pevent(task, i);
+
+			/* add back to tgid entry */
+			if (!tgid) {
+				rcu_read_lock();
+				tgid = find_task_by_vpid(task->tgid);
+				if (tgid)
+					get_task_struct(tgid);
+				rcu_read_unlock();
+			}
+
+			if (tgid) {
+				/* 2 cases
+					1. normal task leave, add delta to tgid
+					2. leader task leave, add delta to uid entry
+				 */
+				if (tgid->pid == task->pid) {
+					if (!uid_entry) {
+						uid = from_kuid_munged(current_user_ns(), task_uid(tgid));
+						uid_entry = find_uid_entry(uid);
+					}
+
+					if (uid_entry) {
+						atomic64_add(delta, &uid_entry->checkout[i]);
+						/* MUSTFIX cgroup only calc instruction pevent */
+						if (i == 0 && idx > -1) {
+							atomic64_add(cg_delta, &uid_entry->cg_checkout[idx]);
+							if (uid_perf_debug) {
+								pr_err("%s: task %s %d %d %d val: %llu cg_delta: %llu cg_prev: %llu\n",
+									__func__, task->comm, task->pid, task->tgid,
+									uid, val,
+									cg_delta, (val - cg_delta));
+							}
+						}
+						if (uid_perf_debug) {
+							pr_err("task %s %d %d %d leave event %d val: %llu delta: %llu prev: %llu\n",
+								task->comm, task->pid, task->tgid,
+								uid, i, val, delta,
+								task->uid_prev_counts[i]);
+						}
+					}
+				} else {
+					/* TODO change to atomic */
+					tgid->uid_leaving_counts[i] += delta;
+					/* MUSTFIX cpuset checkout pevent conter only for instructions */
+					if (i == 0 & idx > -1) {
+						if (uid_perf_debug)
+							pr_err("%s: tgid leaving task=%d tgid=%d cg_delta=%llu idx=%d tgid original count=%llu",
+							__func__, task->pid, tgid->pid, cg_delta, idx, tgid->uid_group[idx]);
+
+						tgid->uid_group[idx] += cg_delta;
+					}
+				}
+
+				if (uid_perf_debug)
+					pr_err("task %s %d %d uid %d leave event %d val: %llu cur %llu\n", task->comm, task->pid, task->tgid, uid, i, delta, tgid->uid_leaving_counts[i]);
+			}
+		}
+	}
+
+	if (tgid)
+		put_task_struct(tgid);
+}
+
+struct cpufreq_stats {
+	unsigned int total_trans;
+	unsigned long long last_time;
+	unsigned int max_state;
+	unsigned int state_num;
+	unsigned int last_index;
+	u64 *time_in_state;
+	spinlock_t lock;
+	unsigned int *freq_table;
+	unsigned int *trans_table;
+};
+
+static inline void uid_cpufreq_stats_update(struct cpufreq_stats *st)
+{
+	unsigned long long cur_time;
+	unsigned long flags;
+
+	spin_lock_irqsave(&st->lock, flags);
+	cur_time = get_jiffies_64();
+	st->time_in_state[st->last_index] += cur_time - st->last_time;
+	st->last_time = cur_time;
+	spin_unlock_irqrestore(&st->lock, flags);
+}
+
+static u64 uid_get_norm_cpu_time(void)
+{
+	struct cpufreq_policy *pol;
+	struct cpufreq_stats *st;
+	int i = 0, j;
+	u64 total = 0, cur_time;
+	u64 norm_freq = UINT_MAX, cur_freq;
+
+	if (1)
+		return 0;
+
+	while (i != nr_cpu_ids) {
+		pol = cpufreq_cpu_get(i);
+		if (!pol)
+			continue;
+		st = (struct cpufreq_stats *) pol->stats;
+
+		/* update state */
+		uid_cpufreq_stats_update(st);
+
+		for (j = 0; j < st->state_num; ++j) {
+			cur_freq = st->freq_table[j];
+			norm_freq = min(norm_freq, cur_freq);
+			cur_time = st->time_in_state[j];
+			total += cur_time * cur_freq / norm_freq;
+			if (uid_perf_debug) {
+				pr_err("norm_count: cpu %d freq %llu norm %llu st %llu total %llu\n",
+				i, cur_freq, norm_freq, cur_time, total);
+			}
+		}
+		i += cpumask_weight(pol->related_cpus);
+		cpufreq_cpu_put(pol);
+	}
+	return total;
+}
+
+static int uid_perf_show(struct seq_file *m, void *v)
+{
+	struct task_struct *task, *temp;
+	struct user_namespace *user_ns = current_user_ns();
+	unsigned long bkt;
+	struct uid_entry *uid_entry = NULL;
+	uid_t uid;
+	u64 enabled, running;
+	int i, idx, j;
+	u64 val[UID_PERF_EVENTS];
+	s64 time = ktime_to_ms(ktime_get());
+
+	rcu_read_lock();
+	do_each_thread(temp, task) {
+		uid = from_kuid_munged(user_ns, task_uid(task));
+
+		/* avoid double accounting of dying threads */
+		if (!(task->flags & PF_EXITING)) {
+			get_task_struct(task);
+			rcu_read_unlock();
+
+			seq_printf(m, "%s,%d,%d,%d", task->comm, task->pid, task->tgid, uid);
+			for (i = 0; i < UID_PERF_EVENTS; ++i) {
+				val[i] = 0;
+
+				if (task->uid_pevents[i]) {
+					val[i] = perf_event_read_value(task->uid_pevents[i],
+						&enabled, &running);
+					task->uid_prev_counts[i] = val[i];
+				}
+				seq_printf(m, ",%llu", val[i] + task->uid_leaving_counts[i]);
+			}
+
+			/* get current cgroup which task is belong to. */
+			idx = cpuset_get_cgrp_idx_locked(task);
+			if (idx > -1) {
+				/* MUSTFIX only inst event in the cpuset */
+				for (i = 0; i < 1; ++i) {
+					if (val[i] == 0)
+						continue;
+					/* update the pevent counter in current cgroup */
+					if (task->uid_group_prev_counts[idx] > 0) {
+						task->uid_group[idx] += (val[i] - task->uid_group_prev_counts[idx]);
+						if (uid_perf_debug)
+							pr_err("%s: pid=%d comm=%s val=%llu cgid_idx=%d prev_count=%llu uid_group=%llu",
+							__func__,
+							task->pid,
+							task->comm,
+							val[i],
+							idx,
+							task->uid_group_prev_counts[idx],
+							task->uid_group[idx]);
+					} else {
+						/* first  snapshot in the current cgroup */
+						task->uid_group_prev_counts[idx] = val[i];
+						if (uid_perf_debug)
+							pr_err("%s: pid=%d comm=%s val=%llu cgid_idx=%d prev_count=%llu",
+								__func__,
+								task->pid,
+								task->comm,
+								val[i],
+								idx,
+								task->uid_group_prev_counts[idx]);
+					}
+				}
+			}
+			/* output all counter of all groups */
+			for (j = 0; j < UID_GROUP_SIZE; ++j)
+				seq_printf(m, ",%llu", task->uid_group[j]);
+
+			seq_puts(m, "\n");
+
+			rcu_read_lock();
+			if (snapshot_active)
+				reset_group_data(task);
+			put_task_struct(task);
+		}
+	} while_each_thread(temp, task);
+	rcu_read_unlock();
+
+	/* FIXME for some reasons this functions will be called while use 'cat' */
+	/* update early leave counter */
+	hash_for_each(hash_table, bkt, uid_entry, hash) {
+		seq_printf(m, "uid-%d,0,0,%d", uid_entry->uid, uid_entry->uid);
+		for (i = 0; i < UID_PERF_EVENTS; ++i)
+			seq_printf(m, ",%llu", atomic64_read(&uid_entry->checkout[i]));
+		/* cgroup counters */
+		for (i = 0; i < UID_GROUP_SIZE; ++i)
+			seq_printf(m, ",%llu", atomic64_read(&uid_entry->cg_checkout[i]));
+		seq_puts(m, "\n");
+	}
+	/*cpuset switch counting will be align snapshot_active scope */
+	snapshot_active = !snapshot_active;
+
+	seq_printf(m, "%lld,%llu\n", time, uid_get_norm_cpu_time());
+	return 0;
+}
+
+static int uid_perf_open(struct inode *inode, struct file *file)
+{
+	return single_open_size(file, uid_perf_show, NULL, 0x1 << 20);
+}
+
+static const struct file_operations uid_perf_fops = {
+	.open		= uid_perf_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int uid_perf_enable_store(const char *buf, const struct kernel_param *kp)
+{
+	struct task_struct *task, *temp;
+	int val;
+
+	if (sscanf(buf, "%d\n", &val) <= 0)
+		return 0;
+
+	if (uid_perf_enable == val)
+		return 0;
+
+	if (val == 0)
+		uid_perf_enable = val;
+
+	/* TODO should protect from race */
+	read_lock(&tasklist_lock);
+	for_each_process_thread(temp, task) {
+		if (val) {
+			/* quick check if has any pevent exists, check next */
+			if (task->flags & PF_EXITING || task->uid_pevents[0])
+				continue;
+
+			uid_perf_work_add(task, true);
+		} else {
+			if (task->flags & PF_EXITING)
+				continue;
+			uid_perf_work_remove(task);
+		}
+	}
+	read_unlock(&tasklist_lock);
+
+	if (val == 1)
+		uid_perf_enable = val;
+
+	if (val)
+		wake_up_process(uid_perf_add_thread);
+	else
+		wake_up_process(uid_perf_remove_thread);
+
+	return 0;
+}
+
+static int uid_perf_enable_show(char *buf, const struct kernel_param *kp)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n", uid_perf_enable);
+}
+
+static struct kernel_param_ops uid_perf_enable_ops = {
+	.set = uid_perf_enable_store,
+	.get = uid_perf_enable_show,
+};
+module_param_cb(uid_perf_enable, &uid_perf_enable_ops, NULL, 0664);
+
+static int __uid_perf_add_work(void *unused)
+{
+	unsigned long flag;
+	int i;
+
+	while (!kthread_should_stop()) {
+		set_current_state(TASK_RUNNING);
+		spin_lock_irqsave(&uid_perf_lock, flag);
+		while (!list_empty(&uid_perf_add_list)) {
+			struct uid_work *work =
+				list_first_entry(&uid_perf_add_list, struct uid_work, node);
+			struct task_struct *task = work->task;
+
+			list_del(&work->node);
+			kfree(work);
+			spin_unlock_irqrestore(&uid_perf_lock, flag);
+
+			/* init perf event */
+			if (task && !(task->flags & PF_EXITING)) {
+				for (i = 0; i < UID_PERF_EVENTS; ++i)
+					uid_create_and_enable_one_pevent(task, i, false);
+			}
+			put_task_struct(task);
+			spin_lock_irqsave(&uid_perf_lock, flag);
+		}
+
+		spin_unlock_irqrestore(&uid_perf_lock, flag);
+
+		set_current_state(TASK_INTERRUPTIBLE);
+		freezable_schedule();
+	}
+
+	return 0;
+}
+
+static int __uid_perf_remove_work(void *unused)
+{
+	unsigned long flag;
+	int i;
+
+	while (!kthread_should_stop()) {
+		set_current_state(TASK_RUNNING);
+		spin_lock_irqsave(&uid_perf_lock, flag);
+		while (!list_empty(&uid_perf_remove_list)) {
+			struct uid_work *work =
+				list_first_entry(&uid_perf_remove_list, struct uid_work, node);
+			struct task_struct *task = work->task;
+
+			list_del(&work->node);
+			kfree(work);
+			spin_unlock_irqrestore(&uid_perf_lock, flag);
+
+			/* remove perf event */
+			if (task && !(task->flags & PF_EXITING)) {
+				for (i = 0; i < UID_PERF_EVENTS; ++i)
+					uid_remove_and_disable_one_pevent(task, i);
+			}
+			put_task_struct(task);
+			spin_lock_irqsave(&uid_perf_lock, flag);
+		}
+
+		spin_unlock_irqrestore(&uid_perf_lock, flag);
+
+		set_current_state(TASK_INTERRUPTIBLE);
+		freezable_schedule();
+	}
+
+	return 0;
+}
+#endif
 static int uid_cputime_show(struct seq_file *m, void *v)
 {
 	struct uid_entry *uid_entry = NULL;
@@ -676,6 +1217,13 @@ static int __init proc_uid_sys_stats_init(void)
 		&uid_remove_fops, NULL);
 	proc_create_data("show_uid_stat", 0444, cpu_parent,
 		&uid_cputime_fops, NULL);
+
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+	proc_create_data("show_uid_perf", 0444, cpu_parent,
+		&uid_perf_fops, NULL);
+	uid_perf_add_thread = kthread_create(__uid_perf_add_work, NULL, "uid_add_thread");
+	uid_perf_remove_thread = kthread_create(__uid_perf_remove_work, NULL, "uid_remove_thread");
+#endif
 
 	io_parent = proc_mkdir("uid_io", NULL);
 	if (!io_parent) {

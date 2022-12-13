@@ -265,7 +265,10 @@ retry_deleg:
 }
 EXPORT_SYMBOL_GPL(vfs_setxattr);
 
-static ssize_t
+#ifndef OPLUS_FEATURE_SDCARDFS_SUPPORT
+static
+#endif
+ssize_t
 xattr_getsecurity(struct inode *inode, const char *name, void *value,
 			size_t size)
 {
@@ -290,7 +293,9 @@ out:
 out_noalloc:
 	return len;
 }
-
+#ifdef OPLUS_FEATURE_SDCARDFS_SUPPORT
+EXPORT_SYMBOL_GPL(xattr_getsecurity);
+#endif
 /*
  * vfs_getxattr_alloc - allocate memory, if necessary, before calling getxattr
  *

@@ -81,7 +81,11 @@ endchoice
 choice
 	prompt "Instrumentation type"
 	depends on KASAN
+	#ifdef OPLUS_BUG_STABILITY
 	default KASAN_OUTLINE
+	#else
+	#default KASAN_INLINE
+	#endif
 
 config KASAN_OUTLINE
 	bool "Outline instrumentation"
@@ -106,7 +110,9 @@ endchoice
 config KASAN_STACK_ENABLE
 	bool "Enable stack instrumentation (unsafe)" if CC_IS_CLANG && !COMPILE_TEST
 	default !(CLANG_VERSION < 90000)
-	depends on KASAN
+	#ifdef OPLUS_BUG_STABILITY
+	depends on !KASAN
+	#endif
 	help
 	  The LLVM stack address sanitizer has a know problem that
 	  causes excessive stack usage in a lot of functions, see

@@ -232,4 +232,10 @@ source "drivers/sensors/Kconfig"
 source "drivers/gpu/msm/Kconfig"
 
 source "drivers/energy_model/Kconfig"
+
+#ifdef OPLUS_NFC_BRINGUP
+#Add for the kernel Macro for NXP PN557 NFC kernel
+source "drivers/nfc/pn553-i2c/Kconfig"
+source "drivers/nfc/p73-spi/Kconfig"
+#endif /*OPLUS_NFC_BRINGUP*/
 endmenu

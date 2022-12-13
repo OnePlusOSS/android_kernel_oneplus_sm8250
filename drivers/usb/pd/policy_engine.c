@@ -10,8 +10,10 @@
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/module.h>
+#include <linux/gpio.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
+#include <linux/of_gpio.h>
 #include <linux/power_supply.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
@@ -21,6 +23,16 @@
 #include <linux/usb/typec.h>
 #include <linux/usb/usbpd.h>
 #include "usbpd.h"
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+/* To start USB stack for USB3.1 compliance testing */
+static bool usb_compliance_mode;
+module_param(usb_compliance_mode, bool, 0644);
+MODULE_PARM_DESC(usb_compliance_mode, "USB3.1 compliance testing");
+#endif
+
+extern void oplus_wpc_set_wrx_en_value(int value);
+extern int switch_to_otg_mode(bool enable);
 
 enum usbpd_state {
 	PE_UNKNOWN,
@@ -404,9 +416,15 @@ struct usbpd {
 	int			requested_current;	/* mA */
 	bool			pd_connected;
 	bool			in_explicit_contract;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	bool			in_good_connect;
+#endif
 	bool			peer_usb_comm;
 	bool			peer_pr_swap;
 	bool			peer_dr_swap;
+#ifdef OPLUS_CUSTOM_OP_DEF
+	bool			probe_done;
+#endif
 	bool			no_usb3dp_concurrency;
 	bool			pd20_source_only;
 
@@ -447,8 +465,14 @@ struct usbpd {
 
 	struct regulator	*vbus;
 	struct regulator	*vconn;
+
+	int			vbus_gpio;
+	int			otg_en_gpio;
+
 	bool			vbus_enabled;
 	bool			vconn_enabled;
+	bool			is_otg_mode;
+	bool			use_external_boost;
 
 	u8			tx_msgid[SOPII_MSG + 1];
 	u8			rx_msgid[SOPII_MSG + 1];
@@ -486,8 +510,16 @@ struct usbpd {
 	u32			battery_sts_dobj;
 	bool			typec_analog_audio_connected;
 };
+#ifdef OPLUS_FEATURE_CHG_BASIC
+struct usbpd *pd_lobal;
+#endif
 
 static LIST_HEAD(_usbpd);	/* useful for debugging */
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+int oplus_usbpd_send_svdm(u16 svid, u8 cmd, enum usbpd_svdm_cmd_type cmd_type,
+				int obj_pos, const u32 *vdos, int num_vdos);
+#endif
 
 static const unsigned int usbpd_extcon_cable[] = {
 	EXTCON_USB,
@@ -889,6 +921,11 @@ static int pd_select_pdo(struct usbpd *pd, int pdo_pos, int uv, int ua)
 	return 0;
 }
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+/* Yichun.Chen  PSW.BSP.CHG  2019-08-19  for c to c */
+extern void opchg_set_pd_sdp(bool pd_sdp);
+#endif
+
 static int pd_eval_src_caps(struct usbpd *pd)
 {
 	int i;
@@ -926,7 +963,14 @@ static int pd_eval_src_caps(struct usbpd *pd)
 			POWER_SUPPLY_PD_ACTIVE;
 	power_supply_set_property(pd->usb_psy,
 			POWER_SUPPLY_PROP_PD_ACTIVE, &val);
-
+#ifdef OPLUS_FEATURE_CHG_BASIC
+/* Yichun.Chen  PSW.BSP.CHG  2019-08-19  for c to c */
+	if (pd->peer_usb_comm && pd->current_dr == DR_UFP && !pd->pd_connected) {
+			printk("set opluschg_pd_sdp = true\n");
+            opchg_set_pd_sdp(true);
+			//opluschg_pd_sdp = true;
+	}
+#endif
 	/* First time connecting to a PD source and it supports USB data */
 	if (pd->peer_usb_comm && pd->current_dr == DR_UFP && !pd->pd_connected)
 		start_usb_peripheral(pd);
@@ -1230,7 +1274,19 @@ static void phy_shutdown(struct usbpd *pd)
 	}
 
 	if (pd->vbus_enabled) {
-		regulator_disable(pd->vbus);
+		if (pd->use_external_boost) {
+			gpio_set_value_cansleep(pd->otg_en_gpio, 0);
+			gpio_set_value_cansleep(pd->vbus_gpio, 0);
+			msleep(20);
+#ifdef OPLUS_CUSTOM_OP_DEF
+			switch_to_otg_mode(false);
+#else
+			oplus_wpc_set_wrx_en_value(0);
+#endif // OPLUS_CUSTOM_OP_DEF
+		} else {
+			regulator_disable(pd->vbus);
+		}
+		pd->is_otg_mode = false;
 		pd->vbus_enabled = false;
 	}
 }
@@ -1381,6 +1437,13 @@ int usbpd_send_vdm(struct usbpd *pd, u32 vdm_hdr, const u32 *vdos, int num_vdos)
 		kfree(pd->vdm_tx);
 		pd->vdm_tx = NULL;
 	}
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	if (pd->current_state != PE_SRC_READY &&
+		pd->current_state != PE_SNK_READY) {
+		usbpd_err(&pd->dev, "VDM not allowed: PD not in Ready state\n");
+		return -EAGAIN;
+	}
+#endif
 
 	vdm_tx = kzalloc(sizeof(*vdm_tx), GFP_KERNEL);
 	if (!vdm_tx)
@@ -1426,6 +1489,9 @@ void usbpd_vdm_in_suspend(struct usbpd *pd, bool in_suspend)
 }
 EXPORT_SYMBOL(usbpd_vdm_in_suspend);
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+#define OPLUS_SVID			0x22d9
+#endif
 static void handle_vdm_resp_ack(struct usbpd *pd, u32 *vdos, u8 num_vdos,
 	u16 vdm_hdr)
 {
@@ -1433,6 +1499,10 @@ static void handle_vdm_resp_ack(struct usbpd *pd, u32 *vdos, u8 num_vdos,
 	u16 svid, *psvid;
 	u8 cmd = SVDM_HDR_CMD(vdm_hdr);
 	struct usbpd_svid_handler *handler;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	u8 cmd_type = SVDM_HDR_CMD_TYPE(vdm_hdr);
+	u32 oplus_svid;
+#endif
 
 	switch (cmd) {
 	case USBPD_SVDM_DISCOVER_IDENTITY:
@@ -1443,6 +1513,26 @@ static void handle_vdm_resp_ack(struct usbpd *pd, u32 *vdos, u8 num_vdos,
 			usbpd_dbg(&pd->dev, "Discarding Discover ID response with no VDOs\n");
 			break;
 		}
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+		pr_info("handle_vdm_resp_ack num_vdos:%d\n",num_vdos);
+		if (num_vdos == 3){
+			oplus_svid = vdos[0] & 0xffff;
+			pr_info("handle_vdm_resp_ack oplus_svid:%d\n",oplus_svid);
+			if(oplus_svid == OPLUS_SVID){
+				handler = find_svid_handler(pd, oplus_svid);
+				if (handler) {
+					usbpd_err(&pd->dev, "oplus_svid SVID: 0x%04x vdos1: %x vdos2 %x connect\n",
+							handler->svid, vdos[1], vdos[2]);
+					handler->connect(handler,
+							pd->peer_usb_comm);
+					handler->discovered = true;
+					handler->svdm_received(handler,cmd,cmd_type,vdos,num_vdos);
+					break;
+				}
+			}
+		}
+#endif
 
 		if (ID_HDR_PRODUCT_TYPE(vdos[0]) == ID_HDR_PRODUCT_VPD) {
 			usbpd_dbg(&pd->dev, "VPD detected turn off vbus\n");
@@ -1975,10 +2065,14 @@ static void vconn_swap(struct usbpd *pd)
 
 		pd->vconn_enabled = true;
 
+#ifndef OPLUS_FEATURE_CHG_BASIC
+		//pd_phy_update_frame_filter(FRAME_FILTER_EN_SOP |
+		//			   FRAME_FILTER_EN_SOPI |
+		//			   FRAME_FILTER_EN_HARD_RESET);
+#else
 		pd_phy_update_frame_filter(FRAME_FILTER_EN_SOP |
-					   FRAME_FILTER_EN_SOPI |
 					   FRAME_FILTER_EN_HARD_RESET);
-
+#endif
 		/*
 		 * Small delay to ensure Vconn has ramped up. This is well
 		 * below tVCONNSourceOn (100ms) so we still send PS_RDY within
@@ -1992,6 +2086,14 @@ static void vconn_swap(struct usbpd *pd)
 			return;
 		}
 	}
+}
+
+bool typec_is_otg_mode(void)
+{
+	if (pd_lobal != NULL)
+		return pd_lobal->is_otg_mode;
+	else
+		return false;
 }
 
 static int enable_vbus(struct usbpd *pd)
@@ -2016,18 +2118,34 @@ static int enable_vbus(struct usbpd *pd)
 	if (count < 99)
 		msleep(100);	/* need to wait an additional tCCDebounce */
 
-	if (!pd->vbus) {
-		pd->vbus = devm_regulator_get(pd->dev.parent, "vbus");
-		if (IS_ERR(pd->vbus)) {
-			usbpd_err(&pd->dev, "Unable to get vbus\n");
-			return -EAGAIN;
+	if (pd->use_external_boost) {
+		pd->is_otg_mode = true;
+#ifdef OPLUS_CUSTOM_OP_DEF
+			switch_to_otg_mode(true);
+#else
+			oplus_wpc_set_wrx_en_value(1);
+#endif // OPLUS_CUSTOM_OP_DEF
+		msleep(20);
+		gpio_set_value_cansleep(pd->vbus_gpio, 1);
+		msleep(100);
+		gpio_set_value_cansleep(pd->otg_en_gpio, 1);
+		pd->vbus_enabled = true;
+	} else {
+		if (!pd->vbus) {
+			pd->vbus = devm_regulator_get(pd->dev.parent, "vbus");
+			if (IS_ERR(pd->vbus)) {
+				usbpd_err(&pd->dev, "Unable to get vbus\n");
+				return -EAGAIN;
+			}
+		}
+		ret = regulator_enable(pd->vbus);
+		if (ret) {
+			usbpd_err(&pd->dev, "Unable to enable vbus (%d)\n", ret);
+		} else {
+			pd->is_otg_mode = false;
+			pd->vbus_enabled = true;
 		}
 	}
-	ret = regulator_enable(pd->vbus);
-	if (ret)
-		usbpd_err(&pd->dev, "Unable to enable vbus (%d)\n", ret);
-	else
-		pd->vbus_enabled = true;
 
 	count = 10;
 	/*
@@ -2149,8 +2267,10 @@ static int usbpd_startup_common(struct usbpd *pd,
 		phy_params->data_role = pd->current_dr;
 		phy_params->power_role = pd->current_pr;
 
-		if (pd->vconn_enabled)
-			phy_params->frame_filter_val |= FRAME_FILTER_EN_SOPI;
+#ifndef OPLUS_FEATURE_CHG_BASIC
+		//if (pd->vconn_enabled)
+		//	phy_params->frame_filter_val |= FRAME_FILTER_EN_SOPI;
+#endif
 
 		ret = pd_phy_open(phy_params);
 		if (ret) {
@@ -2550,6 +2670,9 @@ static void enter_state_hard_reset(struct usbpd *pd)
 
 	pd_send_hard_reset(pd);
 	pd->in_explicit_contract = false;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	pd->in_good_connect = false;
+#endif
 	pd->rdo = 0;
 	rx_msg_cleanup(pd);
 	reset_vdm_state(pd);
@@ -2589,8 +2712,21 @@ static void handle_state_src_transition_to_default(struct usbpd *pd,
 		regulator_disable(pd->vconn);
 	pd->vconn_enabled = false;
 
-	if (pd->vbus_enabled)
-		regulator_disable(pd->vbus);
+	if (pd->vbus_enabled) {
+		if (pd->use_external_boost) {
+			gpio_set_value_cansleep(pd->otg_en_gpio, 0);
+			gpio_set_value_cansleep(pd->vbus_gpio, 0);
+			msleep(20);
+#ifdef OPLUS_CUSTOM_OP_DEF
+			switch_to_otg_mode(false);
+#else
+			oplus_wpc_set_wrx_en_value(0);
+#endif // OPLUS_CUSTOM_OP_DEF
+		} else {
+			regulator_disable(pd->vbus);
+		}
+	}
+	pd->is_otg_mode = false;
 	pd->vbus_enabled = false;
 
 	if (pd->current_dr != DR_DFP) {
@@ -2736,6 +2872,15 @@ static void handle_state_snk_wait_for_capabilities(struct usbpd *pd,
 
 		usbpd_set_state(pd, PE_SNK_EVALUATE_CAPABILITY);
 	} else if (pd->hard_reset_count < 3) {
+#ifdef OPLUS_CUSTOM_OP_DEF
+		if (pd->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH && pd->probe_done) {
+			usbpd_err(&pd->dev, "Didn't receive source cap when probe, reset rd!\n");
+			pd->probe_done = false;
+			val.intval = 0xf;
+			power_supply_set_property(pd->usb_psy,
+					POWER_SUPPLY_PROP_RESET_RD, &val);
+		}
+#endif
 		usbpd_set_state(pd, PE_SNK_HARD_RESET);
 	} else {
 		usbpd_dbg(&pd->dev, "Sink hard reset count exceeded, disabling PD\n");
@@ -2883,6 +3028,11 @@ static void handle_state_snk_transition_sink(struct usbpd *pd,
 static void enter_state_snk_ready(struct usbpd *pd)
 {
 	pd->in_explicit_contract = true;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	pd->in_good_connect = true;
+	oplus_usbpd_send_svdm(USBPD_SID, USBPD_SVDM_DISCOVER_IDENTITY,
+	SVDM_CMD_TYPE_INITIATOR, 0, NULL, 0);
+#endif
 
 	if (pd->vdm_tx)
 		kick_sm(pd, 0);
@@ -3315,7 +3465,19 @@ static void handle_state_prs_src_snk_transition_to_off(struct usbpd *pd,
 	int ret;
 
 	if (pd->vbus_enabled) {
-		regulator_disable(pd->vbus);
+		if (pd->use_external_boost) {
+			gpio_set_value_cansleep(pd->otg_en_gpio, 0);
+			gpio_set_value_cansleep(pd->vbus_gpio, 0);
+			msleep(20);
+#ifdef OPLUS_CUSTOM_OP_DEF
+			switch_to_otg_mode(false);
+#else
+			oplus_wpc_set_wrx_en_value(0);
+#endif // OPLUS_CUSTOM_OP_DEF
+		} else {
+			regulator_disable(pd->vbus);
+		}
+		pd->is_otg_mode = false;
 		pd->vbus_enabled = false;
 	}
 
@@ -3491,6 +3653,9 @@ static void handle_disconnect(struct usbpd *pd)
 	pd->in_pr_swap = false;
 	pd->pd_connected = false;
 	pd->in_explicit_contract = false;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	pd->in_good_connect = false;
+#endif
 	pd->hard_reset_recvd = false;
 	pd->caps_count = 0;
 	pd->hard_reset_count = 0;
@@ -3512,7 +3677,19 @@ static void handle_disconnect(struct usbpd *pd)
 			POWER_SUPPLY_PROP_PD_ACTIVE, &val);
 
 	if (pd->vbus_enabled) {
-		regulator_disable(pd->vbus);
+		if (pd->use_external_boost) {
+			gpio_set_value_cansleep(pd->otg_en_gpio, 0);
+			gpio_set_value_cansleep(pd->vbus_gpio, 0);
+			msleep(20);
+#ifdef OPLUS_CUSTOM_OP_DEF
+			switch_to_otg_mode(false);
+#else
+			oplus_wpc_set_wrx_en_value(0);
+#endif // OPLUS_CUSTOM_OP_DEF
+		} else {
+			regulator_disable(pd->vbus);
+		}
+		pd->is_otg_mode = false;
 		pd->vbus_enabled = false;
 	}
 
@@ -3582,6 +3759,9 @@ static void handle_hard_reset(struct usbpd *pd)
 			POWER_SUPPLY_PROP_PR_SWAP, &val);
 
 	pd->in_explicit_contract = false;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	pd->in_good_connect = false;
+#endif
 	pd->selected_pdo = pd->requested_pdo = 0;
 	pd->rdo = 0;
 	rx_msg_cleanup(pd);
@@ -3820,7 +4000,17 @@ static int psy_changed(struct notifier_block *nb, unsigned long evt, void *ptr)
 					ret);
 			return ret;
 		}
-
+#ifdef OPLUS_FEATURE_CHG_BASIC
+		if (val.intval == POWER_SUPPLY_TYPE_USB ||
+			val.intval == POWER_SUPPLY_TYPE_USB_CDP ||
+			val.intval == POWER_SUPPLY_TYPE_USB_FLOAT ||
+			usb_compliance_mode) {
+			usbpd_info(&pd->dev, "typec mode:%d type:%d\n",
+			typec_mode, val.intval);
+			pd->typec_mode = typec_mode;
+			queue_work(pd->wq, &pd->start_periph_work);
+		}
+#else
 		if (val.intval == POWER_SUPPLY_TYPE_USB ||
 			val.intval == POWER_SUPPLY_TYPE_USB_CDP ||
 			val.intval == POWER_SUPPLY_TYPE_USB_FLOAT) {
@@ -3829,9 +4019,16 @@ static int psy_changed(struct notifier_block *nb, unsigned long evt, void *ptr)
 			pd->typec_mode = typec_mode;
 			queue_work(pd->wq, &pd->start_periph_work);
 		}
-
+#endif
 		return 0;
 	}
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	if (usb_compliance_mode) {
+		usbpd_err(&pd->dev, "start usb peripheral for testing");
+		///start_usb_peripheral(pd);
+	}
+#endif
 
 	ret = power_supply_get_property(pd->usb_psy,
 			POWER_SUPPLY_PROP_PRESENT, &val);
@@ -4272,6 +4469,11 @@ static ssize_t select_pdo_store(struct device *dev,
 	int pdo, uv = 0, ua = 0;
 	int ret;
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+/* BSP.CHG.Basic, 2021/10/27, hvdcp_opti return */
+	return size;
+#endif
+
 	mutex_lock(&pd->swap_lock);
 
 	/* Only allowed if we are already in explicit sink contract */
@@ -4684,6 +4886,104 @@ static void usbpd_release(struct device *dev)
 
 	kfree(pd);
 }
+#ifdef OPLUS_FEATURE_CHG_BASIC
+int oplus_usbpd_send_svdm(u16 svid, u8 cmd, enum usbpd_svdm_cmd_type cmd_type,
+				int obj_pos, const u32 *vdos, int num_vdos) {
+	struct usbpd *pd = pd_lobal;
+	u32 svdm_hdr = SVDM_HDR(svid, 0, obj_pos, cmd_type, cmd);
+
+	return usbpd_send_vdm(pd, svdm_hdr, vdos, num_vdos);
+}
+
+bool oplus_check_pd_state_ready(void)
+{
+	return (pd_lobal->in_good_connect);
+}
+EXPORT_SYMBOL(oplus_check_pd_state_ready);
+
+int oplus_pdo_select(int vbus_mv, int ibus_ma)
+{
+	int i = 0;
+	int rc = 0;
+	u32 pdo = 0;
+	struct usbpd *pd = pd_lobal;
+
+	for (i = 0; i < ARRAY_SIZE(pd->received_pdos); i++) {
+		pdo = pd->received_pdos[i];
+		if (vbus_mv == PD_SRC_PDO_FIXED_VOLTAGE(pdo) * 50 || pdo == 0)
+			break;
+	}
+
+	mutex_lock(&pd->swap_lock);
+
+	/* Only allowed if we are already in explicit sink contract */
+	if (pd->current_state != PE_SNK_READY || !is_sink_tx_ok(pd)) {
+		printk(KERN_ERR "%s: cannot select new pdo yet\n", __func__);
+		rc = -EBUSY;
+		goto out;
+	}
+
+	if (i > 7) {
+		printk(KERN_ERR "%s: inval pdo[0x%x]\n", __func__, pdo);
+		rc = -EINVAL;
+		goto out;
+	}
+
+	if (vbus_mv != PD_SRC_PDO_FIXED_VOLTAGE(pdo) * 50) {
+		if (i > 0) {
+			printk(KERN_ERR "%s: can not find vbus_mv[%d], the last pdos[%d]=[%d]\n", __func__,
+				vbus_mv, i -1, PD_SRC_PDO_FIXED_VOLTAGE(pd->received_pdos[i - 1]) * 50);
+		} else {
+			printk(KERN_ERR "%s: can not find vbus_mv[%d], pdos0=[%d]\n", __func__,
+				vbus_mv, PD_SRC_PDO_FIXED_VOLTAGE(pd->received_pdos[i]) * 50);
+		}
+		rc = -EINVAL;
+		goto out;
+	}
+
+	rc = pd_select_pdo(pd, i + 1, vbus_mv * 1000, ibus_ma * 1000);
+	if (rc) {
+		printk(KERN_ERR "%s: pd_select_pdo fail, rc=%d\n", __func__, rc);
+		goto out;
+	}
+
+	reinit_completion(&pd->is_ready);
+	pd->send_request = true;
+	kick_sm(pd, 0);
+
+	/* wait for operation to complete */
+	if (!wait_for_completion_timeout(&pd->is_ready, msecs_to_jiffies(1000))) {
+		printk(KERN_ERR "%s: pdo[%d], vbus_mv[%d], ibus_ma[%d] request timed out\n",
+				__func__, i, vbus_mv, ibus_ma);
+		rc = -ETIMEDOUT;
+		goto out;
+	}
+
+	/* determine if request was accepted/rejected */
+	if (pd->selected_pdo != pd->requested_pdo ||
+			pd->current_voltage != pd->requested_voltage) {
+		printk(KERN_ERR "%s: request rejected\n", __func__);
+		rc = -EINVAL;
+	}
+	printk(KERN_ERR "%s: pdo[%d], vbus_mv[%d], ibus_ma[%d]\n",
+				__func__, i, vbus_mv, ibus_ma);
+
+out:
+	pd->send_request = false;
+	mutex_unlock(&pd->swap_lock);
+	return rc;
+}
+EXPORT_SYMBOL(oplus_pdo_select);
+
+bool oplus_is_use_external_boost(void)
+{
+	if (pd_lobal != NULL)
+		return pd_lobal->use_external_boost;
+	else
+		return false;
+}
+EXPORT_SYMBOL(oplus_is_use_external_boost);
+#endif /*OPLUS_FEATURE_CHG_BASIC*/
 
 static int num_pd_instances;
 
@@ -4725,10 +5025,41 @@ struct usbpd *usbpd_create(struct device *parent)
 	if (ret)
 		goto free_pd;
 
+	pd->use_external_boost = of_property_read_bool(parent->of_node, "otg-use_external_boost");
+	if (pd->use_external_boost) {
+		usbpd_info(&pd->dev, "wkcs: otg use external boost\n");
+		pd->vbus_gpio = of_get_named_gpio(parent->of_node, "vbus-gpio", 0);
+		if (!gpio_is_valid(pd->vbus_gpio)) {
+			usbpd_err(&pd->dev, "wkcs: can't find vbus-gpio\n");
+			goto del_pd;
+		}
+		ret = devm_gpio_request_one(&pd->dev, pd->vbus_gpio, GPIOF_OUT_INIT_LOW,
+					"vbus-gpio");
+		if (ret) {
+			usbpd_err(&pd->dev, "wkcs: can't request vbus gpio %d", pd->vbus_gpio);
+			goto del_pd;
+		}
+		pd->otg_en_gpio = of_get_named_gpio(parent->of_node, "otg_en-gpio", 0);
+		if (!gpio_is_valid(pd->otg_en_gpio)) {
+			usbpd_err(&pd->dev, "wkcs: can't find otg_en-gpio\n");
+			goto free_vbus_gpio;
+		}
+		ret = devm_gpio_request_one(&pd->dev, pd->otg_en_gpio, GPIOF_OUT_INIT_LOW,
+					"otg_en-gpio");
+		if (ret) {
+			usbpd_err(&pd->dev, "wkcs: can't request vbus gpio %d", pd->otg_en_gpio);
+			goto free_vbus_gpio;
+		}
+	}
+	pd->is_otg_mode = false;
+
 	pd->wq = alloc_ordered_workqueue("usbpd_wq", WQ_FREEZABLE | WQ_HIGHPRI);
 	if (!pd->wq) {
 		ret = -ENOMEM;
-		goto del_pd;
+		if (pd->use_external_boost)
+			goto free_otg_en_gpio;
+		else
+			goto del_pd;
 	}
 	INIT_WORK(&pd->sm_work, usbpd_sm);
 	INIT_WORK(&pd->start_periph_work, start_usb_peripheral_work);
@@ -4858,6 +5189,9 @@ struct usbpd *usbpd_create(struct device *parent)
 		}
 	}
 
+#ifdef OPLUS_CUSTOM_OP_DEF
+	pd->probe_done = true;
+#endif
 	pd->pps_disabled = device_property_read_bool(parent,
 				"qcom,pps-disabled");
 	pd->current_pr = PR_NONE;
@@ -4878,6 +5212,10 @@ struct usbpd *usbpd_create(struct device *parent)
 	/* force read initial power_supply values */
 	psy_changed(&pd->psy_nb, PSY_EVENT_PROP_CHANGED, pd->usb_psy);
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	pd_lobal = pd;
+#endif
+
 	return pd;
 
 del_inst:
@@ -4886,6 +5224,13 @@ put_psy:
 	power_supply_put(pd->usb_psy);
 destroy_wq:
 	destroy_workqueue(pd->wq);
+free_otg_en_gpio:
+	if (pd->use_external_boost && gpio_is_valid(pd->otg_en_gpio))
+		devm_gpio_free(&pd->dev, pd->otg_en_gpio);
+free_vbus_gpio:
+	if (pd->use_external_boost && gpio_is_valid(pd->vbus_gpio))
+		devm_gpio_free(&pd->dev, pd->vbus_gpio);
+
 del_pd:
 	device_del(&pd->dev);
 free_pd:

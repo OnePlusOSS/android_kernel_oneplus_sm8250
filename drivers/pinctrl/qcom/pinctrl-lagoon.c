@@ -1616,9 +1616,15 @@ static const struct msm_pingroup lagoon_groups[] = {
 	[163] = UFS_RESET(ufs_reset, 0xae000),
 };
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+static const int lagoon_reserved_gpios[] = {
+	13, 14, 15, 16, 56, 57, -1
+};
+#else
 static const int lagoon_reserved_gpios[] = {
 	13, 14, 15, 16, 45, 46, 56, 57, -1
 };
+#endif
 
 static struct msm_dir_conn lagoon_dir_conn[] = {
 	{-1, 0}, {-1, 0}, {-1, 0}, {-1, 0}, {-1, 0},

@@ -46,7 +46,7 @@ static const char * const power_supply_type_text[] = {
 	"USB_PD", "USB_PD_DRP", "BrickID",
 	"USB_HVDCP", "USB_HVDCP_3", "USB_HVDCP_3P5", "Wireless", "USB_FLOAT",
 	"BMS", "Parallel", "Main", "USB_C_UFP", "USB_C_DFP",
-	"Charge_Pump",
+	"Charge_Pump","DASH","BPP", "EPP", "FAST"
 };
 
 static const char * const power_supply_usb_type_text[] = {
@@ -181,6 +181,9 @@ static ssize_t power_supply_show_property(struct device *dev,
 		break;
 	case POWER_SUPPLY_PROP_TYPE:
 	case POWER_SUPPLY_PROP_REAL_TYPE:
+#ifdef OPLUS_CUSTOM_OP_DEF
+	case POWER_SUPPLY_PROP_WIRELESS_TYPE:
+#endif
 		ret = sprintf(buf, "%s\n",
 			      power_supply_type_text[value.intval]);
 		break;
@@ -214,6 +217,9 @@ static ssize_t power_supply_show_property(struct device *dev,
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT:
 		ret = sprintf(buf, "%lld\n", value.int64val);
 		break;
+#ifdef OPLUS_CUSTOM_OP_DEF
+	case POWER_SUPPLY_PROP_WIRELESS_MODE:
+#endif
 	case POWER_SUPPLY_PROP_MODEL_NAME ... POWER_SUPPLY_PROP_SERIAL_NUMBER:
 		ret = sprintf(buf, "%s\n", value.strval);
 		break;
@@ -281,6 +287,30 @@ static ssize_t power_supply_store_property(struct device *dev,
 /* Must be in the same order as POWER_SUPPLY_PROP_* */
 static struct device_attribute power_supply_attrs[] = {
 	/* Properties of type `int' */
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	POWER_SUPPLY_ATTR(charge_technology),
+	POWER_SUPPLY_ATTR(fastcharger),
+	POWER_SUPPLY_ATTR(mmi_charging_enable),
+	POWER_SUPPLY_ATTR(otg_switch),
+	POWER_SUPPLY_ATTR(otg_online),
+	POWER_SUPPLY_ATTR(fast_chg_type),
+	POWER_SUPPLY_ATTR(batt_fcc),
+	POWER_SUPPLY_ATTR(batt_soh),
+	POWER_SUPPLY_ATTR(batt_cc),
+	POWER_SUPPLY_ATTR(batt_rm),
+	POWER_SUPPLY_ATTR(batt_soc),
+	POWER_SUPPLY_ATTR(authenticate),
+	POWER_SUPPLY_ATTR(charge_timeout),
+	POWER_SUPPLY_ATTR(notify_code),
+	POWER_SUPPLY_ATTR(cool_down),
+	POWER_SUPPLY_ATTR(usb_status),
+	POWER_SUPPLY_ATTR(em_mode),
+	POWER_SUPPLY_ATTR(sub_current),
+	POWER_SUPPLY_ATTR(usbtemp_volt_l),
+	POWER_SUPPLY_ATTR(usbtemp_volt_r),
+	POWER_SUPPLY_ATTR(battery_info),
+	POWER_SUPPLY_ATTR(battery_info_id),
+#endif  /* OPLUS_FEATURE_CHG_BASIC */
 	POWER_SUPPLY_ATTR(status),
 	POWER_SUPPLY_ATTR(charge_type),
 	POWER_SUPPLY_ATTR(health),
@@ -374,6 +404,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(temp_cold),
 	POWER_SUPPLY_ATTR(temp_hot),
 	POWER_SUPPLY_ATTR(system_temp_level),
+	POWER_SUPPLY_ATTR(op_disable_charge),
 	POWER_SUPPLY_ATTR(resistance),
 	POWER_SUPPLY_ATTR(resistance_capacitive),
 	POWER_SUPPLY_ATTR(resistance_id),
@@ -486,12 +517,58 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(charger_status),
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_ATTR(charge_counter_ext),
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	POWER_SUPPLY_ATTR(adapter_fw_update),
+	POWER_SUPPLY_ATTR(voocchg_ing),
+	POWER_SUPPLY_ATTR(chargerid_volt),
+	POWER_SUPPLY_ATTR(ship_mode),
+	POWER_SUPPLY_ATTR(call_mode),
+#ifdef CONFIG_OPLUS_CHIP_SOC_NODE
+	POWER_SUPPLY_ATTR(chip_soc),
+#endif
+#ifdef CONFIG_OPLUS_SMOOTH_SOC
+	POWER_SUPPLY_ATTR(smooth_soc),
+	POWER_SUPPLY_ATTR(smooth_switch),
+#endif
+
+#ifdef CONFIG_OPLUS_SHORT_USERSPACE
+	POWER_SUPPLY_ATTR(short_c_batt_limit_chg),
+	POWER_SUPPLY_ATTR(short_c_batt_limit_rechg),
+#else
+	POWER_SUPPLY_ATTR(short_c_batt_update_change),
+	POWER_SUPPLY_ATTR(short_c_batt_in_idle),
+	POWER_SUPPLY_ATTR(short_c_batt_cv_status),
+#endif /*CONFIG_OPLUS_SHORT_USERSPACE*/
+#ifdef CONFIG_OPLUS_SHORT_HW_CHECK
+	POWER_SUPPLY_ATTR(short_c_hw_feature),
+	POWER_SUPPLY_ATTR(short_c_hw_status),
+#endif
+#ifdef CONFIG_OPLUS_SHORT_IC_CHECK
+	POWER_SUPPLY_ATTR(short_ic_otp_status),
+	POWER_SUPPLY_ATTR(short_ic_volt_thresh),
+	POWER_SUPPLY_ATTR(short_ic_otp_value),
+#endif
+	POWER_SUPPLY_ATTR(cp_disable_cur_sens),
+// add by huangtongfeng  for wireless file
+	POWER_SUPPLY_ATTR(tx_voltage_now),
+	POWER_SUPPLY_ATTR(tx_current_now),
+	POWER_SUPPLY_ATTR(cp_voltage_now),
+	POWER_SUPPLY_ATTR(cp_current_now),
+	POWER_SUPPLY_ATTR(wireless_mode),
+	POWER_SUPPLY_ATTR(wireless_type),
+	POWER_SUPPLY_ATTR(cep_info),
+// wireless file  end
+#endif /*OPLUS_FEATURE_CHG_BASIC*/
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_ATTR(model_name),
 	POWER_SUPPLY_ATTR(manufacturer),
 	POWER_SUPPLY_ATTR(battery_type),
 	POWER_SUPPLY_ATTR(cycle_counts),
 	POWER_SUPPLY_ATTR(serial_number),
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	POWER_SUPPLY_ATTR(parallel_current_now),
+	POWER_SUPPLY_ATTR(smb1355_test),
+#endif
 };
 
 static struct attribute *
@@ -516,6 +593,11 @@ static umode_t power_supply_attr_is_visible(struct kobject *kobj,
 			if (psy->desc->property_is_writeable &&
 			    psy->desc->property_is_writeable(psy, property) > 0)
 				mode |= S_IWUSR;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+			if (property == POWER_SUPPLY_PROP_SMB1355_TEST)
+				mode |= S_IWGRP;
+#endif
+
 
 			return mode;
 		}
@@ -585,6 +667,11 @@ int power_supply_uevent(struct device *dev, struct kobj_uevent_env *env)
 		struct device_attribute *attr;
 		char *line;
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+		if (((psy->desc->properties[j] == POWER_SUPPLY_PROP_VOLTAGE_NOW) && (psy->desc->type == POWER_SUPPLY_TYPE_USB))
+			|| ((psy->desc->properties[j] == POWER_SUPPLY_PROP_CHARGE_NOW) && (psy->desc->type == POWER_SUPPLY_TYPE_BATTERY)))
+			continue;
+#endif
 		attr = &power_supply_attrs[psy->desc->properties[j]];
 
 		ret = power_supply_show_property(dev, attr, prop_buf);

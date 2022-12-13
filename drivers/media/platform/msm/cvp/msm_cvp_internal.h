@@ -24,6 +24,9 @@
 #include <media/msm_media_info.h>
 #include <media/msm_cvp_private.h>
 #include "cvp_hfi_api.h"
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#include <synx_api.h>
+#endif
 
 #define MAX_SUPPORTED_INSTANCES 16
 #define MAX_NAME_LENGTH 64
@@ -31,6 +34,13 @@
 #define MAX_DSP_INIT_ATTEMPTS 16
 #define FENCE_WAIT_SIGNAL_TIMEOUT 100
 #define FENCE_WAIT_SIGNAL_RETRY_TIMES 20
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#define FENCE_BIT (1ULL << 63)
+
+#define FENCE_DME_ICA_ENABLED_IDX 0
+#define FENCE_DME_DS_IDX 1
+#define FENCE_DME_OUTPUT_IDX 7
+#endif
 
 #define SYS_MSG_START HAL_SYS_INIT_DONE
 #define SYS_MSG_END HAL_SYS_ERROR
@@ -251,6 +261,9 @@ struct cvp_session_prop {
 	u32 priority;
 	u32 is_secure;
 	u32 dsp_mask;
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	u32 fthread_nr;
+#endif
 	u32 fdu_cycles;
 	u32 od_cycles;
 	u32 mpu_cycles;
@@ -266,6 +279,16 @@ struct cvp_session_prop {
 	u32 ddr_cache;
 	u32 ddr_op_cache;
 };
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+struct cvp_fence_queue {
+	spinlock_t lock;
+	enum queue_state state;
+	struct list_head wait_list;
+	wait_queue_head_t wq;
+	struct list_head sched_list;
+};
+#endif
 
 enum cvp_event_t {
 	CVP_NO_EVENT,
@@ -317,6 +340,9 @@ struct msm_cvp_inst {
 	struct msm_cvp_core *core;
 	enum session_type session_type;
 	struct cvp_session_queue session_queue;
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	struct cvp_session_queue session_queue_fence;
+#endif
 	struct cvp_session_event event_handler;
 	void *session;
 	enum instance_state state;
@@ -332,14 +358,23 @@ struct msm_cvp_inst {
 	enum msm_cvp_modes flags;
 	struct msm_cvp_capability capability;
 	struct kref kref;
+#ifndef OPLUS_FEATURE_CAMERA_COMMON
 	unsigned long deprecate_bitmask;
+#endif
 	struct cvp_kmd_request_power power;
 	struct cvp_session_prop prop;
 	u32 cur_cmd_type;
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	struct cvp_fence_queue fence_cmd_queue;
+#else
 	struct mutex fence_lock;
+#endif
 };
 
 struct msm_cvp_fence_thread_data {
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	struct list_head list;
+#endif
 	struct msm_cvp_inst *inst;
 	unsigned int device_id;
 	struct cvp_kmd_hfi_fence_packet in_fence_pkt;
@@ -352,6 +387,7 @@ void cvp_handle_cmd_response(enum hal_command_response cmd, void *data);
 int msm_cvp_trigger_ssr(struct msm_cvp_core *core,
 	enum hal_ssr_trigger_type type);
 int msm_cvp_noc_error_info(struct msm_cvp_core *core);
+#ifndef OPLUS_FEATURE_CAMERA_COMMON
 void msm_cvp_queue_v4l2_event(struct msm_cvp_inst *inst, int event_type);
 
 enum msm_cvp_flags {
@@ -359,7 +395,7 @@ enum msm_cvp_flags {
 	MSM_CVP_FLAG_RBR_PENDING         = BIT(1),
 	MSM_CVP_FLAG_QUEUED              = BIT(2),
 };
-
+#endif
 struct msm_cvp_internal_buffer {
 	struct list_head list;
 	struct msm_cvp_smem smem;

@@ -75,6 +75,36 @@ struct proc_dir_entry *proc_create_net_single_write(const char *name, umode_t mo
 						    void *data);
 extern struct pid *tgid_pidfd_to_pid(const struct file *file);
 
+#ifdef  OPLUS_FEATURE_POWERINFO_RPMH
+#define DEFINE_PROC_SHOW_ATTRIBUTE(__name)					\
+static int __name ## _open(struct inode *inode, struct file *file)\
+{									\
+	return single_open(file, __name ## _show, PDE_DATA(inode));	\
+}									\
+									\
+static const struct file_operations __name ## _fops = {			\
+	.owner		= THIS_MODULE,					\
+	.open		= __name ## _open,				\
+	.read		= seq_read,					\
+	.llseek		= seq_lseek,					\
+	.release	= single_release,				\
+}
+
+#define DEFINE_PROC_SHOW_STORE_ATTRIBUTE(__name)				\
+static int __name ## _open(struct inode *inode, struct file *file)\
+{									\
+	return single_open(file, __name ## _show, PDE_DATA(inode));\
+}									\
+									\
+static const struct file_operations __name ## _fops = {\
+	.owner		= THIS_MODULE,					\
+	.open		= __name ## _open,				\
+	.read		= seq_read,					\
+	.llseek		= seq_lseek,					\
+	.release	= single_release,				\
+	.write	= __name ## _store,				\
+}
+#endif /*OPLUS_FEATURE_POWERINFO_RPMH*/
 #else /* CONFIG_PROC_FS */
 
 static inline void proc_root_init(void)

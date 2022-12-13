@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "Data Access Monitoring"
+
+config DAMON
+	bool "DAMON: Data Access Monitoring Framework"
+	default y
+
+config DAMON_PADDR
+	bool "Data access monitoring operations for the physical address space"
+	depends on DAMON && MMU
+	select PAGE_IDLE_FLAG
+	default y
+
+config DAMON_RECLAIM
+	bool "Build DAMON-based reclaim (DAMON_RECLAIM)"
+	depends on DAMON_PADDR
+	default y
+
+endmenu

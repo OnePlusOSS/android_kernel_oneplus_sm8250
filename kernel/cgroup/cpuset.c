@@ -64,6 +64,12 @@
 #include <linux/cgroup.h>
 #include <linux/wait.h>
 
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+#include <linux/perf_event.h>
+#include <linux/module.h>
+#include "cgroup-internal.h"
+#endif
+
 DEFINE_STATIC_KEY_FALSE(cpusets_pre_enable_key);
 DEFINE_STATIC_KEY_FALSE(cpusets_enabled_key);
 
@@ -1476,6 +1482,306 @@ static int fmeter_getrate(struct fmeter *fmp)
 	return val;
 }
 
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+#define CG_HASH_BITS 3
+#define MAX_BOOL_LEN 2
+static struct proc_dir_entry *cpu_parent;
+
+static bool dbg_enable;
+
+DECLARE_HASHTABLE(cg_hash_table, CG_HASH_BITS);
+struct cg_entry {
+	int cgid;
+	char name[MAX_CGROUP_TYPE_NAMELEN];
+	struct hlist_node hash;
+};
+
+/*
+ * get the index of the cgroup by cgid
+ */
+static int get_cpuset_cgrp_idx(int cgid)
+{
+	struct cg_entry* cg;
+	unsigned long bkt;
+	int idx = 0;
+
+	hash_for_each(cg_hash_table, bkt, cg, hash) {
+		if (cg->cgid == cgid)
+			goto end;
+		idx++;
+	}
+	idx = -1;
+end:
+	if (dbg_enable)
+		pr_err("%s: cgrp_id=%d return idx=%d", __func__, cgid, idx);
+
+	return idx;
+}
+
+/*
+ * get the index of the cgroup by name
+ */
+int get_cpuset_cgrp_idx_by_name(const char *cg_name)
+{
+	struct cg_entry* cg;
+	unsigned long bkt;
+	int idx = 0;
+
+	hash_for_each(cg_hash_table, bkt, cg, hash) {
+		if (!strncmp(cg->name, cg_name, strlen(cg_name)))
+			goto end;
+		idx++;
+	}
+	idx = -1;
+end:
+	if (dbg_enable)
+		pr_err("%s: cgrp_name=%s return idx=%d", __func__, cg_name, idx);
+
+	return idx;
+}
+
+static int hash_show(struct seq_file *m, void *v)
+{
+	struct cg_entry* cg;
+        unsigned long bkt;
+	int i;
+
+        hash_for_each(cg_hash_table, bkt, cg, hash) {
+                seq_printf(m, "cgid=\"%d\",name=\"%s\",idx=\"%d\"\n", cg->cgid, cg->name, get_cpuset_cgrp_idx(cg->cgid));
+        }
+
+	seq_printf(m, "===========\n");
+
+	for(i = 2; i < 13; i++) {
+		seq_printf(m, "cgid = %d, idx = %d\n",i, get_cpuset_cgrp_idx(i));
+	}
+
+        return 0;
+}
+
+static int hashdump_open(struct inode *inode, struct file *file)
+{
+        return single_open(file, hash_show, NULL);
+}
+
+static const struct file_operations hashdump_fops = {
+        .open           = hashdump_open,
+        .read           = seq_read,
+        .llseek         = seq_lseek,
+        .release        = single_release,
+};
+
+static int dbg_show(struct seq_file *m, void *v)
+{
+        seq_printf(m, "%d\n", dbg_enable);
+        return 0;
+}
+
+static ssize_t dbg_proc_write(struct file *file, const char __user *buf,
+		size_t count, loff_t *ppos)
+{
+	char buffer[MAX_BOOL_LEN];
+	int err = 0;
+	int enable;
+
+	memset(buffer, 0, sizeof(buffer));
+
+	if (count > sizeof(buffer) - 1)
+		count = sizeof(buffer) - 1;
+
+	if (copy_from_user((void *)buffer, buf, count)) {
+		err = -EFAULT;
+		goto out;
+	}
+	err = kstrtoint(strstrip(buffer), 0, &enable);
+	if (err)
+		goto out;
+
+	dbg_enable = enable;
+out:
+	return err < 0 ? err : count;
+}
+
+static int dbg_proc_open(struct inode *inode, struct file *file)
+{
+        return single_open(file, dbg_show, NULL);
+}
+
+static const struct file_operations dbg_fops = {
+        .open           = dbg_proc_open,
+	.write		= dbg_proc_write,
+        .read           = seq_read,
+        .llseek         = seq_lseek,
+        .release        = single_release,
+};
+
+void cpuset_add_cg(int cgid, char* name)
+{
+	struct cg_entry* cg;
+
+	/* MUSTFIX: cgroup array of task_struct only has 8 buckets */
+	if (cgid > UID_GROUP_SIZE + 1)
+		return;
+
+        cg = kzalloc(sizeof(struct cg_entry), GFP_ATOMIC);
+        if (!cg)
+                return;
+
+        cg->cgid = cgid;
+	strncpy(cg->name, name, MAX_CGROUP_TYPE_NAMELEN);
+	hash_add(cg_hash_table, &cg->hash, cgid);
+}
+
+
+static void cpuset_calc_counter(struct task_struct *task)
+{
+	u64 enabled, running;
+	int i, src_idx = -1, dst_idx = -1;
+	struct css_set *cset;
+	char cg_src[MAX_CGROUP_TYPE_NAMELEN], cg_dst[MAX_CGROUP_TYPE_NAMELEN];
+	u64 val;
+
+	if (!get_uid_perf_enable())
+		return;
+
+	rcu_read_lock();
+	spin_lock_irq(&css_set_lock);
+
+	cset = task_css_set(task);
+	if (cset->mg_src_cgrp && cset->mg_dst_cgrp) {
+		cgroup_name(cset->mg_src_cgrp, cg_src, MAX_CGROUP_TYPE_NAMELEN);
+		cgroup_name(cset->mg_dst_cgrp, cg_dst, MAX_CGROUP_TYPE_NAMELEN);
+		if (dbg_enable)
+			pr_err("%s: src_cg = %s, id = %d, dst_cg = %s, id = %d, task = %s, pid=%d",
+				__func__, cg_src, cset->mg_src_cgrp->id, cg_dst, cset->mg_dst_cgrp->id, task->comm, task->pid);
+
+		src_idx = get_cpuset_cgrp_idx(cset->mg_src_cgrp->id);
+		dst_idx = get_cpuset_cgrp_idx(cset->mg_dst_cgrp->id);
+
+		if (src_idx == -1 || dst_idx == -1) {
+			pr_err("%s: src_cg = %s, id = %d, dst_cg = %s, id = %d, task = %s, pid=%d",
+				__func__, cg_src, cset->mg_src_cgrp->id, cg_dst, cset->mg_dst_cgrp->id, task->comm, task->pid);
+		}
+
+	} else {
+		if (cset->mg_src_cgrp == NULL)
+			pr_err("%s: mg_src_cgrp is NULL", __func__);
+		else {
+			cgroup_name(cset->mg_src_cgrp, cg_src, MAX_CGROUP_TYPE_NAMELEN);
+			pr_err("%s: mg_src_cgrp is : %s", __func__, cg_src);
+		}
+
+		if (cset->mg_dst_cgrp == NULL)
+			pr_err("%s: mg_dst_cgrp is NULL", __func__);
+		else {
+			cgroup_name(cset->mg_dst_cgrp, cg_dst, MAX_CGROUP_TYPE_NAMELEN);
+			pr_err("%s: mg_dst_cgrp is : %s", __func__, cg_dst);
+		}
+	}
+
+	spin_unlock_irq(&css_set_lock);
+
+	if (src_idx == -1 || dst_idx == -1) {
+		pr_err("%s: cannot calc counter", __func__);
+		rcu_read_unlock();
+		return;
+	}
+
+	if (!(task->flags & PF_EXITING)) {
+		get_task_struct(task);
+		rcu_read_unlock();
+
+		/* MUST FIX: calc the pevent only idx=0 instruction counters */
+		for (i = 0; i < 1/*UID_PERF_EVENTS*/; ++i) {
+			val = 0;
+
+			if (task->uid_pevents[i]) {
+				u64 tmp = 0;
+				/* settlement prev cgroup */
+				val = perf_event_read_value(task->uid_pevents[i], &enabled, &running);
+				task->uid_group[src_idx] += (val - task->uid_group_prev_counts[src_idx]);
+				tmp = task->uid_group_prev_counts[src_idx];
+				task->uid_group_prev_counts[src_idx] = 0;
+
+				/* setup dst cgroup prev counters */
+				task->uid_group_prev_counts[dst_idx] = val;
+				if (dbg_enable)
+					pr_err("%s: pid=%d comm=%s val=%llu uid_group[%d] = %llu uid_group_prev_counts[%d] = %llu uid_group_prev_counts[%d] = %llu",
+						__func__, task->pid, task->comm, val,
+						src_idx, task->uid_group[src_idx],
+						src_idx, tmp,
+						dst_idx, task->uid_group_prev_counts[dst_idx]);
+
+			}
+		}
+
+		rcu_read_lock();
+		put_task_struct(task);
+	}
+	rcu_read_unlock();
+}
+
+int cpuset_get_cgrp_idx(struct task_struct *task)
+{
+	int cgrp_id = -1, idx = -1;
+	struct css_set *cset;
+
+	if (!get_uid_perf_enable())
+		return idx;
+
+	rcu_read_lock();
+	spin_lock_irq(&css_set_lock);
+
+	cset = task_css_set(task);
+	if (cset->subsys[cpuset_cgrp_id] && cset->subsys[cpuset_cgrp_id]->cgroup)
+		cgrp_id = cset->subsys[cpuset_cgrp_id]->cgroup->id;
+	else
+		pr_err("%s: cannot get cgrp id", __func__);
+
+	spin_unlock_irq(&css_set_lock);
+	rcu_read_unlock();
+
+	if (cgrp_id > 0)
+		idx = get_cpuset_cgrp_idx(cgrp_id);
+
+	if (idx < 0)
+		if (dbg_enable)
+			pr_err("%s: cset->subsys[cpuset_cgrp_id]->cgroup->id = %d, array idx = %d", __func__, cgrp_id, idx);
+
+	return idx;
+
+}
+
+int cpuset_get_cgrp_idx_locked(struct task_struct *task)
+{
+	int cgrp_id = -1, idx = -1;
+	struct css_set *cset;
+
+	//if (!get_uid_perf_enable())
+	//	return idx;
+
+	spin_lock_irq(&css_set_lock);
+
+	cset = task_css_set(task);
+	if (cset->subsys[cpuset_cgrp_id] && cset->subsys[cpuset_cgrp_id]->cgroup)
+		cgrp_id = cset->subsys[cpuset_cgrp_id]->cgroup->id;
+	else
+		pr_err("%s: cannot get cgrp id", __func__);
+
+	spin_unlock_irq(&css_set_lock);
+
+	if (cgrp_id > 0)
+		idx = get_cpuset_cgrp_idx(cgrp_id);
+
+	if (idx < 0)
+		if (dbg_enable)
+			pr_err("%s: cset->subsys->cgroup->id = %d, array idx = %d", __func__, cgrp_id, idx);
+
+	return idx;
+
+}
+#endif
+
 static struct cpuset *cpuset_attach_old_cs;
 
 /* Called by cgroups to determine if a cpuset is usable; cpuset_mutex held */
@@ -1502,6 +1808,9 @@ static int cpuset_can_attach(struct cgroup_taskset *tset)
 		ret = task_can_attach(task, cs->cpus_allowed);
 		if (ret)
 			goto out_unlock;
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+		cpuset_calc_counter(task);
+#endif
 		ret = security_task_setscheduler(task);
 		if (ret)
 			goto out_unlock;
@@ -2178,6 +2487,18 @@ int __init cpuset_init(void)
 		return err;
 
 	BUG_ON(!alloc_cpumask_var(&cpus_attach, GFP_KERNEL));
+
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+	cpu_parent = proc_mkdir("cpuset_info", NULL);
+	if (!cpu_parent) {
+		pr_err("%s: failed to create cpuset_info proc entry\n",  __func__);
+		remove_proc_subtree("cpuset_info", NULL);
+		goto end;
+        }
+	proc_create_data("show_hash", 0444, cpu_parent, &hashdump_fops, NULL);
+	proc_create_data("dbg_enable", 0644, cpu_parent, &dbg_fops, NULL);
+end:
+#endif
 
 	return 0;
 }

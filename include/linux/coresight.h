@@ -325,22 +325,22 @@ static inline void coresight_abort(void) {}
 static inline void coresight_disable_reg_clk(struct coresight_device *csdev) {}
 static inline int coresight_enable_reg_clk(struct coresight_device *csdev)
 { return -EINVAL; }
-static inline void coresight_disable_all_source_link(void) {};
-static inline void coresight_enable_all_source_link(void) {};
-static inline int coresight_claim_device_unlocked(void __iomem *base)
+void coresight_disable_all_source_link(void) {};
+void coresight_enable_all_source_link(void) {};
+inline int coresight_claim_device_unlocked(void __iomem *base)
 {
 	return -EINVAL;
 }
 
-static inline int coresight_claim_device(void __iomem *base)
+inline int coresight_claim_device(void __iomem *base)
 {
 	return -EINVAL;
 }
 
-static inline void coresight_disclaim_device(void __iomem *base) {}
-static inline void coresight_disclaim_device_unlocked(void __iomem *base) {}
+inline void coresight_disclaim_device(void __iomem *base) {}
+inline void coresight_disclaim_device_unlocked(void __iomem *base) {}
 
-static inline bool coresight_loses_context_with_cpu(struct device *dev)
+inline bool coresight_loses_context_with_cpu(struct device *dev)
 {
 	return false;
 }

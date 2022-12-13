@@ -108,6 +108,11 @@ int sysctl_tcp_max_orphans __read_mostly = NR_FILE;
 #define TCP_REMNANT (TCP_FLAG_FIN|TCP_FLAG_URG|TCP_FLAG_SYN|TCP_FLAG_PSH)
 #define TCP_HP_BITS (~(TCP_RESERVED_BITS|TCP_FLAG_PSH))
 
+//#ifdef OPLUS_FEATURE_NWPOWER
+#include <net/oplus_nwpower.h>
+//#endif /* OPLUS_FEATURE_NWPOWER */
+
+
 #define REXMIT_NONE	0 /* no loss recovery to do */
 #define REXMIT_LOST	1 /* retransmit packets marked lost */
 #define REXMIT_NEW	2 /* FRTO-style transmit of unsent/new packets */
@@ -656,6 +661,11 @@ new_measure:
 	tp->rcvq_space.time = tp->tcp_mstamp;
 }
 
+#ifdef OPLUS_FEATURE_APP_MONITOR
+/* Add code for push detect function */
+extern void oplus_app_monitor_update_app_info(struct sock *sk, const struct sk_buff *skb, int send, int retrans);
+#endif /* OPLUS_FEATURE_APP_MONITOR */
+
 /* There is something which you must keep in mind when you analyze the
  * behavior of the tp->ato delayed ack timeout interval.  When a
  * connection starts up, we want to ack as quickly as possible.  The
@@ -710,6 +720,11 @@ static void tcp_event_data_recv(struct sock *sk, struct sk_buff *skb)
 
 	if (skb->len >= 128)
 		tcp_grow_window(sk, skb);
+
+	#ifdef OPLUS_FEATURE_APP_MONITOR
+	/* Add code for push detect function */
+	oplus_app_monitor_update_app_info(sk, skb, 0, 0);
+	#endif /* OPLUS_FEATURE_APP_MONITOR */
 }
 
 /* Called to compute a smoothed rtt estimate. The data fed to this
@@ -4780,6 +4795,11 @@ queue_and_out:
 
 	if (!after(TCP_SKB_CB(skb)->end_seq, tp->rcv_nxt)) {
 		/* A retransmit, 2nd most common case.  Force an immediate ack. */
+
+		//#ifdef OPLUS_FEATURE_NWPOWER
+		oplus_match_tcp_input_retrans(sk);
+		//#endif /* OPLUS_FEATURE_NWPOWER */
+
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_DELAYEDACKLOST);
 		tcp_dsack_set(sk, TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->end_seq);
 
@@ -5798,6 +5818,16 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 	struct tcp_fastopen_cookie foc = { .len = -1 };
 	int saved_clamp = tp->rx_opt.mss_clamp;
 	bool fastopen_fail;
+        #ifdef OPLUS_BUG_STABILITY
+        static int ts_error_count = 0;
+        int ts_error_threshold = sysctl_tcp_ts_control[0];
+
+        //when network change (frameworks set sysctl_tcp_ts_control[1] = 1), clear ts_error_count
+        if (sysctl_tcp_ts_control[1] == 1) {
+                ts_error_count = 0;
+                sysctl_tcp_ts_control[1] = 0;
+        }
+        #endif /* OPLUS_BUG_STABILITY */
 
 	tcp_parse_options(sock_net(sk), skb, &tp->rx_opt, 0, &foc);
 	if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr)
@@ -5821,9 +5851,25 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 			     tcp_time_stamp(tp))) {
 			NET_INC_STATS(sock_net(sk),
 					LINUX_MIB_PAWSACTIVEREJECTED);
+                        #ifdef OPLUS_BUG_STABILITY
+			//if count > threshold, disable TCP Timestamps
+			if (ts_error_threshold > 0) {
+				ts_error_count++;
+				if (ts_error_count >= ts_error_threshold) {
+					sock_net(sk)->ipv4.sysctl_tcp_timestamps = 0;
+					ts_error_count = 0;
+				}
+			}
+			#endif /* OPLUS_BUG_STABILITY */
 			goto reset_and_undo;
 		}
-
+                #ifdef OPLUS_BUG_STABILITY
+                //if other connection's Timestamp is correct, the network environment may be OK
+                if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr &&
+                    ts_error_threshold > 0 && ts_error_count > 0) {
+                    ts_error_count--;
+                }
+                #endif /* OPLUS_BUG_STABILITY */
 		/* Now ACK is acceptable.
 		 *
 		 * "If the RST bit is set

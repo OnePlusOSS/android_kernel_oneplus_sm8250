@@ -447,7 +447,6 @@ void kgsl_mmu_put_gpuaddr(struct kgsl_memdesc *memdesc)
 
 	if (!kgsl_memdesc_is_global(memdesc))
 		memdesc->gpuaddr = 0;
-
 }
 EXPORT_SYMBOL(kgsl_mmu_put_gpuaddr);
 

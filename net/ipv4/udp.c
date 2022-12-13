@@ -117,6 +117,10 @@
 #include <net/addrconf.h>
 #include <net/udp_tunnel.h>
 
+#ifdef OPLUS_FEATURE_WIFI_ROUTERBOOST
+#include "net/oplus/oplus_router_boost.h"
+#endif /* OPLUS_FEATURE_WIFI_ROUTERBOOST */
+
 struct udp_table udp_table __read_mostly;
 EXPORT_SYMBOL(udp_table);
 
@@ -2058,6 +2062,15 @@ static int udp_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 {
 	struct sk_buff *next, *segs;
 	int ret;
+
+	#ifdef OPLUS_FEATURE_WIFI_ROUTERBOOST
+	if (oplus_router_boost_handler != NULL &&
+		oplus_router_boost_handler(sk, skb) < 0) {
+		kfree_skb(skb);
+		// note: <0 or 0 both infers that we have handled this pkt
+		return -1;
+	}
+	#endif /* OPLUS_FEATURE_WIFI_ROUTERBOOST */
 
 	if (likely(!udp_unexpected_gso(sk, skb)))
 		return udp_queue_rcv_one_skb(sk, skb);

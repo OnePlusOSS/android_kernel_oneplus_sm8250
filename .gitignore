@@ -141,3 +141,10 @@ arch/arm64/boot/dts/vendor/
 
 # Tech package directories
 techpack/
+
+# ln the wakelock_profiler
+drivers/soc/oplus/owakelock
+include/soc/oplus/oplus_wakelock_profiler.h
+
+# ignore net/oplus_modules
+net/oplus_modules

@@ -1382,6 +1382,7 @@ struct ipa3_stats {
 	u32 tx_non_linear;
 	u32 rx_page_drop_cnt;
 	u32 zero_len_frag_pkt_cnt;
+	u64 lower_order;
 	struct ipa3_page_recycle_stats page_recycle_stats[2];
 };
 

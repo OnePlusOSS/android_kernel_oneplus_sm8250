@@ -6,13 +6,6 @@
 
 #include <asm/word-at-a-time.h>
 
-/* Set bits in the first 'n' bytes when loaded from memory */
-#ifdef __LITTLE_ENDIAN
-#  define aligned_byte_mask(n) ((1ul << 8*(n))-1)
-#else
-#  define aligned_byte_mask(n) (~0xfful << (BITS_PER_LONG - 8 - 8*(n)))
-#endif
-
 /*
  * Do a strnlen, return length of string *with* final '\0'.
  * 'count' is the user-supplied count, while 'max' is the
