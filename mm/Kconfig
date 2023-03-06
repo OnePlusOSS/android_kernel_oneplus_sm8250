@@ -867,8 +867,6 @@ config GUP_BENCHMARK
 config ARCH_HAS_PTE_SPECIAL
 	bool
 
-source "mm/damon/Kconfig"
-
 # multi-gen LRU {
 config LRU_GEN
 	bool "Multi-Gen LRU"
