@@ -78,6 +78,12 @@ config ION_POOL_AUTO_REFILL
 	  when the pool count reaches below low mark.
 	  if you're not sure say Y here.
 
+config OPLUS_ION_BOOSTPOOL
+	bool "Support ION Boost pool"
+	default n
+	help
+	  This driver supports ION boost pool.
+
 config ION_POOL_FILL_MARK
 	int "ion pool fillmark size in MB"
 	depends on ION_POOL_AUTO_REFILL

@@ -22,6 +22,11 @@
 
 #include "thermal_core.h"
 
+#ifdef OPLUS_BUG_STABILITY
+#include <linux/timer.h>
+#include <linux/delay.h>
+#endif
+
 int get_tz_trend(struct thermal_zone_device *tz, int trip)
 {
 	enum thermal_trend trend;
@@ -112,6 +117,59 @@ exit:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(thermal_zone_get_temp);
+
+#ifdef OPLUS_BUG_STABILITY
+int thermal_zone_get_temp_workaround(struct thermal_zone_device *tz, int *temp)
+{
+	int ret = -EINVAL;
+	int count;
+	int crit_temp = INT_MAX;
+	enum thermal_trip_type type;
+	int i = 30;
+
+	if (!tz || IS_ERR(tz) || !tz->ops->get_temp)
+		goto exit;
+
+	while(!mutex_trylock(&tz->lock))
+	{
+		if(--i <= 0)
+			goto last_exit;
+		msleep(100);
+	}
+
+	ret = tz->ops->get_temp(tz, temp);
+
+	if (IS_ENABLED(CONFIG_THERMAL_EMULATION) && tz->emul_temperature) {
+		for (count = 0; count < tz->trips; count++) {
+			ret = tz->ops->get_trip_type(tz, count, &type);
+			if (!ret && type == THERMAL_TRIP_CRITICAL) {
+				ret = tz->ops->get_trip_temp(tz, count,
+						&crit_temp);
+				break;
+			}
+		}
+
+		/*
+		 * Only allow emulating a temperature when the real temperature
+		 * is below the critical temperature so that the emulation code
+		 * cannot hide critical conditions.
+		 */
+		if (!ret && *temp < crit_temp)
+			*temp = tz->emul_temperature;
+	}
+	trace_thermal_query_temp(tz, *temp);
+	mutex_unlock(&tz->lock);
+exit:
+	return ret;
+last_exit:
+	*temp = tz->last_temperature;
+	if (tz->last_temperature == THERMAL_TEMP_INVALID || tz->last_temperature == THERMAL_TEMP_INVALID_LOW)
+		*temp = 0;
+	printk("QMI arount: Can not get lock, goto last_exit\n");
+	return 0;
+}
+EXPORT_SYMBOL_GPL(thermal_zone_get_temp_workaround);
+#endif
 
 void thermal_zone_set_trips(struct thermal_zone_device *tz)
 {

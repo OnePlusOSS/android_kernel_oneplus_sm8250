@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -1152,7 +1153,8 @@ static inline bool _verify_ib(struct kgsl_device_private *dev_priv,
 	}
 
 	/* Make sure that the address is mapped */
-	if (!kgsl_mmu_gpuaddr_in_range(private->pagetable, ib->gpuaddr)) {
+	if (!kgsl_mmu_gpuaddr_in_range(private->pagetable, ib->gpuaddr,
+		ib->size)) {
 		pr_context(device, context, "ctxt %d invalid ib gpuaddr %llX\n",
 			context->id, ib->gpuaddr);
 		return false;
@@ -2208,6 +2210,10 @@ static int dispatcher_do_fault(struct adreno_device *adreno_dev)
 	if (gx_on)
 		adreno_readreg64(adreno_dev, ADRENO_REG_CP_RB_BASE,
 			ADRENO_REG_CP_RB_BASE_HI, &base);
+
+	#if defined(OPLUS_FEATURE_GPU_MINIDUMP)
+	device->snapshotfault = fault;
+	#endif /*OPLUS_FEATURE_GPU_MINIDUMP*/
 
 	/*
 	 * Force the CP off for anything but a hard fault to make sure it is

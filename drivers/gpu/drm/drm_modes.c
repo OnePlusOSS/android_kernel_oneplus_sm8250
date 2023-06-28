@@ -958,6 +958,9 @@ static bool drm_mode_match_timings(const struct drm_display_mode *mode1,
 		mode1->vsync_start == mode2->vsync_start &&
 		mode1->vsync_end == mode2->vsync_end &&
 		mode1->vtotal == mode2->vtotal &&
+#ifdef OPLUS_BUG_STABILITY
+		drm_mode_vrefresh(mode1) == drm_mode_vrefresh(mode2) &&
+#endif /* OPLUS_BUG_STABILITY */
 		mode1->vscan == mode2->vscan;
 }
 

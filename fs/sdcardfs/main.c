@@ -165,7 +165,7 @@ int parse_options_remount(struct super_block *sb, char *options, int silent,
 	char *p;
 	substring_t args[MAX_OPT_ARGS];
 	int option;
-	int debug;
+	int debug = 0;
 
 	if (!options)
 		return 0;

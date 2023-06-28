@@ -27,6 +27,7 @@
 
 #include <net/netfilter/nf_conntrack_tuple.h>
 
+#define OPLUS_FEATURE_WIFI_LUCKYMONEY
 /* per conntrack: protocol private data */
 union nf_conntrack_proto {
 	/* insert conntrack proto private data here */
@@ -86,6 +87,10 @@ struct nf_conn {
 #endif
 	/* all members below initialized via memset */
 	struct { } __nfct_init_offset;
+
+	#ifdef OPLUS_FEATURE_WIFI_LUCKYMONEY
+	u32 oplus_app_uid;
+	#endif /* OPLUS_FEATURE_WIFI_LUCKYMONEY */
 
 	/* If we were expected by an expectation, this will be it */
 	struct nf_conn *master;

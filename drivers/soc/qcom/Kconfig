@@ -831,6 +831,14 @@ config QTI_RPM_STATS_LOG
 	  the low power modes that RPM enters. The drivers outputs the message
 	  via a sysfs node.
 
+config RPMH_MODEM_SLEEPINFO_BUFFER
+	bool 'modem sleepinfo backup support'
+	default y
+	help
+	  This option enables support for the function that make a buffer of
+	  modem subsystem sleep info.
+	  If unsure, say `N'.
+
 config QTI_DDR_STATS_LOG
 	tristate "Qualcomm Technologies Inc (QTI) DDR Stats Driver"
 	depends on QCOM_RPMH

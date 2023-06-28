@@ -911,11 +911,16 @@ static int ufs_qcom_full_reset(struct ufs_hba *hba)
 {
 	int ret = -ENOTSUPP;
 
+	bool reenable_intr = false;
 	if (!hba->core_reset) {
 		dev_err(hba->dev, "%s: failed, err = %d\n", __func__,
 				ret);
 		goto out;
 	}
+
+	reenable_intr = hba->is_irq_enabled;
+	disable_irq(hba->irq);
+	hba->is_irq_enabled = false;
 
 	ret = reset_control_assert(hba->core_reset);
 	if (ret) {
@@ -935,6 +940,11 @@ static int ufs_qcom_full_reset(struct ufs_hba *hba)
 	if (ret)
 		dev_err(hba->dev, "%s: core_reset deassert failed, err = %d\n",
 				__func__, ret);
+
+	if (reenable_intr) {
+		enable_irq(hba->irq);
+		hba->is_irq_enabled = true;
+	}
 
 out:
 	return ret;
@@ -1499,8 +1509,12 @@ static void ufs_qcom_set_caps(struct ufs_hba *hba)
 	hba->caps |= UFSHCD_CAP_AUTO_BKOPS_SUSPEND;
 
 	if (host->hw_ver.major >= 0x2) {
+		/* remove the power off/on during H8, avoid 7250 core hang issue
+		   add by yanghao@PSW.Kernel.Stability 2020-8-25 */
+		#ifndef OPLUS_BUG_STABILITY
 		if (!host->disable_lpm)
 			hba->caps |= UFSHCD_CAP_POWER_COLLAPSE_DURING_HIBERN8;
+		#endif
 		host->caps = UFS_QCOM_CAP_QUNIPRO |
 			     UFS_QCOM_CAP_RETAIN_SEC_CFG_AFTER_PWR_COLLAPSE;
 	}

@@ -35,6 +35,9 @@
 #include <linux/falloc.h>
 #include <linux/uaccess.h>
 #include "internal.h"
+#if defined(OPLUS_FEATURE_IOMONITOR) && defined(CONFIG_IOMONITOR)
+#include <linux/iomonitor/iomonitor.h>
+#endif /*OPLUS_FEATURE_IOMONITOR*/
 
 struct bdev_inode {
 	struct block_device bdev;
@@ -246,6 +249,9 @@ __blkdev_direct_IO_simple(struct kiocb *iocb, struct iov_iter *iter,
 		bio.bi_opf = dio_bio_write_op(iocb);
 		task_io_account_write(ret);
 	}
+#if defined(OPLUS_FEATURE_IOMONITOR) && defined(CONFIG_IOMONITOR)
+	iomonitor_update_rw_stats(DIO_WRITE, file, ret);
+#endif /*OPLUS_FEATURE_IOMONITOR*/
 
 	qc = submit_bio(&bio);
 	for (;;) {
@@ -388,6 +394,9 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 		} else {
 			bio->bi_opf = dio_bio_write_op(iocb);
 			task_io_account_write(bio->bi_iter.bi_size);
+#if defined(OPLUS_FEATURE_IOMONITOR) && defined(CONFIG_IOMONITOR)
+			iomonitor_update_rw_stats(DIO_WRITE, file, bio->bi_iter.bi_size);
+#endif /*OPLUS_FEATURE_IOMONITOR*/
 		}
 
 		dio->size += bio->bi_iter.bi_size;
@@ -1670,7 +1679,6 @@ int blkdev_get(struct block_device *bdev, fmode_t mode, void *holder)
 		mutex_unlock(&bdev->bd_mutex);
 		bdput(whole);
 	}
-
 	if (res)
 		bdput(bdev);
 

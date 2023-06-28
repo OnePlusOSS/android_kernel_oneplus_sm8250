@@ -5,3 +5,8 @@ obj-$(CONFIG_ION) +=	ion.o ion-ioctl.o ion_heap.o \
 			ion_system_secure_heap.o ion_cma_heap.o \
 			ion_secure_util.o ion_cma_secure_heap.o msm/
 
+obj-$(CONFIG_OPLUS_ION_BOOSTPOOL) += oplus_ion_boost_pool.o
+
+#ifdef OPLUS_FEATURE_HEALTHINFO
+obj-y	+= ion/
+#endif /* OPLUS_FEATURE_HEALTHINFO */

@@ -75,6 +75,14 @@ static void sdhci_dump_state(struct sdhci_host *host)
 
 void sdhci_dumpregs(struct sdhci_host *host)
 {
+#ifdef CONFIG_EMMC_SDCARD_OPTIMIZE
+/* modify for disable sdcard log */
+	static int flag = 0;
+	if(!flag)
+		flag++;
+	else
+		return;
+#endif
 	mmc_log_string(host->mmc,
 		"BLOCK_SIZE=0x%08x BLOCK_COUNT=0x%08x COMMAND=0x%08x INT_STATUS=0x%08x INT_ENABLE=0x%08x SIGNAL_ENABLE=0x%08x\n",
 		sdhci_readw(host, SDHCI_BLOCK_SIZE),

@@ -167,7 +167,7 @@ struct synx_handle_entry {
 };
 
 /**
- * struct synx_registered_ops - External sync clients registered for bind
+* struct synx_registered_ops - External sync clients registered for bind
  * operations with synx driver
  *
  * @valid : Validity of the client registered bind ops

@@ -33,6 +33,9 @@
 #include <linux/highmem.h>
 #include "binder_alloc.h"
 #include "binder_trace.h"
+#ifdef OPLUS_FEATURE_HANS_FREEZE
+#include <linux/hans.h>
+#endif /*OPLUS_FEATURE_HANS_FREEZE*/
 
 struct list_lru binder_alloc_lru;
 
@@ -400,6 +403,9 @@ static struct binder_buffer *binder_alloc_new_buf_locked(
 	void __user *end_page_addr;
 	size_t size, data_offsets_size;
 	int ret;
+#ifdef OPLUS_FEATURE_HANS_FREEZE
+	struct task_struct *p = NULL;
+#endif /*OPLUS_FEATURE_HANS_FREEZE*/
 
 	if (!binder_alloc_get_vma(alloc)) {
 		binder_alloc_debug(BINDER_DEBUG_USER_ERROR,
@@ -424,6 +430,18 @@ static struct binder_buffer *binder_alloc_new_buf_locked(
 				alloc->pid, extra_buffers_size);
 		return ERR_PTR(-EINVAL);
 	}
+#ifdef OPLUS_FEATURE_HANS_FREEZE
+	if (is_async
+		&& (alloc->free_async_space < 3 * (size + sizeof(struct binder_buffer))
+		|| (alloc->free_async_space < ((alloc->buffer_size / 2) * 9 / 10)))) {
+		rcu_read_lock();
+		p = find_task_by_vpid(alloc->pid);
+		rcu_read_unlock();
+		if (p != NULL && is_frozen_tg(p)) {
+			hans_report(ASYNC_BINDER, task_tgid_nr(current), task_uid(current).val, task_tgid_nr(p), task_uid(p).val, "free_buffer_full", -1);
+		}
+	}
+#endif /*OPLUS_FEATURE_HANS_FREEZE*/
 	if (is_async &&
 	    alloc->free_async_space < size + sizeof(struct binder_buffer)) {
 		binder_alloc_debug(BINDER_DEBUG_BUFFER_ALLOC,
@@ -548,6 +566,15 @@ static struct binder_buffer *binder_alloc_new_buf_locked(
 			debug_low_async_space_locked(alloc, pid);
 		}
 	}
+
+        #ifdef OPLUS_BUG_STABILITY
+        if (size > 2000000 /*2MB*/){
+            binder_alloc_debug(BINDER_DEBUG_USER_ERROR,
+                             "%d: binder_alloc_buf size %zd successed, but it seems too large.\n",
+                              alloc->pid, size);
+        }
+        #endif /*OPLUS_BUG_STABILITY*/
+
 	return buffer;
 
 err_alloc_buf_struct_failed:

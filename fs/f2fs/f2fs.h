@@ -27,6 +27,10 @@
 #include <linux/fscrypt.h>
 #include <linux/fsverity.h>
 
+#if defined(OPLUS_FEATURE_IOMONITOR) && defined(CONFIG_IOMONITOR)
+#include <linux/iomonitor/iomonitor.h>
+#endif /*OPLUS_FEATURE_IOMONITOR*/
+
 #ifdef CONFIG_F2FS_CHECK_FS
 #define f2fs_bug_on(sbi, condition)	BUG_ON(condition)
 #else
@@ -89,6 +93,9 @@ extern const char *f2fs_fault_name[FAULT_MAX];
 #define F2FS_MOUNT_EXTENT_CACHE		0x00002000
 #define F2FS_MOUNT_DATA_FLUSH		0x00008000
 #define F2FS_MOUNT_FAULT_INJECTION	0x00010000
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+#define F2FS_MOUNT_LFS			0x00040000
+#endif
 #define F2FS_MOUNT_USRQUOTA		0x00080000
 #define F2FS_MOUNT_GRPQUOTA		0x00100000
 #define F2FS_MOUNT_PRJQUOTA		0x00200000
@@ -98,10 +105,24 @@ extern const char *f2fs_fault_name[FAULT_MAX];
 #define F2FS_MOUNT_DISABLE_CHECKPOINT	0x02000000
 #define F2FS_MOUNT_NORECOVERY		0x04000000
 
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+/*
+ * private mount options
+ */
+#define F2FS_MOUNT_PRIV_NOATGC           0x00000001
+#define F2FS_MOUNT_PRIV_NOSUBDIVISION    0x00000002
+#endif
+
 #define F2FS_OPTION(sbi)	((sbi)->mount_opt)
 #define clear_opt(sbi, option)	(F2FS_OPTION(sbi).opt &= ~F2FS_MOUNT_##option)
 #define set_opt(sbi, option)	(F2FS_OPTION(sbi).opt |= F2FS_MOUNT_##option)
 #define test_opt(sbi, option)	(F2FS_OPTION(sbi).opt & F2FS_MOUNT_##option)
+
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+#define clear_priv_opt(sbi, option)      (sbi->mount_opt.priv_opt &= ~F2FS_MOUNT_PRIV_##option)
+#define set_priv_opt(sbi, option)                (sbi->mount_opt.priv_opt |= F2FS_MOUNT_PRIV_##option)
+#define test_priv_opt(sbi, option)       (sbi->mount_opt.priv_opt & F2FS_MOUNT_PRIV_##option)
+#endif
 
 #define ver_after(a, b)	(typecheck(unsigned long long, a) &&		\
 		typecheck(unsigned long long, b) &&			\
@@ -117,6 +138,9 @@ typedef u32 nid_t;
 
 struct f2fs_mount_info {
 	unsigned int opt;
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	unsigned int priv_opt;
+#endif
 	int write_io_size_bits;		/* Write IO size bits */
 	block_t root_reserved_blocks;	/* root reserved blocks */
 	kuid_t s_resuid;		/* reserved blocks for uid */
@@ -201,9 +225,27 @@ enum {
 
 #define MAX_DISCARD_BLOCKS(sbi)		BLKS_PER_SEC(sbi)
 #define DEF_MAX_DISCARD_REQUEST		8	/* issue 8 discards per round */
+
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+/*
+ * 2019-10-15, add for oDiscard
+ */
+#define DEF_MIN_DISCARD_ISSUE_TIME	100	/* 100 ms, if exists */
+#define DEF_MID_DISCARD_ISSUE_TIME	2000	/* 2 s, if dev is busy */
+#define DEF_MAX_DISCARD_ISSUE_TIME	120000	/* 120 s, if no candidates */
+#define DEF_DISCARD_WAKEUP_INTERVAL	900	/* 900 secs */
+#define DEF_DISCARD_BALANCE_TIME	8000	/* 8000 ms */
+#define DEF_URGENT_DISCARD_ISSUE_TIME	50	/* 50 ms, if force */
+#define DEF_DISCARD_EMPTY_ISSUE_TIME	600000	/* 10 min, undiscard block=0 */
+/*
+ * 2019/08/12, set default idle interval to 1s
+ */
+#define DEF_GC_IDLE_INTERVAL		1	/* 1 secs */
+#else
 #define DEF_MIN_DISCARD_ISSUE_TIME	50	/* 50 ms, if exists */
 #define DEF_MID_DISCARD_ISSUE_TIME	500	/* 500 ms, if device busy */
 #define DEF_MAX_DISCARD_ISSUE_TIME	60000	/* 60 s, if no candidates */
+#endif
 #define DEF_DISCARD_URGENT_UTIL		80	/* do more discard over 80% */
 #define DEF_CP_INTERVAL			60	/* 60 secs */
 #define DEF_IDLE_INTERVAL		5	/* 5 secs */
@@ -315,6 +357,9 @@ struct discard_cmd {
 	int error;			/* bio error */
 	spinlock_t lock;		/* for state/bio_ref updating */
 	unsigned short bio_ref;		/* bio reference count */
+#ifdef CONFIG_F2FS_BD_STAT
+	u64 discard_time;
+#endif
 };
 
 enum {
@@ -322,6 +367,13 @@ enum {
 	DPOLICY_FORCE,
 	DPOLICY_FSTRIM,
 	DPOLICY_UMOUNT,
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	/*
+	 * 2020-1-14, add for oDiscard decoupling
+	 */
+	DPOLICY_BALANCE,
+	DPOLICY_PERFORMANCE,
+#endif
 	MAX_DPOLICY,
 };
 
@@ -337,6 +389,12 @@ struct discard_policy {
 	bool ordered;			/* issue discard by lba order */
 	bool timeout;			/* discard timeout for put_super */
 	unsigned int granularity;	/* discard granularity */
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	/*
+	 * 2019-10-15, add for oDiscard
+	 */
+	bool io_busy;			/* interrupt by user io */
+#endif
 };
 
 struct discard_cmd_control {
@@ -624,8 +682,18 @@ enum {
 
 struct rb_entry {
 	struct rb_node rb_node;		/* rb node located in rb-tree */
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	union {
+		struct {
+			unsigned int ofs;	/* start offset of the entry */
+			unsigned int len;	/* length of the entry */
+		};
+		unsigned long long key;		/* 64bits key */
+	};
+#else
 	unsigned int ofs;		/* start offset of the entry */
 	unsigned int len;		/* length of the entry */
+#endif
 };
 
 struct extent_info {
@@ -761,6 +829,10 @@ enum {
 	FI_COMPRESSED_FILE,	/* indicate file's data can be compressed */
 	FI_MMAP_FILE,		/* indicate file was mmapped */
 	FI_MAX,			/* max flag, never be used */
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	FI_LOG_FILE,            /* indicate file is a log */
+	FI_HOT_FILE,            /* indicate file is hot */
+#endif
 };
 
 struct f2fs_inode_info {
@@ -810,6 +882,9 @@ struct f2fs_inode_info {
 	int i_inline_xattr_size;	/* inline xattr size */
 	struct timespec64 i_crtime;	/* inode creation time */
 	struct timespec64 i_disk_time[4];/* inode disk times */
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	unsigned int skip_count;
+#endif
 
 	/* for file compress */
 	u64 i_compr_blocks;			/* # of compressed blocks */
@@ -985,6 +1060,9 @@ static inline void set_new_dnode(struct dnode_of_data *dn, struct inode *inode,
 #define	NR_CURSEG_DATA_TYPE	(3)
 #define NR_CURSEG_NODE_TYPE	(3)
 #define NR_CURSEG_TYPE	(NR_CURSEG_DATA_TYPE + NR_CURSEG_NODE_TYPE)
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+#define NR_INMEM_CURSEG_TYPE	(NR_CURSEG_TYPE + 1)
+#endif
 
 enum {
 	CURSEG_HOT_DATA	= 0,	/* directory entry blocks */
@@ -993,6 +1071,9 @@ enum {
 	CURSEG_HOT_NODE,	/* direct node blocks of directory files */
 	CURSEG_WARM_NODE,	/* direct node blocks of normal files */
 	CURSEG_COLD_NODE,	/* indirect node blocks */
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	CURSEG_FRAGMENT_DATA,	/* do SSR located in hot/warm/cold data area */
+#endif
 	NO_CHECK_TYPE,
 	CURSEG_COLD_DATA_PINNED,/* cold data for pinned file */
 };
@@ -1077,6 +1158,9 @@ enum count_type {
 	F2FS_RD_META,
 	F2FS_DIO_WRITE,
 	F2FS_DIO_READ,
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	F2FS_LOG_FILE,
+#endif
 	NR_COUNT_TYPE,
 };
 
@@ -1184,6 +1268,7 @@ struct f2fs_io_info {
 	bool retry;		/* need to reallocate block address */
 	int compr_blocks;	/* # of compressed block addresses */
 	bool encrypted;		/* indicate file is encrypted */
+	bool post_read;		/* require post read */
 	enum iostat_type io_type;	/* io type */
 	struct writeback_control *io_wbc; /* writeback control */
 	struct bio **bio;		/* bio for ipu */
@@ -1271,6 +1356,9 @@ enum {
 	GC_NORMAL,
 	GC_IDLE_CB,
 	GC_IDLE_GREEDY,
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	GC_IDLE_AT,
+#endif
 	GC_URGENT,
 };
 
@@ -1322,6 +1410,20 @@ enum fsync_mode {
 	(unlikely(F2FS_OPTION(sbi).dummy_enc_ctx.ctx != NULL))
 #else
 #define DUMMY_ENCRYPTION_ENABLED(sbi) (0)
+#endif
+
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+struct f2fs_hot_cold_params {
+         unsigned int enable;
+         unsigned int hot_data_lower_limit;
+         unsigned int hot_data_waterline;
+         unsigned int warm_data_lower_limit;
+         unsigned int warm_data_waterline;
+         unsigned int hot_node_lower_limit;
+         unsigned int hot_node_waterline;
+         unsigned int warm_node_lower_limit;
+         unsigned int warm_node_waterline;
+};
 #endif
 
 /* For compression */
@@ -1556,7 +1658,10 @@ struct f2fs_sb_info {
 	unsigned int ndirty_inode[NR_INODE_TYPE];	/* # of dirty inodes */
 #endif
 	spinlock_t stat_lock;			/* lock for stat operations */
-
+#ifdef CONFIG_F2FS_BD_STAT
+	spinlock_t bd_lock;
+	struct f2fs_bigdata_info *bd_info;	/* big data collections */
+#endif
 	/* For app/fs IO statistics */
 	spinlock_t iostat_lock;
 	unsigned long long rw_iostat[NR_IO_TYPE];
@@ -1593,6 +1698,30 @@ struct f2fs_sb_info {
 	__u32 s_chksum_seed;
 
 	struct workqueue_struct *post_read_wq;	/* post read workqueue */
+#ifdef CONFIG_F2FS_GRADING_SSR
+        struct f2fs_hot_cold_params hot_cold_params;
+#endif
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	/* for GC_AT */
+	bool atgc_enabled;
+	/*
+	 * 2019/08/13, add code to optimize gc
+	 * 2019/08/14, add need_SSR GC
+	 */
+	bool is_frag;				/* urgent gc flag */
+	unsigned long last_frag_check;		/* last urgent check jiffies */
+	atomic_t need_ssr_gc;			/* ssr gc count */
+	/*
+	 * 2019/10/15, control of2fs gc code, will remove
+	 */
+	bool gc_opt_enable;
+	/*
+	* 2020-1-14, add for oDiscard decoupling
+	*/
+	bool dc_opt_enable;
+	int dpolicy_expect;
+	bool fsync_protect;
+#endif
 
 	struct kmem_cache *inline_xattr_slab;	/* inline xattr entry */
 	unsigned int inline_xattr_slab_size;	/* default inline xattr slab size */
@@ -3079,6 +3208,12 @@ static inline void f2fs_update_iostat(struct f2fs_sb_info *sbi,
 		return;
 	spin_lock(&sbi->iostat_lock);
 	sbi->rw_iostat[type] += io_bytes;
+#if defined(OPLUS_FEATURE_IOMONITOR) && defined(CONFIG_IOMONITOR)
+	if (type == FS_GC_DATA_IO || type == FS_GC_NODE_IO)
+		iomonitor_update_fs_stats(FS_GC_OPT, 1);
+        else if (type == FS_DISCARD)
+		iomonitor_update_fs_stats(FS_DISCARD_OPT, 1);
+#endif /*OPLUS_FEATURE_IOMONITOR*/
 
 	if (type == APP_WRITE_IO || type == APP_DIRECT_IO)
 		sbi->rw_iostat[APP_BUFFERED_IO] =
@@ -3325,6 +3460,10 @@ bool f2fs_is_checkpointed_data(struct f2fs_sb_info *sbi, block_t blkaddr);
 void f2fs_drop_discard_cmd(struct f2fs_sb_info *sbi);
 void f2fs_stop_discard_thread(struct f2fs_sb_info *sbi);
 bool f2fs_issue_discard_timeout(struct f2fs_sb_info *sbi);
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+void refresh_sit_entry(struct f2fs_sb_info *sbi, block_t old, block_t new,
+                                                                bool from_gc);
+#endif
 void f2fs_clear_prefree_segments(struct f2fs_sb_info *sbi,
 					struct cp_control *cpc);
 void f2fs_dirty_to_prefree(struct f2fs_sb_info *sbi);
@@ -3334,6 +3473,12 @@ void f2fs_release_discard_addrs(struct f2fs_sb_info *sbi);
 int f2fs_npages_for_summary_flush(struct f2fs_sb_info *sbi, bool for_ra);
 void allocate_segment_for_resize(struct f2fs_sb_info *sbi, int type,
 					unsigned int start, unsigned int end);
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+void get_new_segment(struct f2fs_sb_info *sbi,
+                       unsigned int *newseg, bool new_sec, int dir);
+void store_virtual_curseg_summary(struct f2fs_sb_info *sbi);
+void restore_virtual_curseg_status(struct f2fs_sb_info * sbi, bool recover);
+#endif
 void f2fs_allocate_new_segments(struct f2fs_sb_info *sbi, int type);
 int f2fs_trim_fs(struct f2fs_sb_info *sbi, struct fstrim_range *range);
 bool f2fs_exist_trim_candidates(struct f2fs_sb_info *sbi,
@@ -3347,22 +3492,40 @@ void f2fs_do_write_node_page(unsigned int nid, struct f2fs_io_info *fio);
 void f2fs_outplace_write_data(struct dnode_of_data *dn,
 			struct f2fs_io_info *fio);
 int f2fs_inplace_write_data(struct f2fs_io_info *fio);
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+void f2fs_do_replace_block(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
+ 			block_t old_blkaddr, block_t new_blkaddr,
+			bool recover_curseg, bool recover_newaddr,
+			bool from_gc);
+#else
 void f2fs_do_replace_block(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 			block_t old_blkaddr, block_t new_blkaddr,
 			bool recover_curseg, bool recover_newaddr);
+#endif
 void f2fs_replace_block(struct f2fs_sb_info *sbi, struct dnode_of_data *dn,
 			block_t old_addr, block_t new_addr,
 			unsigned char version, bool recover_curseg,
 			bool recover_newaddr);
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
+ 			block_t old_blkaddr, block_t *new_blkaddr,
+ 			struct f2fs_summary *sum, int type,
+			struct f2fs_io_info *fio, bool add_list,
+			int contig_level);
+#else
 void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 			block_t old_blkaddr, block_t *new_blkaddr,
 			struct f2fs_summary *sum, int type,
 			struct f2fs_io_info *fio, bool add_list);
+#endif
 void f2fs_wait_on_page_writeback(struct page *page,
 			enum page_type type, bool ordered, bool locked);
 void f2fs_wait_on_block_writeback(struct inode *inode, block_t blkaddr);
 void f2fs_wait_on_block_writeback_range(struct inode *inode, block_t blkaddr,
 								block_t len);
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+void init_virtual_curseg(struct f2fs_sb_info *sbi);
+#endif
 void f2fs_write_data_summaries(struct f2fs_sb_info *sbi, block_t start_blk);
 void f2fs_write_node_summaries(struct f2fs_sb_info *sbi, block_t start_blk);
 int f2fs_lookup_journal_in_cursum(struct f2fs_journal *journal, int type,
@@ -3491,6 +3654,10 @@ void f2fs_stop_gc_thread(struct f2fs_sb_info *sbi);
 block_t f2fs_start_bidx_of_node(unsigned int node_ofs, struct inode *inode);
 int f2fs_gc(struct f2fs_sb_info *sbi, bool sync, bool background,
 			unsigned int segno);
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+int __init create_garbage_collection_cache(void);
+void destroy_garbage_collection_cache(void);
+#endif
 void f2fs_build_gc_manager(struct f2fs_sb_info *sbi);
 int f2fs_resize_fs(struct f2fs_sb_info *sbi, __u64 block_count);
 
@@ -3541,10 +3708,15 @@ struct f2fs_stat_info {
 	int tot_blks, data_blks, node_blks;
 	int bg_data_blks, bg_node_blks;
 	unsigned long long skipped_atomic_files[2];
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	int curseg[NR_INMEM_CURSEG_TYPE];
+	int cursec[NR_INMEM_CURSEG_TYPE];
+	int curzone[NR_INMEM_CURSEG_TYPE];
+#else
 	int curseg[NR_CURSEG_TYPE];
 	int cursec[NR_CURSEG_TYPE];
 	int curzone[NR_CURSEG_TYPE];
-
+#endif
 	unsigned int meta_count[META_MAX];
 	unsigned int segment_count[2];
 	unsigned int block_count[2];
@@ -3730,6 +3902,12 @@ static inline void f2fs_destroy_root_stats(void) { }
 static inline void f2fs_update_sit_info(struct f2fs_sb_info *sbi) {}
 #endif
 
+#ifdef CONFIG_F2FS_BD_STAT
+#include "of2fs_bigdata.h"
+void f2fs_build_bd_stat(struct f2fs_sb_info *sbi);
+void f2fs_destroy_bd_stat(struct f2fs_sb_info *sbi);
+#endif
+
 extern const struct file_operations f2fs_dir_operations;
 extern const struct file_operations f2fs_file_operations;
 extern const struct inode_operations f2fs_file_inode_operations;
@@ -3788,6 +3966,11 @@ void f2fs_leave_shrinker(struct f2fs_sb_info *sbi);
  */
 struct rb_entry *f2fs_lookup_rb_tree(struct rb_root_cached *root,
 				struct rb_entry *cached_re, unsigned int ofs);
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+struct rb_node **__lookup_rb_tree_ext(struct f2fs_sb_info *sbi,
+                                struct rb_root *root, struct rb_node **parent,
+                                unsigned long long key);
+#endif
 struct rb_node **f2fs_lookup_rb_tree_for_insert(struct f2fs_sb_info *sbi,
 				struct rb_root_cached *root,
 				struct rb_node **parent,
@@ -4133,6 +4316,31 @@ static inline bool is_journalled_quota(struct f2fs_sb_info *sbi)
 #endif
 	return false;
 }
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+/*
+ * 2019-10-15, add for oDiscard
+ */
+#define F2FS_FS_FREE_PERCENT		20
+#define F2FS_DEVICE_FREE_PERCENT	10
+
+/*
+ * 2020-1-14, add for oDiscard decoupling
+ */
+static inline bool f2fs_is_space_free(struct f2fs_sb_info *sbi)
+{
+	struct discard_cmd_control *dcc = SM_I(sbi)->dcc_info;
+	block_t user_blocks = sbi->user_block_count;
+	block_t ovp_cnt = SM_I(sbi)->ovp_segments << sbi->log_blocks_per_seg;
+	block_t avail_block = user_blocks - valid_user_blocks(sbi) + ovp_cnt;
+	block_t fs_threshold = (block_t)(SM_I(sbi)->main_segments *
+			sbi->blocks_per_seg * F2FS_FS_FREE_PERCENT) / 100;
+	block_t device_threshold = (block_t)(SM_I(sbi)->main_segments *
+			sbi->blocks_per_seg * F2FS_DEVICE_FREE_PERCENT) / 100;
+
+	return avail_block > fs_threshold &&
+			avail_block - dcc->undiscard_blks > device_threshold;
+}
+#endif
 
 #define EFSBADCRC	EBADMSG		/* Bad CRC detected */
 #define EFSCORRUPTED	EUCLEAN		/* Filesystem is corrupted */

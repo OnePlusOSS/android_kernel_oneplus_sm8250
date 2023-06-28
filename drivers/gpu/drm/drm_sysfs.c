@@ -229,6 +229,35 @@ static ssize_t modes_show(struct device *device,
 	return written;
 }
 
+#ifdef OPLUS_BUG_STABILITY
+/* A tablet Pad, add for FPC cause splash screen issue */
+extern int dsi_panel_need_rewrite_reg;
+
+static ssize_t panel_flag_store(struct device *device,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	if (sysfs_streq(buf, "1")) {
+		dsi_panel_need_rewrite_reg = 1;
+	} else if (sysfs_streq(buf, "2")) {
+		dsi_panel_need_rewrite_reg = 2;
+	} else {
+		dsi_panel_need_rewrite_reg = 0;
+	}
+	DRM_ERROR("set dsi_panel_need_rewrite_reg=%d\n", dsi_panel_need_rewrite_reg);
+
+	return 0;
+}
+
+static ssize_t panel_flag_show(struct device *device,
+				struct device_attribute *attr,
+				char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n", dsi_panel_need_rewrite_reg);
+}
+
+static DEVICE_ATTR_RW(panel_flag);
+#endif /* OPLUS_BUG_STABILITY */
 static DEVICE_ATTR_RW(status);
 static DEVICE_ATTR_RO(enabled);
 static DEVICE_ATTR_RO(dpms);
@@ -239,6 +268,10 @@ static struct attribute *connector_dev_attrs[] = {
 	&dev_attr_enabled.attr,
 	&dev_attr_dpms.attr,
 	&dev_attr_modes.attr,
+#ifdef OPLUS_BUG_STABILITY
+/* A tablet Pad, add for FPC cause splash screen issue */
+	&dev_attr_panel_flag.attr,
+#endif /* OPLUS_BUG_STABILITY */
 	NULL
 };
 

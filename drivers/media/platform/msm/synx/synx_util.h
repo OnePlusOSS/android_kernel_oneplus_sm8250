@@ -15,6 +15,9 @@ bool synx_debugfs_enabled(void);
 /**
  * @brief: Function to check if the external sync obj is valid
  *
+ * Function acquires reference on synx_table_row returned,
+ * which should be released through synx_release_handle function
+ *
  * @param type : External sync object type
  *
  * @return True if valid. False otherwise

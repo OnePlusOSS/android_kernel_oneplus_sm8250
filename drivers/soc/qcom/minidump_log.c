@@ -18,6 +18,9 @@
 #include <linux/mm.h>
 #include <linux/sched/task.h>
 #include <linux/vmalloc.h>
+#ifdef CONFIG_OPLUS_FEATURE_QCOM_MINIDUMP_ENHANCE
+#include <soc/oplus/system/qcom_minidump_enhance.h>
+#endif
 
 static bool is_vmap_stack __read_mostly;
 
@@ -365,6 +368,9 @@ static int __init msm_minidump_log_init(void)
 	register_current_stack();
 #endif
 	register_log_buf();
+#ifdef CONFIG_OPLUS_FEATURE_QCOM_MINIDUMP_ENHANCE
+	register_cpu_contex();
+#endif /* CONFIG_OPLUS_FEATURE_QCOM_MINIDUMP_ENHANCE */
 	return 0;
 }
 subsys_initcall(msm_minidump_log_init);

@@ -34,7 +34,18 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/f2fs.h>
-
+#ifdef CONFIG_F2FS_GRADING_SSR
+#define SSR_DEFALT_SPACE_LIMIT	    (5<<20) /* 5G default space limit */
+#define SSR_DEFALT_WATERLINE	    80		/* 80% default waterline */
+#define SSR_HN_SAPCE_LIMIT_128G     (8<<20)	/* 8G default sapce limit for 128G devices */
+#define SSR_HN_WATERLINE_128G	    80		/* 80% default hot node waterline for 128G devices */
+#define SSR_WN_SAPCE_LIMIT_128G     (5<<20)	/* 5G default warm node sapce limit for 128G devices */
+#define SSR_WN_WATERLINE_128G	    70		/* 70% default warm node waterline for 128G devices */
+#define SSR_HD_SAPCE_LIMIT_128G     (8<<20)	/* 8G default hot data sapce limit for 128G devices */
+#define SSR_HD_WATERLINE_128G	    65		/* 65% default hot data waterline for 128G devices */
+#define SSR_WD_SAPCE_LIMIT_128G     (5<<20)	/* 5G default warm data sapce limit for 128G devices */
+#define SSR_WD_WATERLINE_128G	    60		/* 60% default warm data waterline for 128G devices */
+#endif
 static struct kmem_cache *f2fs_inode_cachep;
 
 #ifdef CONFIG_F2FS_FAULT_INJECTION
@@ -145,6 +156,10 @@ enum {
 	Opt_compress_algorithm,
 	Opt_compress_log_size,
 	Opt_compress_extension,
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	Opt_noatgc,
+	Opt_nosubdivision,
+#endif
 	Opt_err,
 };
 
@@ -212,6 +227,10 @@ static match_table_t f2fs_tokens = {
 	{Opt_compress_algorithm, "compress_algorithm=%s"},
 	{Opt_compress_log_size, "compress_log_size=%u"},
 	{Opt_compress_extension, "compress_extension=%s"},
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	{Opt_noatgc, "noatgc"},
+	{Opt_nosubdivision, "nosubdivision"},
+#endif
 	{Opt_err, NULL},
 };
 
@@ -861,6 +880,14 @@ static int parse_options(struct super_block *sb, char *options, bool is_remount)
 		case Opt_checkpoint_enable:
 			clear_opt(sbi, DISABLE_CHECKPOINT);
 			break;
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+		case Opt_noatgc:
+			set_priv_opt(sbi, NOATGC);
+			break;
+		case Opt_nosubdivision:
+			set_priv_opt(sbi, NOSUBDIVISION);
+ 			break;
+#endif
 		case Opt_compress_algorithm:
 			if (!f2fs_sb_has_compression(sbi)) {
 				f2fs_err(sbi, "Compression feature if off");
@@ -1188,9 +1215,11 @@ static void f2fs_put_super(struct super_block *sb)
 
 	/* unregister procfs/sysfs entries in advance to avoid race case */
 	f2fs_unregister_sysfs(sbi);
-
 	f2fs_quota_off_umount(sb);
 
+#ifdef CONFIG_F2FS_BD_STAT
+	f2fs_destroy_bd_stat(sbi);
+#endif
 	/* prevent remaining shrinker jobs */
 	mutex_lock(&sbi->umount_mutex);
 
@@ -1583,6 +1612,12 @@ static int f2fs_show_options(struct seq_file *seq, struct dentry *root)
 				F2FS_OPTION(sbi).fault_info.inject_type);
 	}
 #endif
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	if (test_priv_opt(sbi, NOATGC))
+		seq_puts(seq, ",noatgc");
+	if (test_priv_opt(sbi, NOSUBDIVISION))
+		seq_puts(seq, ",nosubdivision");
+#endif
 #ifdef CONFIG_QUOTA
 	if (test_opt(sbi, QUOTA))
 		seq_puts(seq, ",quota");
@@ -1649,9 +1684,17 @@ static void default_options(struct f2fs_sb_info *sbi)
 	set_opt(sbi, EXTENT_CACHE);
 	set_opt(sbi, NOHEAP);
 	clear_opt(sbi, DISABLE_CHECKPOINT);
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	set_priv_opt(sbi, NOATGC);
+#endif
 	F2FS_OPTION(sbi).unusable_cap = 0;
 	sbi->sb->s_flags |= SB_LAZYTIME;
-	set_opt(sbi, FLUSH_MERGE);
+#ifndef CONFIG_OPLUS_FEATURE_OF2FS
+	/*
+	 * 2019/08/15, no need to flush_merge as we have reduced most flushes
+	 */
+        set_opt(sbi, FLUSH_MERGE);
+#endif
 	set_opt(sbi, DISCARD);
 	if (f2fs_sb_has_blkzoned(sbi))
 		F2FS_OPTION(sbi).fs_mode = FS_MODE_LFS;
@@ -1731,6 +1774,18 @@ restore_flag:
 
 static void f2fs_enable_checkpoint(struct f2fs_sb_info *sbi)
 {
+	int retry = DEFAULT_RETRY_IO_COUNT;
+
+	/* we should flush all the data to keep data consistency */
+	do {
+		sync_inodes_sb(sbi->sb);
+		cond_resched();
+		congestion_wait(BLK_RW_ASYNC, DEFAULT_IO_TIMEOUT);
+	} while (get_pages(sbi, F2FS_DIRTY_DATA) && retry--);
+
+	if (unlikely(retry < 0))
+		f2fs_warn(sbi, "checkpoint=enable has some unwritten data.");
+
 	down_write(&sbi->gc_lock);
 	f2fs_dirty_to_prefree(sbi);
 
@@ -2695,6 +2750,11 @@ static inline bool sanity_check_area_boundary(struct f2fs_sb_info *sbi,
 		} else {
 			err = __f2fs_commit_super(bh, NULL);
 			res = err ? "failed" : "done";
+#ifdef CONFIG_F2FS_BD_STAT
+			bd_lock(sbi);
+			bd_inc_array_val(sbi, hotcold_count, HC_META_SB, 1);
+			bd_unlock(sbi);
+#endif
 		}
 		f2fs_info(sbi, "Fix alignment : %s, start(%u) end(%u) block(%u)",
 			  res, main_blkaddr,
@@ -3045,6 +3105,9 @@ static void init_sb_info(struct f2fs_sb_info *sbi)
 	sbi->migration_granularity = sbi->segs_per_sec;
 
 	sbi->dir_level = DEF_DIR_LEVEL;
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	sbi->readdir_ra = 0;
+#endif
 	sbi->interval_time[CP_TIME] = DEF_CP_INTERVAL;
 	sbi->interval_time[REQ_TIME] = DEF_IDLE_INTERVAL;
 	sbi->interval_time[DISCARD_TIME] = DEF_IDLE_INTERVAL;
@@ -3241,6 +3304,11 @@ int f2fs_commit_super(struct f2fs_sb_info *sbi, bool recover)
 	if (!bh)
 		return -EIO;
 	err = __f2fs_commit_super(bh, F2FS_RAW_SUPER(sbi));
+#ifdef CONFIG_F2FS_BD_STAT
+	bd_lock(sbi);
+	bd_inc_array_val(sbi, hotcold_count, HC_META_SB, 1);
+	bd_unlock(sbi);
+#endif
 	brelse(bh);
 
 	/* if we are in recovery path, skip writing valid superblock */
@@ -3252,6 +3320,11 @@ int f2fs_commit_super(struct f2fs_sb_info *sbi, bool recover)
 	if (!bh)
 		return -EIO;
 	err = __f2fs_commit_super(bh, F2FS_RAW_SUPER(sbi));
+#ifdef CONFIG_F2FS_BD_STAT
+	bd_lock(sbi);
+	bd_inc_array_val(sbi, hotcold_count, HC_META_SB, 1);
+	bd_unlock(sbi);
+#endif
 	brelse(bh);
 	return err;
 }
@@ -3402,6 +3475,35 @@ static void f2fs_tuning_parameters(struct f2fs_sb_info *sbi)
 	sbi->readdir_ra = 1;
 }
 
+#ifdef CONFIG_F2FS_GRADING_SSR
+static int f2fs_init_grading_ssr(struct f2fs_sb_info *sbi)
+{
+	u32 total_blocks = sbi->raw_super->block_count>>18;
+	if (total_blocks > 64) { /* 64G */
+		sbi->hot_cold_params.hot_data_lower_limit = SSR_HD_SAPCE_LIMIT_128G;
+		sbi->hot_cold_params.hot_data_waterline = SSR_HD_WATERLINE_128G;
+		sbi->hot_cold_params.warm_data_lower_limit = SSR_WD_SAPCE_LIMIT_128G;
+		sbi->hot_cold_params.warm_data_waterline = SSR_WD_WATERLINE_128G;
+		sbi->hot_cold_params.hot_node_lower_limit = SSR_HD_SAPCE_LIMIT_128G;
+		sbi->hot_cold_params.hot_node_waterline = SSR_HN_WATERLINE_128G;
+		sbi->hot_cold_params.warm_node_lower_limit = SSR_WN_SAPCE_LIMIT_128G;
+		sbi->hot_cold_params.warm_node_waterline = SSR_WN_WATERLINE_128G;
+		sbi->hot_cold_params.enable = GRADING_SSR_OFF;
+	} else {
+		sbi->hot_cold_params.hot_data_lower_limit = SSR_DEFALT_SPACE_LIMIT;
+		sbi->hot_cold_params.hot_data_waterline = SSR_DEFALT_WATERLINE;
+		sbi->hot_cold_params.warm_data_lower_limit = SSR_DEFALT_SPACE_LIMIT;
+		sbi->hot_cold_params.warm_data_waterline = SSR_DEFALT_WATERLINE;
+		sbi->hot_cold_params.hot_node_lower_limit = SSR_DEFALT_SPACE_LIMIT;
+		sbi->hot_cold_params.hot_node_waterline = SSR_DEFALT_WATERLINE;
+		sbi->hot_cold_params.warm_node_lower_limit = SSR_DEFALT_SPACE_LIMIT;
+		sbi->hot_cold_params.warm_node_waterline = SSR_DEFALT_WATERLINE;
+		sbi->hot_cold_params.enable = GRADING_SSR_OFF;
+	}
+	return 0;
+}
+#endif
+
 static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 {
 	struct f2fs_sb_info *sbi;
@@ -3424,7 +3526,15 @@ try_onemore:
 	sbi = kzalloc(sizeof(struct f2fs_sb_info), GFP_KERNEL);
 	if (!sbi)
 		return -ENOMEM;
-
+#ifdef CONFIG_F2FS_BD_STAT
+	sbi->bd_info = kzalloc(sizeof(struct f2fs_bigdata_info), GFP_KERNEL);
+	if (!sbi->bd_info) {
+		err = -ENOMEM;
+		goto free_sbi;
+	}
+	sbi->bd_info->ssr_last_jiffies = jiffies;
+	bd_lock_init(sbi);
+#endif
 	sbi->sb = sb;
 
 	/* Load the checksum driver */
@@ -3528,7 +3638,14 @@ try_onemore:
 	/* disallow all the data/node/meta page writes */
 	set_sbi_flag(sbi, SBI_POR_DOING);
 	spin_lock_init(&sbi->stat_lock);
-
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	/*
+	 * 2020-1-14, add for oDiscard decoupling
+	 */
+	sbi->dc_opt_enable = true;
+	sbi->dpolicy_expect = DPOLICY_BG;
+	sbi->fsync_protect = false;
+#endif
 	/* init iostat info */
 	spin_lock_init(&sbi->iostat_lock);
 	sbi->iostat_enable = false;
@@ -3703,7 +3820,9 @@ try_onemore:
 		err = -ENOMEM;
 		goto free_node_inode;
 	}
-
+#ifdef CONFIG_F2FS_GRADING_SSR
+	f2fs_init_grading_ssr(sbi);
+#endif
 	err = f2fs_register_sysfs(sbi);
 	if (err)
 		goto free_root_inode;
@@ -3766,6 +3885,9 @@ try_onemore:
 		}
 	}
 reset_checkpoint:
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	init_virtual_curseg(sbi);
+#endif
 	/* f2fs_recover_fsync_data() cleared this already */
 	clear_sbi_flag(sbi, SBI_POR_DOING);
 
@@ -3827,6 +3949,9 @@ free_meta:
 	truncate_inode_pages_final(META_MAPPING(sbi));
 	/* evict some inodes being cached by GC */
 	evict_inodes(sb);
+#ifdef CONFIG_F2FS_BD_STAT
+	f2fs_destroy_bd_stat(sbi);
+#endif
 	f2fs_unregister_sysfs(sbi);
 free_root_inode:
 	dput(sb->s_root);
@@ -3974,9 +4099,18 @@ static int __init init_f2fs_fs(void)
 	err = f2fs_init_sysfs();
 	if (err)
 		goto free_extent_cache;
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	err = create_garbage_collection_cache();
+	if (err)
+		goto free_sysfs;
+	err = register_shrinker(&f2fs_shrinker_info);
+	if (err)
+		goto free_garbage_collection_cache;
+#else
 	err = register_shrinker(&f2fs_shrinker_info);
 	if (err)
 		goto free_sysfs;
+#endif
 	err = register_filesystem(&f2fs_fs_type);
 	if (err)
 		goto free_shrinker;
@@ -4005,6 +4139,10 @@ free_root_stats:
 	unregister_filesystem(&f2fs_fs_type);
 free_shrinker:
 	unregister_shrinker(&f2fs_shrinker_info);
+#ifdef 	CONFIG_OPLUS_FEATURE_OF2FS
+free_garbage_collection_cache:
+	destroy_garbage_collection_cache();
+#endif
 free_sysfs:
 	f2fs_exit_sysfs();
 free_extent_cache:
@@ -4031,6 +4169,9 @@ static void __exit exit_f2fs_fs(void)
 	unregister_filesystem(&f2fs_fs_type);
 	unregister_shrinker(&f2fs_shrinker_info);
 	f2fs_exit_sysfs();
+#ifdef CONFIG_OPLUS_FEATURE_OF2FS
+	destroy_garbage_collection_cache();
+#endif
 	f2fs_destroy_extent_cache();
 	f2fs_destroy_checkpoint_caches();
 	f2fs_destroy_segment_manager_caches();

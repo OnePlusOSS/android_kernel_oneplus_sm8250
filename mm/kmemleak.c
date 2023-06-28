@@ -112,6 +112,9 @@
 #include <linux/kmemleak.h>
 #include <linux/memory_hotplug.h>
 
+#ifdef OPLUS_BUG_STABILITY
+#include <linux/proc_fs.h>
+#endif
 /*
  * Kmemleak configuration and common defines.
  */
@@ -2113,12 +2116,20 @@ void __init kmemleak_init(void)
  */
 static int __init kmemleak_late_init(void)
 {
+#ifdef OPLUS_BUG_STABILITY
+	struct proc_dir_entry *dentry = NULL;
+#else
 	struct dentry *dentry;
-
+#endif
 	kmemleak_initialized = 1;
 
+#ifdef OPLUS_BUG_STABILITY
+	dentry = proc_create("kmemleak", 0644, NULL, &kmemleak_fops);
+#else
 	dentry = debugfs_create_file("kmemleak", 0644, NULL, NULL,
 				     &kmemleak_fops);
+#endif
+
 	if (!dentry)
 		pr_warn("Failed to create the debugfs kmemleak file\n");
 
