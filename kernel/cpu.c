@@ -40,6 +40,9 @@
 #include <linux/sched/clock.h>
 
 #include "smpboot.h"
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+#include <linux/sched_assist/sched_assist_common.h>
+#endif
 
 /**
  * cpuhp_cpu_state - Per cpu hotplug state storage
@@ -1041,6 +1044,9 @@ static int do_cpu_down(unsigned int cpu, enum cpuhp_state target)
 	 * domain, those CPUs would not be visible when scheduling
 	 * happens on from other CPUs in the root domain.
 	 */
+#if defined(OPLUS_FEATURE_SCHED_ASSIST) && defined(CONFIG_OPLUS_FEATURE_SCHED_SPREAD)
+	init_rq_cpu(cpu);
+#endif
 	cpuset_wait_for_hotplug();
 
 	cpu_maps_update_begin();

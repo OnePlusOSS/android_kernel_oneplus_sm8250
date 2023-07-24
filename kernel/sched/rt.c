@@ -11,6 +11,14 @@
 
 #include <trace/events/sched.h>
 
+#ifdef CONFIG_OPLUS_FEATURE_GAME_OPT
+#include "../../drivers/soc/oplus/game_opt/game_ctrl.h"
+#endif
+
+#ifdef CONFIG_OPLUS_CPU_AUDIO_PERF
+#include "../sched_assist/sched_assist_audio.h"
+#endif
+
 #include "walt.h"
 
 int sched_rr_timeslice = RR_TIMESLICE;
@@ -1051,6 +1059,9 @@ static void update_curr_rt(struct rq *rq)
 
 	curr->se.exec_start = now;
 	cgroup_account_cputime(curr, delta_exec);
+#ifdef CONFIG_OPLUS_FEATURE_GAME_OPT
+	g_update_task_runtime(curr, delta_exec);
+#endif
 
 	if (!rt_bandwidth_enabled())
 		return;
@@ -1739,7 +1750,11 @@ static int pick_rt_task(struct rq *rq, struct task_struct *p, int cpu)
  * Return the highest pushable rq's task, which is suitable to be executed
  * on the CPU, NULL otherwise
  */
+#ifdef CONFIG_OPLUS_CPU_AUDIO_PERF
+struct task_struct *pick_highest_pushable_task(struct rq *rq, int cpu)
+#else
 static struct task_struct *pick_highest_pushable_task(struct rq *rq, int cpu)
+#endif
 {
 	struct plist_head *head = &rq->rt.pushable_tasks;
 	struct task_struct *p;
@@ -1754,6 +1769,9 @@ static struct task_struct *pick_highest_pushable_task(struct rq *rq, int cpu)
 
 	return NULL;
 }
+#ifdef CONFIG_OPLUS_CPU_AUDIO_PERF
+EXPORT_SYMBOL_GPL(pick_highest_pushable_task);
+#endif
 
 static DEFINE_PER_CPU(cpumask_var_t, local_cpu_mask);
 
@@ -1867,6 +1885,13 @@ static int find_lowest_rq(struct task_struct *task)
 	struct cpumask *lowest_mask = this_cpu_cpumask_var_ptr(local_cpu_mask);
 	int this_cpu = smp_processor_id();
 	int cpu = -1;
+#ifdef CONFIG_OPLUS_FEATURE_INPUT_BOOST_V4
+	int fbg_best_cpu = -1;
+	struct cpumask *fbg_target = NULL;
+#endif /* CONFIG_OPLUS_FEATURE_INPUT_BOOST_V4 */
+#ifdef CONFIG_OPLUS_CPU_AUDIO_PERF
+	unsigned int drop_cpu;
+#endif /* CONFIG_OPLUS_CPU_AUDIO_PERF */
 
 	/* Make sure the mask is initialized first */
 	if (unlikely(!lowest_mask))
@@ -1878,8 +1903,29 @@ static int find_lowest_rq(struct task_struct *task)
 	if (!cpupri_find(&task_rq(task)->rd->cpupri, task, lowest_mask))
 		return -1; /* No targets found */
 
+#ifdef CONFIG_OPLUS_CPU_AUDIO_PERF
+	/* skip the high idle latency cpu */
+	drop_cpu = cpumask_first(lowest_mask);
+	while (drop_cpu < nr_cpu_ids) {
+		if (oplus_sched_assist_audio_perf_check_exit_latency(task, drop_cpu))
+			cpumask_clear_cpu(drop_cpu, lowest_mask);
+		drop_cpu = cpumask_next(drop_cpu, lowest_mask);
+	}
+#endif /* CONFIG_OPLUS_CPU_AUDIO_PERF */
+
 	if (static_branch_unlikely(&sched_energy_present))
 		cpu = rt_energy_aware_wake_cpu(task);
+
+#ifdef CONFIG_OPLUS_FEATURE_INPUT_BOOST_V4
+	fbg_target = find_rtg_target(task);
+	if(fbg_target) {
+		fbg_best_cpu = find_fbg_cpu(task);
+		if (fbg_best_cpu >= 0) {
+			trace_sched_fbg_rt(task, cpu, fbg_best_cpu, cpumask_bits(lowest_mask)[0]);
+			cpu = fbg_best_cpu;
+		}
+	}
+#endif /* CONFIG_OPLUS_FEATURE_INPUT_BOOST_V4 */
 
 	if (cpu == -1)
 		cpu = task_cpu(task);

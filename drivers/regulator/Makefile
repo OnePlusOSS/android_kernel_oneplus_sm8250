@@ -82,7 +82,12 @@ obj-$(CONFIG_REGULATOR_QCOM_RPM) += qcom_rpm-regulator.o
 obj-$(CONFIG_REGULATOR_QCOM_RPMH) += qcom-rpmh-regulator.o
 obj-$(CONFIG_REGULATOR_QCOM_SMD_RPM) += qcom_smd-regulator.o
 obj-$(CONFIG_REGULATOR_RPM_SMD) += rpm-smd-regulator.o
+#use variable concatination for logical and BRAND_SHOW_FLAG=oneplus CONFIG_ARCH_LITO=y
+ifeq ($(BRAND_SHOW_FLAG)$(CONFIG_ARCH_LITO), oneplusy)
+obj-$(CONFIG_REGULATOR_PM8008) += qcom_pm8008-regulator-nord.o
+else
 obj-$(CONFIG_REGULATOR_PM8008) += qcom_pm8008-regulator.o
+endif
 obj-$(CONFIG_REGULATOR_QCOM_SPMI) += qcom_spmi-regulator.o
 obj-$(CONFIG_REGULATOR_QPNP_LABIBB) += qpnp-labibb-regulator.o
 obj-$(CONFIG_REGULATOR_QPNP_LCDB) += qpnp-lcdb-regulator.o

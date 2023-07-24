@@ -1,0 +1,5 @@
+config OPLUS_FEATURE_GAME_OPT
+        tristate "game optimization"
+        default n
+        help
+            game optimization support

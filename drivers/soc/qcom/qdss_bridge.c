@@ -713,10 +713,10 @@ static ssize_t mhi_uci_read(struct file *file,
 			pr_err("Failed to recycle element, ret: %d\n", ret);
 			qdss_del_buf_tbl_entry(drvdata, uci_buf->buf);
 			uci_buf->buf = NULL;
-			kfree(uci_buf);
+                	kfree(uci_buf);
 			return ret;
 		}
-		kfree(uci_buf);
+                kfree(uci_buf);
 	}
 
 	pr_debug("Returning %lu bytes\n", to_copy);
@@ -922,11 +922,18 @@ static int qdss_mhi_probe(struct mhi_device *mhi_dev,
 		return ret;
 	}
 
+	drvdata->cdev = cdev_alloc();
+	if (!drvdata->cdev) {
+		ret = -ENOMEM;
+		return ret;
+        }
+
 	ret = alloc_chrdev_region(&dev, baseminor, count, "mhi_qdss");
 	if (ret < 0) {
 		pr_err("alloc_chrdev_region failed %d\n", ret);
 		return ret;
 	}
+	//cdev_init(&drvdata->cdev, &mhidev_fops);
 
 	drvdata->cdev->owner = THIS_MODULE;
 	drvdata->cdev->ops = &mhidev_fops;

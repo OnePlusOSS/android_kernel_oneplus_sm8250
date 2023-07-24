@@ -574,6 +574,12 @@ void do_coredump(const siginfo_t *siginfo)
 	cred = prepare_creds();
 	if (!cred)
 		goto fail;
+#ifdef OPLUS_BUG_STABILITY
+	if (strstr(current->group_leader->comm, "rs.media.module")) {
+		printk(KERN_INFO "rs.media.module Aborting core\n");
+		goto fail;
+	}
+#endif
 	/*
 	 * We cannot trust fsuid as being the "true" uid of the process
 	 * nor do we know its entire history. We only know it was tainted

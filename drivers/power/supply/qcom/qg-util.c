@@ -364,17 +364,61 @@ int qg_get_battery_temp(struct qpnp_qg *chip, int *temp)
 {
 	int rc = 0;
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	int pre_result = 0 , result = 0;
+	int pre_voltage = 0, voltage = 0;
+#endif
+
+
+#ifndef OPLUS_FEATURE_CHG_BASIC
 	if (chip->battery_missing) {
 		*temp = 250;
 		return 0;
 	}
+#else
+	if (chip->batt_therm_chan == NULL) {
+		*temp = 250;
+		return 0;
+	}
+	if ((chip->battery_missing) && (!is_batt_id_valid(chip))) {
+		*temp = -400;
+		return 0;
+	}
+#endif
 
+#ifndef OPLUS_FEATURE_CHG_BASIC
 	rc = iio_read_channel_processed(chip->batt_therm_chan, temp);
 	if (rc < 0) {
 		pr_err("Failed reading BAT_TEMP over ADC rc=%d\n", rc);
 		return rc;
 	}
 	pr_debug("batt_temp = %d\n", *temp);
+#else
+	rc = iio_read_channel_processed(chip->batt_therm_chan, &voltage);
+	if (rc < 0) {
+		pr_err("Failed reading BAT_TEMP over ADC rc=%d, voltage=%d\n", rc, voltage);
+		return rc;
+	}
+
+	pre_voltage = voltage;
+	pre_voltage = div64_s64(pre_voltage, 1000);
+	rc = oplus_asic_vadc_map_voltage_temp(adcmap_batt_therm_asic,
+				 ARRAY_SIZE(adcmap_batt_therm_asic),
+				 pre_voltage, &pre_result);
+
+	if(g_oplus_qg_ibta < -6000000)
+		g_oplus_qg_ibta = -6000000;
+	if(g_oplus_qg_ibta > 6000000)
+		g_oplus_qg_ibta = 6000000;
+	voltage = voltage + g_oplus_qg_ibta * 6;
+	voltage = div64_s64(voltage, 1000);
+	rc = oplus_asic_vadc_map_voltage_temp(adcmap_batt_therm_asic,
+					 ARRAY_SIZE(adcmap_batt_therm_asic),
+					 voltage, &result);
+
+	*temp = result;
+	pr_err("v_temp = %d, ichg = %d, temp_before = %d, temp_after = %d\n",voltage, g_oplus_qg_ibta, pre_result, result);
+#endif
 
 	return 0;
 }

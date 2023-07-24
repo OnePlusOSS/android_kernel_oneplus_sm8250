@@ -160,6 +160,14 @@ static inline void set_mems_allowed(nodemask_t nodemask)
 	task_unlock(current);
 }
 
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+extern bool get_uid_perf_enable(void);
+extern int get_cpuset_cgrp_idx_by_name(const char *name);
+extern void cpuset_add_cg(int cgid, char* name);
+extern int cpuset_get_cgrp_idx(struct task_struct *task);
+extern int cpuset_get_cgrp_idx_locked(struct task_struct *task);
+#endif
+
 #else /* !CONFIG_CPUSETS */
 
 static inline bool cpusets_enabled(void) { return false; }
@@ -274,6 +282,14 @@ static inline bool read_mems_allowed_retry(unsigned int seq)
 {
 	return false;
 }
+
+#ifdef CONFIG_OPLUS_FEATURE_UID_PERF
+static inline bool get_uid_perf_enable(void) { return false; }
+static inline int get_cpuset_cgrp_idx_by_name(const char *name) { return -1; }
+static inline void cpuset_add_cg(int cgid, char* name) { return; }
+static inline int cpuset_get_cgrp_idx(struct task_struct *task) { return -1; }
+static inline int cpuset_get_cgrp_idx_locked(struct task_struct *task) { return -1; }
+#endif
 
 #endif /* !CONFIG_CPUSETS */
 

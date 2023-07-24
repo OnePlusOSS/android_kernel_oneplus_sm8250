@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020, Linux Foundation. All rights reserved.
+ * Copyright (C) 2021 Oplus. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -410,8 +411,7 @@ int crypto_qti_keyslot_program(void *priv_data,
 	err1 = crypto_qti_program_key(ice_entry, key, slot,
 				data_unit_mask, capid);
 	if (err1) {
-		pr_err("%s: program key failed with error %d\n",
-			__func__, err1);
+		pr_err("%s: program key failed with error %d\n", __func__, err1);
 		err2 = crypto_qti_invalidate_key(ice_entry, slot);
 		if (err2) {
 			pr_err("%s: invalidate key failed with error %d\n",

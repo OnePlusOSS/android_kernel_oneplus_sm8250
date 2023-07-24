@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <asm/cacheflush.h>
@@ -61,6 +62,15 @@ _kgsl_get_pool_from_order(unsigned int order)
 static void
 _kgsl_pool_add_page(struct kgsl_page_pool *pool, struct page *p)
 {
+	/*
+	 * Sanity check to make sure we don't re-pool a page that
+	 * somebody else has a reference to.
+	 */
+	if (WARN_ON_ONCE(unlikely(page_count(p) > 1))) {
+		__free_pages(p, pool->pool_order);
+		return;
+	}
+
 	kgsl_zero_page(p, pool->pool_order);
 
 	spin_lock(&pool->list_lock);
@@ -316,6 +326,7 @@ int kgsl_pool_alloc_page(int *page_size, struct page **pages,
 	if (page == NULL) {
 		gfp_t gfp_mask = kgsl_gfp_mask(order);
 
+#ifndef OPLUS_FEATURE_SPECIALOPT
 		/* Only allocate non-reserved memory for certain pools */
 		if (!pool->allocation_allowed && pool_idx > 0) {
 			size = PAGE_SIZE <<
@@ -324,6 +335,16 @@ int kgsl_pool_alloc_page(int *page_size, struct page **pages,
 		}
 
 		page = alloc_pages(gfp_mask, order);
+#else
+		page = alloc_pages(gfp_mask, order);
+
+		/* Only allocate non-reserved memory for certain pools */
+		if (!page &&!pool->allocation_allowed && pool_idx > 0) {
+			size = PAGE_SIZE <<
+					kgsl_pools[pool_idx-1].pool_order;
+			goto eagain;
+		}
+#endif
 
 		if (!page) {
 			if (pool_idx > 0) {

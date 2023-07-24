@@ -380,6 +380,15 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 		input_event(input, type, *bdata->code, state);
 	}
 	input_sync(input);
+
+#ifdef OPLUS_FEATURE_TP_BASIC
+	if (!strcmp(button->desc, "volume_up")) {
+		dev_info(input->dev.parent, "vol_up %s\n", !!state?"pressed":"release");
+	}
+	if (!strcmp(button->desc, "volume_down")) {
+		dev_info(input->dev.parent, "vol_down %s\n", !!state?"pressed":"release");
+	}
+#endif
 }
 
 static void gpio_keys_gpio_work_func(struct work_struct *work)

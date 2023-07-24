@@ -26,6 +26,13 @@
 #include <linux/soc/qcom/smem_state.h>
 
 #include "peripheral-loader.h"
+#ifdef OPLUS_FEATURE_SENSOR
+#include <soc/oplus/system/kernel_fb.h>
+#endif
+
+#ifdef OPLUS_FEATURE_MM_FEEDBACK
+#include <soc/oplus/system/oplus_mm_kevent_fb.h>
+#endif
 
 #define XO_FREQ			19200000
 #define PROXY_TIMEOUT_MS	10000
@@ -724,6 +731,11 @@ static int pil_shutdown_trusted(struct pil_desc *pil)
 	u32 proc, scm_ret = 0;
 	int rc;
 	struct scm_desc desc = {0};
+	#ifdef OPLUS_FEATURE_MODEM_MINIDUMP
+	//Add for skip mini dump encryption
+	int i = 0;
+	struct md_ss_toc *toc = NULL;
+	#endif
 
 	if (d->subsys_desc.no_auth)
 		return 0;
@@ -745,10 +757,39 @@ static int pil_shutdown_trusted(struct pil_desc *pil)
 	if (rc)
 		goto err_clks;
 
+	#ifdef OPLUS_FEATURE_MODEM_MINIDUMP
+	//Add for skip mini dump encryption
+	//disable for TZ don't encryption
+	if ( pil->minidump_id ==3 ) {  //only check for modem . currently 3 is modem
+		pil->minidump_ss->md_ss_enable_status = 0;
+		pil->minidump_ss->encryption_status = 0;
+
+		for ( i = 0; i < pil->num_aux_minidump_ids; i++ ) {
+			toc = pil->aux_minidump[i];
+			toc->md_ss_enable_status = 0;
+			toc->encryption_status  = 0;
+		}
+	}
+	#endif
 	rc = scm_call2(SCM_SIP_FNID(SCM_SVC_PIL, PAS_SHUTDOWN_CMD),
 		       &desc);
 	scm_ret = desc.ret[0];
 
+	#ifdef OPLUS_FEATURE_MODEM_MINIDUMP
+	//Add for skip mini dump encryption
+	//disable for TZ don't encryption
+	//set back for miindump flow
+	if( pil->minidump_id == 3 ) {  //only check for modem . currently 3 is modem
+		pil->minidump_ss->md_ss_enable_status  =MD_SS_ENABLED;
+		pil->minidump_ss->encryption_status =MD_SS_ENCR_DONE;
+
+		for (i = 0; i < pil->num_aux_minidump_ids; i++) {
+			toc = pil->aux_minidump[i];
+			toc->md_ss_enable_status = MD_SS_ENABLED;
+			toc->encryption_status  = MD_SS_ENCR_DONE;
+		}
+	}
+	#endif
 	disable_unprepare_clocks(d->proxy_clks, d->proxy_clk_count);
 	disable_regulators(d, d->proxy_regs, d->proxy_reg_count, false);
 
@@ -801,11 +842,22 @@ static struct pil_reset_ops pil_ops_trusted = {
 	.proxy_unvote = pil_remove_proxy_vote,
 	.deinit_image = pil_deinit_image_trusted,
 };
+#ifdef OPLUS_FEATURE_SENSOR
+extern void set_subsys_crash_cause(char *reason);
+#endif
 
+#ifdef OPLUS_FEATURE_MODEM_MINIDUMP
+//Add for customized subsystem ramdump to skip generate dump cause by SAU
+bool SKIP_GENERATE_RAMDUMP = false;
+extern void mdmreason_set(char * buf);
+#endif
 static void log_failure_reason(const struct pil_tz_data *d)
 {
 	size_t size;
 	char *smem_reason, reason[MAX_SSR_REASON_LEN];
+	#ifdef OPLUS_FEATURE_AGINGTEST
+	char *function_name;
+	#endif /*OPLUS_FEATURE_AGINGTEST*/
 	const char *name = d->subsys_desc.name;
 
 	if (d->smem_id == -1)
@@ -817,13 +869,79 @@ static void log_failure_reason(const struct pil_tz_data *d)
 									name);
 		return;
 	}
+
+	strlcpy(reason, smem_reason, min(size, (size_t)MAX_SSR_REASON_LEN));
 	if (!smem_reason[0]) {
 		pr_err("%s SFR: (unknown, empty string found).\n", name);
+		#ifdef OPLUS_FEATURE_MODEM_MINIDUMP
+		if (subsys_get_crash_status(d->subsys) == CRASH_STATUS_ERR_FATAL) {
+		    if (!strncmp(name, "modem", 5)) {
+				subsystem_send_uevent(d->subsys, 0);
+		    }
+		}
+		#endif /*OPLUS_FEATURE_MODEM_MINIDUMP*/
+        #ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+		if (subsys_get_crash_status(d->subsys) == CRASH_STATUS_ERR_FATAL) {
+			pr_info("log_failure_reason wlan send uevent");
+			wlan_subsystem_send_uevent(d->subsys, reason, name);
+		}
+		#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
 		return;
 	}
 
-	strlcpy(reason, smem_reason, min(size, (size_t)MAX_SSR_REASON_LEN));
+	pr_info("Restart sequence requested  test");
+
+	#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+	if (subsys_get_crash_status(d->subsys) == CRASH_STATUS_ERR_FATAL) {
+		pr_info("log_failure_reason wlan send uevent");
+		wlan_subsystem_send_uevent(d->subsys, reason, name);
+	}
+	#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
+
+	#ifdef OPLUS_FEATURE_AGINGTEST
+	function_name = parse_function_builtin_return_address((unsigned long)__builtin_return_address(0));
+	save_dump_reason_to_smem(reason, function_name);
+	#endif /*OPLUS_FEATURE_AGINGTEST*/
+
+	#ifdef OPLUS_FEATURE_SENSOR
+	set_subsys_crash_cause(reason);
+	if((strncmp(name, "slpi", strlen("slpi")) == 0)
+		|| (strncmp(name, "cdsp", strlen("cdsp")) == 0)
+		|| (strncmp(name, "adsp", strlen("adsp")) == 0)){
+		strcat(reason, "$$module@@");
+		strcat(reason, name);
+		oplus_kevent_fb_str(FB_SENSOR, FB_SENSOR_ID_CRASH, reason);
+	}
+	#endif
+	#ifdef OPLUS_FEATURE_MM_FEEDBACK
+	if(strncmp(name, "adsp", strlen("adsp")) == 0){
+		mm_fb_audio_kevent_named(OPLUS_AUDIO_EVENTID_ADSP_CRASH, \
+				MM_FB_KEY_RATELIMIT_5MIN, "payload@@%s$$fid@@123456", reason);
+	}
+	#endif
 	pr_err("%s subsystem failure reason: %s.\n", name, reason);
+
+    #ifdef OPLUS_FEATURE_MODEM_MINIDUMP
+    //Add for customized subsystem ramdump to skip generate dump cause by SAU
+    if (!strncmp(name, "modem", 4)) {
+        mdmreason_set(reason);
+
+        pr_err("oplus debug modem subsystem failure reason: %s.\n", reason);
+
+        if(strstr(reason, "OPLUS_MODEM_NO_RAMDUMP_EXPECTED") || strstr(reason, "oppomsg:go_to_error_fatal")){
+            pr_err("%s will subsys reset",__func__);
+            SKIP_GENERATE_RAMDUMP = true;
+        }
+    }
+    #endif
+
+	#ifdef OPLUS_FEATURE_MODEM_MINIDUMP
+	if (subsys_get_crash_status(d->subsys) == CRASH_STATUS_ERR_FATAL) {
+		if (!strncmp(name, "modem", 5)) {
+			subsystem_send_uevent(d->subsys, reason);
+		}
+	}
+	#endif /*OPLUS_FEATURE_MODEM_MINIDUMP*/
 }
 
 static int subsys_shutdown(const struct subsys_desc *subsys, bool force_stop)

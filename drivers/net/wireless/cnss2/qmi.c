@@ -5,6 +5,13 @@
 #include <linux/module.h>
 #include <linux/soc/qcom/qmi.h>
 
+#ifdef OPLUS_FEATURE_WIFI_BDF
+//
+//
+#include <soc/oplus/oplus_project.h>
+#include <linux/fs.h>
+#endif /* OPLUS_FEATURE_WIFI_BDF */
+
 #include "bus.h"
 #include "debug.h"
 #include "main.h"
@@ -578,6 +585,149 @@ static int cnss_get_bdf_file_name(struct cnss_plat_data *plat_priv,
 	return ret;
 }
 
+#ifdef OPLUS_FEATURE_WIFI_BDF
+// check if read bdf is not complete through compare the size with odm/etc/wifi bdf file
+// return 0 if everything ok, otherwise return a non-zero value
+#define FILE_NAME_LENGTH                    128
+#define BDF_FILEPATH                         "/mnt/vendor/persist/"
+#define BDF_ODM_FILEPATH                         "/odm/etc/wifi/"
+#define BDF_VERSION_FILE                         "bin_version"
+
+/* string is in decimal */
+static bool get_integer_from_string(const u8 *str, int *pint)
+{
+	u16 i = 0;
+	*pint = 0;
+
+	while (str[i] != '\0') {
+		if (str[i] >= '0' && str[i] <= '9') {
+			*pint *= 10;
+			*pint += (str[i] - '0');
+		} else {
+			return false;
+		}
+		++i;
+	}
+
+	return true;
+}
+
+static int read_file(char *file_name, u8 *file_buf)
+{
+	int ret = 0;
+	struct file *filp = NULL;
+	struct inode *inode;
+	mm_segment_t old_fs;
+	loff_t pos;
+	loff_t file_len = 0;
+
+	if ((NULL == file_name) || (NULL == file_buf)) {
+		cnss_pr_err("filename/filebuf is NULL");
+		return -EINVAL;
+	}
+
+	filp = filp_open(file_name, O_RDONLY, 0);
+	if (IS_ERR(filp)) {
+		cnss_pr_err("open %s file fail", file_name);
+		return -ENOENT;
+	}
+
+#if 1
+	inode = filp->f_inode;
+#else
+	/* reserved for linux earlier verion */
+	inode = filp->f_dentry->d_inode;
+#endif
+
+	file_len = inode->i_size;
+
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+	pos = 0;
+	ret = vfs_read(filp, file_buf, file_len , &pos);
+	if (ret < 0)
+		cnss_pr_err("read file fail");
+	cnss_pr_dbg("file len:%d read len:%d pos:%d", (u32)file_len, ret, (u32)pos);
+	filp_close(filp, NULL);
+	set_fs(old_fs);
+
+	return ret;
+}
+
+int check_bdf_version(struct cnss_plat_data *plat_priv, char *file_name)
+{
+	int ret = -1;
+	const struct firmware *fw_entry = NULL;
+	const u8 *temp;
+	unsigned int remaining;
+	u8 fw_file_buf[FILE_NAME_LENGTH] = { '\0' };
+	char file_path[FILE_NAME_LENGTH] = { '\0' };
+	int odm_verison = 0;
+	int persist_version = 0;
+
+	cnss_pr_dbg("start check with bdf version");
+
+	snprintf(file_path, FILE_NAME_LENGTH, "%s%s", BDF_ODM_FILEPATH, file_name);
+	ret = read_file(file_path, fw_file_buf);
+	if (ret < 0) {
+		cnss_pr_err("Failed to load: %s\n", file_path);
+		return ret;
+	} else {
+		temp = fw_file_buf;
+		get_integer_from_string(temp, &odm_verison);
+		cnss_pr_dbg("read odm_verison %x\n", odm_verison);
+	}
+
+	ret = request_firmware_no_cache(&fw_entry, file_name, &plat_priv->plat_dev->dev);
+	if (ret) {
+		cnss_pr_err("Failed to load: %s\n", file_name);
+		return ret;
+	} else {
+		temp = fw_entry->data;
+		remaining = fw_entry->size;
+		get_integer_from_string(temp, &persist_version);
+		cnss_pr_dbg("read persist_version %x\n", persist_version);
+	}
+
+	if ((persist_version > 0) && (odm_verison > 0) && (persist_version >= odm_verison))
+		ret = 0;
+
+	cnss_pr_dbg("persist version: %x, odm verison: %x", persist_version, odm_verison);
+
+	return ret;
+}
+
+int check_bdf_size(unsigned int download_bdf_size, char* bdf_file_name) {
+	char str[48];
+	struct kstat* stat = NULL;
+	int ret = 0;
+
+	snprintf(str, sizeof(str), "%s%s", BDF_ODM_FILEPATH, bdf_file_name);
+	cnss_pr_dbg("vendor file name: %s", str);
+	stat = (struct kstat*) kzalloc(sizeof(struct kstat), GFP_KERNEL);
+	if (!stat)
+		return -ENOMEM;
+
+	ret = vfs_stat(str, stat);
+	if (ret < 0) {
+		cnss_pr_dbg("stat: %s fail %d", str, ret);
+		if (-ENOENT == ret) {
+			ret = 0;
+		}
+		goto out;
+	}
+
+	cnss_pr_dbg("dl size: %d, stat size: %d", download_bdf_size, stat->size);
+	if (download_bdf_size < stat->size) {
+		ret = -1;
+	}
+
+out:
+	kfree(stat);
+	return ret;
+}
+#endif /* OPLUS_FEATURE_WIFI_BDF */
+
 int cnss_wlfw_bdf_dnld_send_sync(struct cnss_plat_data *plat_priv,
 				 u32 bdf_type)
 {
@@ -589,6 +739,10 @@ int cnss_wlfw_bdf_dnld_send_sync(struct cnss_plat_data *plat_priv,
 	const u8 *temp;
 	unsigned int remaining;
 	int ret = 0;
+#ifdef OPLUS_FEATURE_WIFI_BDF
+//Modify for: multi projects using different bdf
+	int loading_bdf_retry_cnt = 5;
+#endif /* OPLUS_FEATURE_WIFI_BDF */
 
 	cnss_pr_dbg("Sending BDF download message, state: 0x%lx, type: %d\n",
 		    plat_priv->driver_state, bdf_type);
@@ -613,7 +767,13 @@ int cnss_wlfw_bdf_dnld_send_sync(struct cnss_plat_data *plat_priv,
 		goto err_req_fw;
 	}
 
+#ifdef OPLUS_FEATURE_WIFI_BDF
+//Modify for: multi projects using different bdf
+request_bdf:
+	ret = request_firmware_no_cache(&fw_entry, filename, &plat_priv->plat_dev->dev);
+#else /* OPLUS_FEATURE_WIFI_BDF */
 	ret = request_firmware(&fw_entry, filename, &plat_priv->plat_dev->dev);
+#endif /* OPLUS_FEATURE_WIFI_BDF */
 	if (ret) {
 		cnss_pr_err("Failed to load BDF: %s\n", filename);
 		goto err_req_fw;
@@ -623,7 +783,31 @@ int cnss_wlfw_bdf_dnld_send_sync(struct cnss_plat_data *plat_priv,
 	remaining = fw_entry->size;
 
 bypass_bdf:
+    #ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+    //Add for wifi switch monitor
+	if (bdf_type == CNSS_BDF_REGDB) {
+		set_bit(CNSS_LOAD_REGDB_SUCCESS, &plat_priv->loadRegdbState);
+	} else if (bdf_type == CNSS_BDF_ELF){
+		set_bit(CNSS_LOAD_BDF_SUCCESS, &plat_priv->loadBdfState);
+	}
+    #endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
+
 	cnss_pr_dbg("Downloading BDF: %s, size: %u\n", filename, remaining);
+
+#ifdef OPLUS_FEATURE_WIFI_BDF
+//Modify for: multi projects using different bdf
+	if (strncmp(filename, "bdwlan", 6) == 0
+		&& check_bdf_version(plat_priv, BDF_VERSION_FILE)
+		&& check_bdf_size(remaining, filename) && loading_bdf_retry_cnt > 0) {
+		loading_bdf_retry_cnt -= 1;
+		cnss_pr_dbg("bdf size is too small, maybe bdf is under transfer, retry loading..");
+		// sleep 400 ms
+		msleep_interruptible(400);
+		goto request_bdf;
+	}
+	// reset counter
+	loading_bdf_retry_cnt = 5;
+#endif /* OPLUS_FEATURE_WIFI_BDF */
 
 	while (remaining) {
 		req->valid = 1;
@@ -696,6 +880,14 @@ err_send:
 	if (bdf_type != CNSS_BDF_DUMMY)
 		release_firmware(fw_entry);
 err_req_fw:
+#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+    //Add for wifi switch monitor
+	if (bdf_type == CNSS_BDF_REGDB) {
+		set_bit(CNSS_LOAD_REGDB_FAIL, &plat_priv->loadRegdbState);
+	} else if (bdf_type == CNSS_BDF_ELF){
+		set_bit(CNSS_LOAD_BDF_FAIL, &plat_priv->loadBdfState);
+	}
+#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
 	if (bdf_type != CNSS_BDF_REGDB)
 		CNSS_QMI_ASSERT();
 
@@ -2083,17 +2275,19 @@ static void cnss_wlfw_respond_get_info_ind_cb(struct qmi_handle *qmi_wlfw,
 	struct cnss_plat_data *plat_priv =
 		container_of(qmi_wlfw, struct cnss_plat_data, qmi_wlfw);
 	const struct wlfw_respond_get_info_ind_msg_v01 *ind_msg = data;
-
+        #ifndef OPLUS_BUG_STABILITY
 	cnss_pr_vdbg("Received QMI WLFW respond get info indication\n");
+        #endif /*OPLUS_BUG_STABILITY*/
 
 	if (!txn) {
 		cnss_pr_err("Spurious indication\n");
 		return;
 	}
-
+        #ifndef OPLUS_BUG_STABILITY
 	cnss_pr_vdbg("Extract message with event length: %d, type: %d, is last: %d, seq no: %d\n",
 		     ind_msg->data_len, ind_msg->type,
 		     ind_msg->is_last, ind_msg->seq_no);
+        #endif /*OPLUS_BUG_STABILITY*/
 
 	if (plat_priv->get_info_cb_ctx && plat_priv->get_info_cb)
 		plat_priv->get_info_cb(plat_priv->get_info_cb_ctx,

@@ -71,6 +71,14 @@
 		panic(msg); \
 } while (0)
 
+/* #ifdef OPLUS_BUG_STABILITY */
+/* xufeifei@Netowrk.DATA.DRIVER, double the bg pool for mhi to avoid mhi OOM */
+#define OPLUS_MSG_ERR(fmt, ...) do{ \
+    pr_err("[E][%s] " fmt, __func__, ##__VA_ARGS__); \
+}while (0)
+/* #endif OPLUS_BUG_STABILITY */
+
+
 struct mhi_net_chain {
 	struct sk_buff *head, *tail; /* chained skb */
 };
@@ -1060,6 +1068,13 @@ static int mhi_netdev_probe(struct mhi_device *mhi_dev,
 			mhi_netdev->pool_size <<= 1;
 		mhi_netdev->pool_size <<= 1;
 
+		/* #ifdef OPLUS_BUG_STABILITY */
+		/* xufeifei@Netowrk.DATA.DRIVER, double the bg pool for mhi to avoid mhi OOM */
+		mhi_netdev->pool_size <<= 1;
+		OPLUS_MSG_ERR("mhi bg pool size is: %d \n", mhi_netdev->pool_size);
+		/* #endif OPLUS_BUG_STABILITY*/
+
+
 		/* if we expect child device to share then double the pool */
 		if (of_parse_phandle(of_node, "mhi,rsc-child", 0))
 			mhi_netdev->pool_size <<= 1;
@@ -1078,7 +1093,14 @@ static int mhi_netdev_probe(struct mhi_device *mhi_dev,
 		init_waitqueue_head(&mhi_netdev->alloc_event);
 		INIT_LIST_HEAD(mhi_netdev->bg_pool);
 		spin_lock_init(&mhi_netdev->bg_lock);
-		mhi_netdev->bg_pool_limit = mhi_netdev->pool_size / 4;
+
+        /* #ifdef OPLUS_BUG_STABILITY */
+        /* xufeifei@Netowrk.DATA.DRIVER, double the bg pool for mhi to avoid mhi OOM , 
+        for bg pool has double, bg pool limit should division 8*/
+        // mhi_netdev->bg_pool_limit = mhi_netdev->pool_size / 4;
+        mhi_netdev->bg_pool_limit = mhi_netdev->pool_size / 8;
+        /* #endif OPLUS_BUG_STABILITY*/
+
 		mhi_netdev->alloc_task = kthread_run(mhi_netdev_alloc_thread,
 						     mhi_netdev,
 						     mhi_netdev->ndev->name);

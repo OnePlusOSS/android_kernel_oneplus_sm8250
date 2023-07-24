@@ -39,6 +39,11 @@
 #include <asm/shmparam.h>
 
 #include "internal.h"
+#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_VMALLOC_DEBUG)
+/* used for vmalloc_debug */
+static unsigned int save_vmalloc_stack(unsigned long flags, struct vmap_area *va);
+static void dec_vmalloc_stat(struct vmap_area *va);
+#endif
 
 struct vfree_deferred {
 	struct llist_head list;
@@ -2044,11 +2049,19 @@ EXPORT_SYMBOL_GPL(map_vm_area);
 static void setup_vmalloc_vm(struct vm_struct *vm, struct vmap_area *va,
 			      unsigned long flags, const void *caller)
 {
+#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_VMALLOC_DEBUG)
+	/* save vmalloc called stack. */
+	unsigned int handle = save_vmalloc_stack(flags, va);
+#endif
 	spin_lock(&vmap_area_lock);
 	vm->flags = flags;
 	vm->addr = (void *)va->va_start;
 	vm->size = va->va_end - va->va_start;
 	vm->caller = caller;
+#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_VMALLOC_DEBUG)
+	/* save stach hash*/
+	vm->hash = handle;
+#endif
 	va->vm = vm;
 	va->flags |= VM_VM_AREA;
 	spin_unlock(&vmap_area_lock);
@@ -2173,6 +2186,11 @@ static struct vm_struct *__remove_vm_area(struct vmap_area *va)
 {
 	struct vm_struct *vm = va->vm;
 
+#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_VMALLOC_DEBUG)
+	/* update the count while
+	 * vfree. */
+	dec_vmalloc_stat(va);
+#endif
 	spin_lock(&vmap_area_lock);
 	va->vm = NULL;
 	va->flags &= ~VM_VM_AREA;
@@ -3466,7 +3484,11 @@ static int s_show(struct seq_file *m, void *p)
 	seq_printf(m, "0x%pK-0x%pK %7ld",
 		v->addr, v->addr + v->size, v->size);
 
-	if (v->caller)
+#ifdef OPLUS_FEATURE_PERFORMANCE
+    if (v->caller && (strcmp(current->comm, "android.bg") != 0))
+#else
+    if (v->caller)
+#endif
 		seq_printf(m, " %pS", v->caller);
 
 	if (v->nr_pages)
@@ -3516,3 +3538,16 @@ module_init(proc_vmalloc_init);
 
 #endif
 
+#ifdef CONFIG_VMALLOC_DEBUG
+#ifdef OPLUS_FEATURE_MEMLEAK_DETECT
+/* vmalloc debug used */
+#include "malloc_track/vmalloc_track.c"
+#else
+int __init __weak create_vmalloc_debug(struct proc_dir_entry *parent)
+{
+	pr_warn("OPLUS_FEATURE_MEMLEAK_DETECT is off.\n");
+	return 0;
+}
+EXPORT_SYMBOL(create_vmalloc_debug);
+#endif
+#endif

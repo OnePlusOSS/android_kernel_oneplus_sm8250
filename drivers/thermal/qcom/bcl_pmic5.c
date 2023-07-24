@@ -597,7 +597,11 @@ static void bcl_probe_lvls(struct platform_device *pdev,
 
 static void bcl_configure_bcl_peripheral(struct bcl_device *bcl_perph)
 {
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	bcl_write_register(bcl_perph, BCL_MONITOR_EN, 0x0);
+#else
 	bcl_write_register(bcl_perph, BCL_MONITOR_EN, BIT(7));
+#endif
 }
 
 static int bcl_remove(struct platform_device *pdev)
