@@ -12,6 +12,9 @@
 #include <linux/mailbox_controller.h>
 #include <dt-bindings/soc/qcom,ipcc.h>
 
+#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+#include <soc/oplus/oplus_wakelock_profiler.h>
+#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 /* IPCC Register offsets */
 #define IPCC_REG_SEND_ID		0x0C
 #define IPCC_REG_RECV_ID		0x10
@@ -25,7 +28,7 @@
 #define IPCC_CLIENT_ID_SHIFT		16
 
 #define IPCC_NO_PENDING_IRQ		(~(u32)0)
-
+int is_first_ipcc_msg = 0;
 /**
  * struct ipcc_protocol_data - Per-protocol data
  * @irq_domain:		irq_domain associated with this protocol-id
@@ -334,6 +337,27 @@ static void msm_ipcc_resume(void)
 		name = desc->action->name;
 
 	pr_warn("%s: %d triggered %s\n", __func__, virq, name);
+
+	#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+	do {
+		int platform_id = get_cached_platform_id();
+		if (platform_id == KONA) {
+			wakeup_reasons_statics(IRQ_NAME_GLINK, WS_CNT_GLINK);
+			wakeup_reasons_statics(name, WS_CNT_WLAN|WS_CNT_ADSP|WS_CNT_CDSP|WS_CNT_SLPI);
+		} else if (platform_id == LITO) {
+			if (!strcmp(name, IRQ_NAME_MODEM_GLINK)) {
+				wakeup_reasons_statics(IRQ_NAME_MODEM_QMI, WS_CNT_MODEM);
+			}
+		} else if (platform_id == LAGOON) {
+                       	if (is_first_ipcc_msg == 1) {
+			        do {
+			        	wakeup_reasons_statics(name, WS_CNT_MODEM|WS_CNT_WLAN|WS_CNT_ADSP|WS_CNT_CDSP|WS_CNT_SLPI);
+			        } while(0);
+		        	is_first_ipcc_msg = 0;
+		}
+                }
+	} while(0);
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 }
 #else
 #define msm_ipcc_suspend NULL

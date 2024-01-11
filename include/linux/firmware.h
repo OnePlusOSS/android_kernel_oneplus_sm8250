@@ -54,6 +54,11 @@ int request_firmware_into_buf(const struct firmware **firmware_p,
 	const char *name, struct device *device, void *buf, size_t size);
 
 void release_firmware(const struct firmware *fw);
+#ifdef OPLUS_FEATURE_WIFI_BDF
+//Add for: reload wlan bdf without using cache
+int request_firmware_no_cache(const struct firmware **firmware_p, const char *name,
+       struct device *device);
+#endif /* OPLUS_FEATURE_WIFI_BDF */
 #else
 static inline int request_firmware(const struct firmware **fw,
 				   const char *name,

@@ -7,11 +7,92 @@ mainmenu "Linux/$(ARCH) $(KERNELVERSION) Kernel Configuration"
 
 comment "Compiler: $(CC_VERSION_TEXT)"
 
+#ifdef CONFIG_OPLUS_SYSTEM_KERNEL
+config OPLUS_SYSTEM_KERNEL_QCOM
+  bool "config oplus system feature "
+  default y
+  help
+	define this config to Distinguish between qcom and mtk platform
+
+config OPLUS_SYSTEM_KERNEL_MTK
+  bool "config oplus system feature "
+  default n
+  help
+	define this config to Distinguish between qcom and mtk platform
+
+config OPLUS_SLUB_TEST
+	string
+	default "$(OPLUS_SLUB_TEST)"
+
+config OPLUS_KASAN_TEST
+	string
+	default "$(OPLUS_KASAN_TEST)"
+
+config OPLUS_KMEMLEAK_TEST
+	string
+	default "$(OPLUS_KMEMLEAK_TEST)"
+
+config OPLUS_AGING_TEST
+	string
+	default "$(OPLUS_AGING_TEST)"
+
+config OPLUS_PAGEOWNER_TEST
+	string
+	default "$(OPLUS_PAGEOWNER_TEST)"
+
+config OPLUS_AGING_DEBUG
+	bool "oplus aging add config"
+	select IPC_LOGGING
+	select QCOM_RTB
+	select QCOM_RTB_SEPARATE_CPUS
+	select SCSI_LOGGING
+	select SCSI_UFSHCD_CMD_LOGGING
+	select KPROBES
+	select MHI_DEBUG
+	default y if OPLUS_AGING_TEST = "true"
+	default n
+
+config OPLUS_KASAN_DEBUG
+	bool "oplus kasan debug"
+	select KASAN
+	select KASAN_GENERIC
+	#select KCOV
+	#select KCOV_ENABLE_COMPARISONS
+	default y if OPLUS_KASAN_TEST = "true"
+	default n
+
+config OPLUS_KMEMLEAK_DEBUG
+	bool "oplus kmemleak debug"
+	select DEBUG_KMEMLEAK
+	select SLUB_DEBUG
+	select SLABTRACE_DEBUG
+	default y if OPLUS_KMEMLEAK_TEST = "true"
+	default n
+
+config OPLUS_SLUB_DEBUG
+	bool "oplus slub debug"
+	select SLUB_DEBUG
+	select SLUB_DEBUG_ON
+	select SLUB_DEBUG_PANIC_ON
+	default y if OPLUS_SLUB_TEST = "true"
+	default n
+
+config OPLUS_PAGEOWNER_DEBUG
+	bool "oplus pageowner debug"
+	select PAGE_OWNER
+	select PAGE_OWNER_ENABLE_DEFAULT
+	default y if OPLUS_PAGEOWNER_TEST = "true"
+	default n
+#endif /*CONFIG_OPLUS_SYSTEM_KERNEL*/
+
+
 source "scripts/Kconfig.include"
 
 source "init/Kconfig"
 
 source "kernel/Kconfig.freezer"
+
+source "kernel/Kconfig"
 
 source "fs/Kconfig.binfmt"
 

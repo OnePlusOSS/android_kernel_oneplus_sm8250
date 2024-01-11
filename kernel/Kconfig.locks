@@ -252,3 +252,9 @@ config QUEUED_RWLOCKS
 config RWSEM_PRIO_AWARE
        def_bool y
        depends on RWSEM_XCHGADD_ALGORITHM
+
+config LOCKING_PROTECT
+	bool "locking protect"
+	default n
+	help
+	  protect locking protect

@@ -114,6 +114,10 @@ enum vm_event_item { PGPGIN, PGPGOUT, PGPGOUTCLEAN, PSWPIN, PSWPOUT,
 		SPECULATIVE_PGFAULT_ANON,	/* Speculative page fault field */
 		SPECULATIVE_PGFAULT_FILE,	/* Speculative page fault field */
 #endif
+#ifdef CONFIG_LOOK_AROUND
+		SKIPPED_RMAP,
+		NOT_SKIPPED_RMAP,
+#endif
 		NR_VM_EVENT_ITEMS
 };
 

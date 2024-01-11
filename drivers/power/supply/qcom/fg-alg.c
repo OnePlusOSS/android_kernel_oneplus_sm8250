@@ -631,9 +631,15 @@ void cap_learning_update(struct cap_learning *cl, int batt_temp,
 			rc = cap_learning_begin(cl, batt_soc_cp);
 			cl->active = (rc == 0);
 		} else {
+			#ifdef OPLUS_FEATURE_CHG_BASIC
+			if ((charge_status == POWER_SUPPLY_STATUS_DISCHARGING || charge_status == POWER_SUPPLY_STATUS_NOT_CHARGING) ||
+				charge_done)
+				prime_cc = true;
+			#else
 			if (charge_status == POWER_SUPPLY_STATUS_DISCHARGING ||
 				charge_done)
 				prime_cc = true;
+			#endif
 		}
 	} else {
 		if (charge_done) {
@@ -645,7 +651,16 @@ void cap_learning_update(struct cap_learning *cl, int batt_temp,
 			cl->active = false;
 			cl->init_cap_uah = 0;
 		}
-
+		#ifdef OPLUS_FEATURE_CHG_BASIC
+		if ((charge_status == POWER_SUPPLY_STATUS_DISCHARGING || charge_status == POWER_SUPPLY_STATUS_NOT_CHARGING)&&
+				!input_present) {
+			pr_debug("Capacity learning aborted @ battery SOC %d\n",
+				 batt_soc_cp);
+			cl->active = false;
+			cl->init_cap_uah = 0;
+			prime_cc = true;
+		}
+		#else
 		if (charge_status == POWER_SUPPLY_STATUS_DISCHARGING &&
 				!input_present) {
 			pr_debug("Capacity learning aborted @ battery SOC %d\n",
@@ -654,7 +669,7 @@ void cap_learning_update(struct cap_learning *cl, int batt_temp,
 			cl->init_cap_uah = 0;
 			prime_cc = true;
 		}
-
+		#endif
 		if (charge_status == POWER_SUPPLY_STATUS_NOT_CHARGING &&
 				!cl->dt.cl_wt_enable) {
 			if (qnovo_en && input_present) {

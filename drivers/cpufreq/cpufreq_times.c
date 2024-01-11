@@ -25,6 +25,10 @@
 #include <linux/spinlock.h>
 #include <linux/threads.h>
 
+#ifdef CONFIG_OPLUS_FEATURE_MIDAS
+#include <linux/oplus_midas.h>
+#endif
+
 #define UID_HASH_BITS 10
 
 static DECLARE_HASHTABLE(uid_hash_table, UID_HASH_BITS);
@@ -424,6 +428,9 @@ void cpufreq_acct_update_power(struct task_struct *p, u64 cputime)
 		uid_entry->time_in_state[state] += cputime;
 	spin_unlock_irqrestore(&uid_lock, flags);
 
+#ifdef CONFIG_OPLUS_FEATURE_MIDAS
+	midas_record_task_times(uid, cputime, p, state);
+#endif
 	rcu_read_lock();
 	uid_entry = find_uid_entry_rcu(uid);
 	if (!uid_entry) {

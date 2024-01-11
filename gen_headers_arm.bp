@@ -109,6 +109,7 @@ gen_headers_out_arm = [
     "drm/via_drm.h",
     "drm/virtgpu_drm.h",
     "drm/vmwgfx_drm.h",
+    "drm/msm_drm_iris.h",
     "linux/acct.h",
     "linux/adb.h",
     "linux/adfs_fs.h",

@@ -6,6 +6,14 @@
 #ifndef __QG_CORE_H__
 #define __QG_CORE_H__
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+/* Yichun.Chen PSW.BSP.CHG  2018-05-04  Add for debug */
+#define qg_debug(fmt, ...) \
+        printk(KERN_NOTICE "[OPLUS_CHG][%s]"fmt, __func__, ##__VA_ARGS__)
+
+#define qg_err(fmt, ...) \
+        printk(KERN_ERR "[OPLUS_CHG][%s]"fmt, __func__, ##__VA_ARGS__)
+#endif
 #include <linux/kernel.h>
 #include "fg-alg.h"
 #include "qg-defs.h"
@@ -118,6 +126,9 @@ struct qpnp_qg {
 
 	/* local data variables */
 	u32			batt_id_ohm;
+	#ifdef OPLUS_FEATURE_CHG_BASIC
+	u32			batt_id_kohm;
+	#endif
 	struct qg_kernel_data	kdata;
 	struct qg_user_data	udata;
 	struct power_supply	*batt_psy;
@@ -143,6 +154,16 @@ struct qpnp_qg {
 	bool			charge_full;
 	bool			force_soc;
 	bool			fvss_active;
+#ifndef OPLUS_FEATURE_CHG_BASIC
+	bool			enable_qpnp_qg;
+#endif
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	bool			adc_compensation_enabled;
+#endif
+#ifdef OPLUS_FEATURE_CHG_BASIC
+/* BSP.CHG.Basic, 2021/03/07, add  Batt_NTC for small board NTC ADC flag */
+        bool                    oplus_small_board_temp;
+#endif
 	bool			tcss_active;
 	bool			bass_active;
 	bool			first_profile_load;
@@ -164,6 +185,9 @@ struct qpnp_qg {
 	int			max_fcc_limit_ma;
 	int			bsoc_bass_entry;
 	int			qg_v_ibat;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	int			compensation_impedance;
+#endif
 	int			qg_charge_counter;
 	u32			fifo_done_count;
 	u32			wa_flags;
@@ -182,7 +206,10 @@ struct qpnp_qg {
 	unsigned long		suspend_time;
 	struct iio_channel	*batt_therm_chan;
 	struct iio_channel	*batt_id_chan;
-
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	struct iio_channel	*parallel_isense_chan;
+	bool                    qpnp_qg_feture;
+#endif
 	/* soc params */
 	int			catch_up_soc;
 	int			maint_soc;
@@ -207,6 +234,15 @@ struct qpnp_qg {
 	struct cycle_counter	*counter;
 	/* ttf */
 	struct ttf		*ttf;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+    /* Yichun.Chen  PSW.BSP.CHG  2018-06-13  avoid when reboot soc reduce 1% */
+        int         skip_scale_soc_count;
+#endif
+#ifdef OPLUS_FEATURE_CHG_BASIC
+    /* Zejin.Yang  BSP.CHG.Basic  2021-04-12  For oplus svooc/vooc chg project*/
+        int         asic_with_internal_gauge;
+#endif
+
 };
 
 struct ocv_all {

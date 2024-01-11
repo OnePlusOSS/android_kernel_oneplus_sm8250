@@ -711,10 +711,19 @@ config DEFERRED_STRUCT_PAGE_INIT
 	  lifetime of the system until these kthreads finish the
 	  initialisation.
 
+config PAGE_IDLE_FLAG
+	bool "Add PG_idle and PG_young flags"
+	default y
+	help
+	  This feature adds PG_idle and PG_young flags in 'struct page'.  PTE
+	  Accessed bit writers can set the state of the bit in the flags to let
+	  other PTE Accessed bit readers don't disturbed.
+
 config IDLE_PAGE_TRACKING
 	bool "Enable idle page tracking"
 	depends on SYSFS && MMU
 	select PAGE_EXTENSION if !64BIT
+	select PAGE_IDLE_FLAG
 	help
 	  This feature allows to estimate the amount of user pages that have
 	  not been touched during a given period of time. This information can
@@ -858,6 +867,19 @@ config GUP_BENCHMARK
 config ARCH_HAS_PTE_SPECIAL
 	bool
 
+source "mm/damon/Kconfig"
+
+# multi-gen LRU {
+config LRU_GEN
+	bool "Multi-Gen LRU"
+
+config LRU_GEN_ENABLED
+	bool "Disable by default, Need switch by sysfs control"
+
+config LRU_GEN_STATS
+	bool "Full stats for debugging"
+# }
+
 endmenu
 
 config PROCESS_RECLAIM
@@ -876,6 +898,87 @@ config PROCESS_RECLAIM
 
 	 Any other value is ignored.
 
+#ifdef OPLUS_FEATURE_HEALTHINFO
+source "mm/healthinfo/Kconfig"
+#endif /* OPLUS_FEATURE_HEALTHINFO */
+
+#ifdef OPLUS_FEATURE_MEMORY_ISOLATE
+source "mm/memory_isolate/Kconfig"
+#endif /*OPLUS_FEATURE_MEMORY_ISOLATE*/
+
+#ifdef OPLUS_FEATURE_MULTI_KSWAPD
+source "mm/multi_kswapd/Kconfig"
+#endif /*OPLUS_FEATURE_MULTI_KSWAPD*/
+
+# if defined(OPLUS_FEATURE_PROCESS_RECLAIM)
+# inactive pages only
+config PROCESS_RECLAIM_ENHANCE
+	bool "Enable process reclaim enchance"
+	depends on PROCESS_RECLAIM
+	default y
+	help
+	 It allows to reclaim different type pages of the process by
+	 /proc/process_reclaim.
+
+	 (echo inactive_file > /proc/PID/reclaim) reclaims inactive file-backed
+		pages only.
+	 (echo inactive_anon > /proc/PID/reclaim) reclaims inactive anonymous
+		pages only.
+	 (echo inactive > /proc/PID/reclaim) reclaims inactive file-backed and
+		anonymous pages only.
+	 Any other vaule, please reference PROCESS_RECLAIM.
+#endif /* OPLUS_FEATURE_PROCESS_RECLAIM */
+
+#ifdef OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY
+config VIRTUAL_RESERVE_MEMORY
+	bool "reserved vma for gpu emergency mmap"
+	default y
+	help
+	 support reserved vma for gpu emergency mmap.
+#endif
+#ifdef OPLUS_FEATURE_MULTI_FREEAREA
+config PHYSICAL_ANTI_FRAGMENTATION
+	bool "Physical memory anti-fragmentation"
+	default y
+	help
+	 Turn on the function of Physical memory anti-fragmentation.
+#endif /* OPLUS_FEATURE_MULTI_FREEAREA */
+
+config KSHRINK_SLABD
+	bool "enable async shrink_lruvecd"
+	default n
+	help
+	  enable async shrink_lruvecd
+
+
+config DYNAMIC_TUNNING_SWAPPINESS
+	bool "tunning swappiess depends on file_pages size"
+	default n
+	help
+	  tunning swappiess depends on file_pages size
+
+config SHRINK_LRU_TRYLOCK
+	bool "enable async shrink_lruvecd"
+	default n
+	help
+	  enable async shrink_lruvecd
+
+config OOM_REAPER_RECLAIM_MEMORY
+	bool "enable oom_reaper to reclaim memory"
+	default n
+	help
+	  enable oom_reaper to reclaim memory
+config OPLUS_UXMEM_OPT
+        bool "enable uxmem_opt"
+        depends on OPLUS_FEATURE_SCHED_ASSIST && FG_TASK_UID
+        default n
+        help
+          enable uxmem_opt
+
+#ifdef OPLUS_FEATURE_MEMLEAK_DETECT
+source "mm/malloc_track/Kconfig"
+source "mm/task_mem/Kconfig"
+#endif
 config FORCE_ALLOC_FROM_DMA_ZONE
 	bool "Force certain memory allocators to always return ZONE_DMA32 memory"
 	depends on ZONE_DMA32
@@ -885,3 +988,25 @@ config FORCE_ALLOC_FROM_DMA_ZONE
 	  always using ZONE_DMA32 memory.
 
 	  If unsure, say "n".
+config LOOK_AROUND
+	bool "look around"
+	default n
+	help
+	  look aroud pages when rmap lru page
+config MAPPED_PROTECT
+	bool "mapped protect"
+	default n
+	help
+	  protect multi-mapped pages
+
+config PROACTIVE_COMPACT
+	tristate "trigger memory compact based on fragmentation index"
+	default n
+	help
+	  trigger memory compact based on fragmentation index
+config OPLUS_DYNAMIC_READAHEAD
+	bool "dynamic page fault read-ahead size"
+	depends on OPLUS_FEATURE_SCHED_ASSIST && FG_TASK_UID
+	default n
+	help
+	  This feature dynamically set read-ahead size for performance.

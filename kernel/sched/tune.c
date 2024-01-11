@@ -9,6 +9,9 @@
 #include <trace/events/sched.h>
 
 #include "sched.h"
+#ifdef OPLUS_FEATURE_POWER_CPUFREQ
+#include "walt.h"
+#endif
 
 bool schedtune_initialized = false;
 extern struct reciprocal_value schedtune_spc_rdiv;
@@ -113,6 +116,14 @@ struct schedtune {
 	/* Hint to bias scheduling of tasks on that SchedTune CGroup
 	 * towards idle CPUs */
 	int prefer_idle;
+#ifdef OPLUS_FEATURE_POWER_CPUFREQ
+	unsigned int window_policy;
+#endif
+#ifdef OPLUS_FEATURE_POWER_EFFICIENCY
+	bool discount_wait_time;
+	bool top_task_filter;
+	bool ed_task_filter;
+#endif
 };
 
 static inline struct schedtune *css_st(struct cgroup_subsys_state *css)
@@ -147,6 +158,14 @@ root_schedtune = {
 	.sched_boost_enabled = true,
 	.colocate = false,
 	.colocate_update_disabled = false,
+#endif
+#ifdef OPLUS_FEATURE_POWER_CPUFREQ
+	.window_policy = 3,
+#endif
+#ifdef OPLUS_FEATURE_POWER_EFFICIENCY
+	.discount_wait_time = false,
+	.top_task_filter = false,
+	.ed_task_filter = false,
 #endif
 	.prefer_idle = 0,
 };
@@ -457,10 +476,11 @@ static int sched_colocate_write(struct cgroup_subsys_state *css,
 				struct cftype *cft, u64 colocate)
 {
 	struct schedtune *st = css_st(css);
-
+#ifndef OPLUS_FEATURE_POWER_CPUFREQ
+//qiziyu@SH. add schedtune.colocation tuning. 2020.09.30
 	if (st->colocate_update_disabled)
 		return -EPERM;
-
+#endif /* OPLUS_FEATURE_POWER_CPUFREQ */
 	st->colocate = !!colocate;
 	st->colocate_update_disabled = true;
 	return 0;
@@ -701,6 +721,119 @@ boost_write(struct cgroup_subsys_state *css, struct cftype *cft,
 	return 0;
 }
 
+#ifdef OPLUS_FEATURE_POWER_CPUFREQ
+unsigned int schedtune_window_policy(struct task_struct *p)
+{
+	struct schedtune *st;
+	unsigned int window_policy;
+
+	if (unlikely(!schedtune_initialized))
+		return 0;
+
+	rcu_read_lock();
+	st = task_schedtune(p);
+	window_policy = st->window_policy;
+	rcu_read_unlock();
+
+	return window_policy;
+}
+
+unsigned int uclamp_discount_wait_time(struct task_struct *p)
+{
+	struct schedtune *st;
+	unsigned int ret;
+
+	if (unlikely(!schedtune_initialized))
+		return 0;
+
+	rcu_read_lock();
+	st = task_schedtune(p);
+	ret = st->discount_wait_time;
+	rcu_read_unlock();
+
+	return ret;
+}
+
+unsigned int uclamp_top_task_filter(struct task_struct *p)
+{
+	struct schedtune *st;
+	unsigned int ret;
+
+	if (unlikely(!schedtune_initialized))
+		return 0;
+
+	rcu_read_lock();
+	st = task_schedtune(p);
+	ret = st->top_task_filter;
+	rcu_read_unlock();
+
+	return ret;
+}
+
+unsigned int uclamp_ed_task_filter(struct task_struct *p)
+{
+	struct schedtune *st;
+	unsigned int ret;
+
+	if (unlikely(!schedtune_initialized))
+		return 0;
+
+	rcu_read_lock();
+	st = task_schedtune(p);
+	ret = st->ed_task_filter;
+	rcu_read_unlock();
+
+	return ret;
+}
+
+static u64
+window_policy_read(struct cgroup_subsys_state *css,
+		struct cftype *cft)
+{
+	struct schedtune *st = css_st(css);
+	return st->window_policy;
+}
+
+static int
+window_policy_write(struct cgroup_subsys_state *css, struct cftype *cft,
+		u64 window_policy)
+{
+	struct schedtune *st = css_st(css);
+
+	if (window_policy >= WINDOW_STATS_INVALID_POLICY)
+		return -EINVAL;
+
+	st->window_policy = window_policy;
+
+	return 0;
+}
+#endif
+
+#ifdef OPLUS_FEATURE_POWER_EFFICIENCY
+#define PE_FUNC(NAME) \
+static u64 NAME##_read(struct cgroup_subsys_state *css, \
+		struct cftype *cft) \
+{ \
+	struct schedtune *st = css_st(css); \
+	return st->NAME; \
+} \
+ \
+static int \
+NAME##_write(struct cgroup_subsys_state *css, struct cftype *cft, \
+		u64 NAME) \
+{ \
+	struct schedtune *st = css_st(css); \
+ \
+	st->NAME = !!NAME; \
+ \
+	return 0; \
+}
+
+PE_FUNC(discount_wait_time)
+PE_FUNC(top_task_filter)
+PE_FUNC(ed_task_filter)
+#endif /* OPLUS_FEATURE_POWER_EFFICIENCY */
+
 static struct cftype files[] = {
 #ifdef CONFIG_SCHED_WALT
 	{
@@ -724,6 +857,30 @@ static struct cftype files[] = {
 		.read_u64 = prefer_idle_read,
 		.write_u64 = prefer_idle_write,
 	},
+#ifdef OPLUS_FEATURE_POWER_CPUFREQ
+	{
+		.name = "window_policy",
+		.read_u64 = window_policy_read,
+		.write_u64 = window_policy_write,
+	},
+#endif
+#ifdef OPLUS_FEATURE_POWER_EFFICIENCY
+	{
+		.name = "discount_wait_time",
+		.read_u64 = discount_wait_time_read,
+		.write_u64 = discount_wait_time_write,
+	},
+	{
+		.name = "top_task_filter",
+		.read_u64 = top_task_filter_read,
+		.write_u64 = top_task_filter_write,
+	},
+	{
+		.name = "ed_task_filter",
+		.read_u64 = ed_task_filter_read,
+		.write_u64 = ed_task_filter_write,
+	},
+#endif /* OPLUS_FEATURE_POWER_EFFICIENCY */
 	{ }	/* terminate */
 };
 

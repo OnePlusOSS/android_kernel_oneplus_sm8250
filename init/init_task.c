@@ -184,6 +184,9 @@ struct task_struct init_task
 #ifdef CONFIG_SECURITY
 	.security	= NULL,
 #endif
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+	.ux_entry = LIST_HEAD_INIT(init_task.ux_entry),
+#endif
 };
 EXPORT_SYMBOL(init_task);
 

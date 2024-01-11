@@ -56,6 +56,21 @@
 #include <asm/siginfo.h>
 #include <asm/cacheflush.h>
 #include "audit.h"	/* audit_signal_info() */
+#ifdef OPLUS_FEATURE_HANS_FREEZE
+#include <linux/hans.h>
+#endif /*OPLUS_FEATURE_HANS_FREEZE*/
+
+#ifdef OPLUS_BUG_STABILITY
+#include <soc/oplus/system/oplus_process.h>
+#endif
+
+#if defined(OPLUS_FEATURE_SCHED_ASSIST)
+#include <linux/sched_assist/sched_assist_common.h>
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
+
+#ifdef CONFIG_OPLUS_FEATURE_SIGKILL_DIAGNOSIS
+#include <linux/sigkill_diagnosis/sigkill_diagnosis.h>
+#endif /* CONFIG_OPLUS_FEATURE_SIGKILL_DIAGNOSIS */
 
 /*
  * SLAB caches for signal bits.
@@ -1093,10 +1108,40 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 	struct sigqueue *q;
 	int override_rlimit;
 	int ret = 0, result;
+#if defined(VENDOR_EDIT) && defined(CONFIG_ELSA_STUB)
+	struct process_event_data pe_data;
+#endif
 
 	assert_spin_locked(&t->sighand->siglock);
 
 	result = TRACE_SIGNAL_IGNORED;
+
+#ifdef OPLUS_BUG_STABILITY
+        if(1) {
+                /*add the SIGKILL print log for some debug*/
+                if((sig == SIGHUP || sig == 33 || sig == SIGKILL || sig == SIGSTOP || sig == SIGABRT || sig == SIGTERM || sig == SIGCONT) && is_key_process(t)) {
+                        //#ifdef OPLUS_BUG_STABILITY
+                        //dump_stack();
+                        //#endif
+                        printk("Some other process %d:%s want to send sig:%d to pid:%d tgid:%d comm:%s\n", current->pid, current->comm,sig, t->pid, t->tgid, t->comm);
+                }
+#ifdef CONFIG_OPLUS_SPECIAL_BUILD
+                else if (sig == SIGSTOP){
+                    printk("Process %d:%s want to send SIGSTOP to %d:%s\n", current->pid, current->comm, t->pid, t->comm);
+                }
+#endif
+        }
+#endif
+
+#if defined(VENDOR_EDIT) && defined(CONFIG_ELSA_STUB)
+	if (sig == SIGKILL && (freezing(t) || frozen(t)) && cgroup_freezing(t)) {
+		pe_data.pid = task_pid_nr(t);
+		pe_data.uid = task_uid(t);
+		pe_data.reason = sig;
+		process_event_notifier_call_chain_atomic(PROCESS_EVENT_SIGNAL_FROZEN, &pe_data);
+	}
+#endif
+
 	if (!prepare_signal(sig, t,
 			from_ancestor_ns || (info == SEND_SIG_PRIV) || (info == SEND_SIG_FORCED)))
 		goto ret;
@@ -1269,7 +1314,31 @@ int do_send_sig_info(int sig, struct siginfo *info, struct task_struct *p,
 {
 	unsigned long flags;
 	int ret = -ESRCH;
+#ifdef CONFIG_OPLUS_FEATURE_SIGKILL_DIAGNOSIS
+	record_sigkill_reason(NULL, sig, current, p);
+#endif
 
+#ifdef OPLUS_FEATURE_HANS_FREEZE
+	if (is_frozen_tg(p)  /*signal receiver thread group is frozen?*/
+		&& (sig == SIGKILL || sig == SIGTERM || sig == SIGABRT || sig == SIGQUIT)) {
+		if (hans_report(SIGNAL, task_tgid_nr(current), task_uid(current).val, task_tgid_nr(p), task_uid(p).val, "signal", -1) == HANS_ERROR) {
+			printk(KERN_ERR "HANS: report signal-freeze failed, sig = %d, caller = %d, target_uid = %d\n", sig, task_tgid_nr(current), task_uid(p).val);
+		}
+	}
+#endif /*OPLUS_FEATURE_HANS_FREEZE*/
+
+#if defined(CONFIG_CFS_BANDWIDTH)
+        if (is_belong_cpugrp(p)  /*signal receiver thread group is cpuctl?*/
+                && (sig == SIGKILL || sig == SIGTERM || sig == SIGABRT || sig == SIGQUIT)) {
+				if (hans_report(SIGNAL, task_tgid_nr(current), task_uid(current).val, task_tgid_nr(p), task_uid(p).val, "signal", -1) == HANS_ERROR) {
+                        printk(KERN_ERR "HANS: report signal-cpuctl failed, sig = %d, caller = %d, target_uid = %d\n", sig, task_tgid_nr(current), task_uid(p).val);
+                }
+        }
+#endif
+
+#if defined(OPLUS_FEATURE_SCHED_ASSIST)
+	oplus_boost_kill_signal(sig, current, p);
+#endif
 	if (lock_task_sighand(p, &flags)) {
 		ret = send_signal(sig, info, p, type);
 		unlock_task_sighand(p, &flags);
@@ -1375,6 +1444,8 @@ struct sighand_struct *__lock_task_sighand(struct task_struct *tsk,
 	return sighand;
 }
 
+#define REAPER_SZ (SZ_1M * 32 / PAGE_SIZE)
+
 /*
  * send signal info to all the members of a group
  */
@@ -1390,8 +1461,23 @@ int group_send_sig_info(int sig, struct siginfo *info, struct task_struct *p,
 	if (!ret && sig) {
 		check_panic_on_foreground_kill(p);
 		ret = do_send_sig_info(sig, info, p, type);
+#ifdef CONFIG_OOM_REAPER_RECLAIM_MEMORY
+		if (!ret && sig == SIGKILL) {
+			unsigned long pages = 0;
+
+			task_lock(p);
+			if (p->mm)
+				pages = get_mm_counter(p->mm, MM_ANONPAGES) +
+					get_mm_counter(p->mm, MM_SWAPENTS);
+			task_unlock(p);
+
+			if (pages > REAPER_SZ)
+				add_to_oom_reaper(p);
+		}
+#endif /* CONFIG_OOM_REAPER_RECLAIM_MEMORY */
 		if (capable(CAP_KILL) && sig == SIGKILL) {
-			if (!strcmp(current->comm, ULMK_MAGIC))
+			if (!strcmp(current->comm, ULMK_MAGIC) ||
+			    !strcmp(current->comm, ATHENA_KILLER_MAGIC))
 				add_to_oom_reaper(p);
 			ulmk_update_last_kill();
 		}

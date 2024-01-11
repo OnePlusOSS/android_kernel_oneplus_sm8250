@@ -349,7 +349,7 @@ int get_pkt_index(struct cvp_hal_session_cmd_pkt *hdr)
 
 	return -EINVAL;
 }
-
+#ifndef OPLUS_FEATURE_CAMERA_COMMON
 int set_feature_bitmask(int pkt_idx, unsigned long *bitmask)
 {
 	if (!bitmask) {
@@ -375,7 +375,7 @@ int set_feature_bitmask(int pkt_idx, unsigned long *bitmask)
 	dprintk(CVP_ERR, "%s: invalid pkt_idx %d\n", __func__, pkt_idx);
 	return -EINVAL;
 }
-
+#endif
 int get_hfi_version(void)
 {
 	struct msm_cvp_core *core;
@@ -825,18 +825,30 @@ static int __read_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 		 * so that iris reads the updated header values
 		 */
 		mb();
-		*pb_tx_req_is_set = 0;
-		if (write_idx != queue->qhdr_write_idx) {
-			queue->qhdr_rx_req = 0;
-		} else {
-			spin_unlock(&qinfo->hfi_lock);
-			dprintk(CVP_DBG,
-				"%s queue is empty, rx_req = %u, tx_req = %u, read_idx = %u\n",
-				receive_request ? "message" : "debug",
-				queue->qhdr_rx_req, queue->qhdr_tx_req,
-				queue->qhdr_read_idx);
-			return -ENODATA;
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+		*pb_tx_req_is_set = 1;
+		if(write_idx != queue->qhdr_write_idx) {
+				queue->qhdr_rx_req = 0;
 		}
+		else {
+				spin_unlock(&qinfo->hfi_lock);
+				dprintk(CVP_DBG,
+						"%s queue is empty, rx_req = %u, tx_req = %u, read_idx = %u\n",
+						receive_request ? "message" : "debug",
+						queue->qhdr_rx_req, queue->qhdr_tx_req,
+						queue->qhdr_read_idx);
+				return -ENODATA;
+		}
+#else
+		*pb_tx_req_is_set = 0;
+		spin_unlock(&qinfo->hfi_lock);
+		dprintk(CVP_DBG,
+			"%s queue is empty, rx_req = %u, tx_req = %u, read_idx = %u\n",
+			receive_request ? "message" : "debug",
+			queue->qhdr_rx_req, queue->qhdr_tx_req,
+			queue->qhdr_read_idx);
+		return -ENODATA;
+#endif
 	}
 
 	read_ptr = (u32 *)((qinfo->q_array.align_virtual_addr) +
@@ -4534,7 +4546,11 @@ static void power_off_iris2(struct iris_hfi_device *device)
 static inline int __resume(struct iris_hfi_device *device)
 {
 	int rc = 0;
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	u32 flags = 0, reg_gdsc, reg_cbcr;
+#else
 	u32 flags = 0;
+#endif
 
 	if (!device) {
 		dprintk(CVP_ERR, "Invalid params: %pK\n", device);
@@ -4552,6 +4568,13 @@ static inline int __resume(struct iris_hfi_device *device)
 		dprintk(CVP_ERR, "Failed to power on cvp\n");
 		goto err_iris_power_on;
 	}
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	reg_gdsc = __read_register(device, CVP_CC_MVS1C_GDSCR);
+	reg_cbcr = __read_register(device, CVP_CC_MVS1C_CBCR);
+	if (!(reg_gdsc & 0x80000000) || (reg_cbcr & 0x80000000))
+		dprintk(CVP_ERR, "CVP power on failed gdsc %x cbcr %x\n",
+					reg_gdsc, reg_cbcr);
+#endif
 
 	/* Reboot the firmware */
 	rc = __tzbsp_set_cvp_state(TZ_SUBSYS_STATE_RESUME);

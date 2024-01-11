@@ -136,8 +136,8 @@ all.config
 # fetched Android config fragments
 kernel/configs/android-*.cfg
 
-# vendor device tree directories
-arch/arm64/boot/dts/vendor/
-
 # Tech package directories
 techpack/
+
+# ignore net/oplus_modules
+net/oplus_modules

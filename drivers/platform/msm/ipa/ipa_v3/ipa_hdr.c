@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2019,2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "ipa_i.h"
@@ -97,8 +98,10 @@ static int ipa3_hdr_proc_ctx_to_hw_format(struct ipa_mem_buffer *mem,
 				!entry->offset_entry ||
 				entry->hdr->hdr_len == 0 ||
 				entry->hdr->hdr_len >
-				ipa_hdr_bin_sz[IPA_HDR_BIN_MAX - 1]))
+				ipa_hdr_bin_sz[IPA_HDR_BIN_MAX - 1])){
+			IPAERR_RL("Found invalid hdr entry");
 			return -EINVAL;
+		}
 
 		ret = ipahal_cp_proc_ctx_to_hw_buff(entry->type, mem->base,
 				entry->offset_entry->offset,
@@ -131,6 +134,7 @@ static int ipa3_generate_hdr_proc_ctx_hw_tbl(u64 hdr_sys_addr,
 {
 	u64 hdr_base_addr;
 	gfp_t flag = GFP_KERNEL;
+	int ret;
 
 	mem->size = (ipa3_ctx->hdr_proc_ctx_tbl.end) ? : 4;
 
@@ -159,7 +163,12 @@ alloc:
 	memset(aligned_mem->base, 0, aligned_mem->size);
 	hdr_base_addr = (ipa3_ctx->hdr_tbl_lcl) ? IPA_MEM_PART(apps_hdr_ofst) :
 		hdr_sys_addr;
-	return ipa3_hdr_proc_ctx_to_hw_format(aligned_mem, hdr_base_addr);
+	ret = ipa3_hdr_proc_ctx_to_hw_format(aligned_mem, hdr_base_addr);
+	if(ret){
+	    dma_free_coherent(ipa3_ctx->pdev, mem->size, mem->base, mem->phys_base);
+	    return ret;
+	}
+	return ret;
 }
 
 /**

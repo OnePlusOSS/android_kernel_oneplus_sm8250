@@ -12,6 +12,7 @@
 #ifndef __LINUX_LEDS_H_INCLUDED
 #define __LINUX_LEDS_H_INCLUDED
 
+#include <dt-bindings/leds/common.h>
 #include <linux/device.h>
 #include <linux/kernfs.h>
 #include <linux/list.h>
@@ -22,6 +23,8 @@
 #include <linux/workqueue.h>
 
 struct device;
+struct led_pattern;
+struct device_node;
 /*
  * LED Core
  */
@@ -31,6 +34,34 @@ enum led_brightness {
 	LED_ON		= 1,
 	LED_HALF	= 127,
 	LED_FULL	= 255,
+};
+
+struct led_init_data {
+	/* device fwnode handle */
+	struct fwnode_handle *fwnode;
+	/*
+	 * default <color:function> tuple, for backward compatibility
+	 * with in-driver hard-coded LED names used as a fallback when
+	 * DT "label" property is absent; it should be set to NULL
+	 * in new LED class drivers.
+	 */
+	const char *default_label;
+	/*
+	 * string to be used for devicename section of LED class device
+	 * either for label based LED name composition path or for fwnode
+	 * based when devname_mandatory is true
+	 */
+	const char *devicename;
+	/*
+	 * indicates if LED name should always comprise devicename section;
+	 * only LEDs exposed by drivers of hot-pluggable devices should
+	 * set it to true
+	 */
+	bool devname_mandatory;
+};
+
+struct led_hw_trigger_type {
+	int dummy;
 };
 
 struct led_classdev {
@@ -215,6 +246,18 @@ extern int led_set_brightness_sync(struct led_classdev *led_cdev,
 extern int led_update_brightness(struct led_classdev *led_cdev);
 
 /**
+ * led_get_default_pattern - return default pattern
+ *
+ * @led_cdev: the LED to get default pattern for
+ * @size:     pointer for storing the number of elements in returned array,
+ *            modified only if return != NULL
+ *
+ * Return:    Allocated array of integers with default pattern from device tree
+ *            or NULL.  Caller is responsible for kfree().
+ */
+u32 *led_get_default_pattern(struct led_classdev *led_cdev, unsigned int *size);
+
+/**
  * led_sysfs_disable - disable LED sysfs interface
  * @led_cdev: the LED to set
  *
@@ -229,6 +272,21 @@ extern void led_sysfs_disable(struct led_classdev *led_cdev);
  * Enable the led_cdev's sysfs interface.
  */
 extern void led_sysfs_enable(struct led_classdev *led_cdev);
+
+/**
+ * led_compose_name - compose LED class device name
+ * @dev: LED controller device object
+ * @init_data: the LED class device initialization data
+ * @led_classdev_name: composed LED class device name
+ *
+ * Create LED class device name basing on the provided init_data argument.
+ * The name can have <devicename:color:function> or <color:function>.
+ * form, depending on the init_data configuration.
+ *
+ * Returns: 0 on success or negative error value on failure
+ */
+int led_compose_name(struct device *dev, struct led_init_data *init_data,
+		     char *led_classdev_name);
 
 /**
  * led_sysfs_is_disabled - check if LED sysfs interface is disabled
@@ -407,6 +465,15 @@ struct led_platform_data {
 	struct led_info	*leds;
 };
 
+struct led_properties {
+	u32		color;
+	bool		color_present;
+	const char	*function;
+	u32		func_enum;
+	bool		func_enum_present;
+	const char	*label;
+};
+
 struct gpio_desc;
 typedef int (*gpio_blink_set_t)(struct gpio_desc *desc, int state,
 				unsigned long *delay_on,
@@ -472,6 +539,36 @@ extern void led_classdev_notify_brightness_hw_changed(
 #else
 static inline void led_classdev_notify_brightness_hw_changed(
 	struct led_classdev *led_cdev, enum led_brightness brightness) { }
+#endif
+
+/**
+ * struct led_pattern - pattern interval settings
+ * @delta_t: pattern interval delay, in milliseconds
+ * @brightness: pattern interval brightness
+ */
+struct led_pattern {
+	u32 delta_t;
+	int brightness;
+};
+
+enum led_audio {
+	LED_AUDIO_MUTE,		/* master mute LED */
+	LED_AUDIO_MICMUTE,	/* mic mute LED */
+	NUM_AUDIO_LEDS
+};
+
+#if IS_ENABLED(CONFIG_LEDS_TRIGGER_AUDIO)
+enum led_brightness ledtrig_audio_get(enum led_audio type);
+void ledtrig_audio_set(enum led_audio type, enum led_brightness state);
+#else
+static inline enum led_brightness ledtrig_audio_get(enum led_audio type)
+{
+	return LED_OFF;
+}
+static inline void ledtrig_audio_set(enum led_audio type,
+				     enum led_brightness state)
+{
+}
 #endif
 
 #endif		/* __LINUX_LEDS_H_INCLUDED */

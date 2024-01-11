@@ -26,7 +26,7 @@
 static bool nf_dup_ipv4_route(struct net *net, struct sk_buff *skb,
 			      const struct in_addr *gw, int oif)
 {
-	const struct iphdr *iph = ip_hdr(skb);
+        const  struct iphdr *iph = ip_hdr(skb);
 	struct rtable *rt;
 	struct flowi4 fl4;
 

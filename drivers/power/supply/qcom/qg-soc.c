@@ -297,7 +297,16 @@ static int qg_process_tcss_soc(struct qpnp_qg *chip, int sys_soc)
 					QG_MAX_SOC,
 					qg_iterm_ua,
 					chip->prev_fifo_i_ua);
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	if (chip->asic_with_internal_gauge){
+		if(chip->prev_fifo_i_ua >= qg_iterm_ua)
+			soc_ibat = QG_MAX_SOC;
+	}
+#endif
+
 	soc_ibat = CAP(QG_MIN_SOC, QG_MAX_SOC, soc_ibat);
+
+#ifndef OPLUS_FEATURE_CHG_BASIC
 
 	wt_ibat = qg_linear_interpolate(1, chip->soc_tcss_entry,
 					10000, 10000, soc_ibat);
@@ -307,6 +316,20 @@ static int qg_process_tcss_soc(struct qpnp_qg *chip, int sys_soc)
 	chip->soc_tcss = DIV_ROUND_CLOSEST((soc_ibat * wt_ibat) +
 					(wt_sys * sys_soc), 10000);
 	chip->soc_tcss = CAP(QG_MIN_SOC, QG_MAX_SOC, chip->soc_tcss);
+#else
+	if (chip->asic_with_internal_gauge){
+		chip->soc_tcss = soc_ibat;
+	}else{
+		wt_ibat = qg_linear_interpolate(1, chip->soc_tcss_entry,
+						10000, 10000, soc_ibat);
+		wt_ibat = CAP(QG_MIN_SOC, QG_MAX_SOC, wt_ibat);
+		wt_sys = 10000 - wt_ibat;
+
+		chip->soc_tcss = DIV_ROUND_CLOSEST((soc_ibat * wt_ibat) +
+						(wt_sys * sys_soc), 10000);
+		chip->soc_tcss = CAP(QG_MIN_SOC, QG_MAX_SOC, chip->soc_tcss);
+	}
+#endif
 
 	qg_dbg(chip, QG_DEBUG_SOC,
 		"TCSS: fifo_i=%d prev_fifo_i=%d ibatt_tcss_entry=%d qg_term=%d soc_tcss_entry=%d sys_soc=%d soc_ibat=%d wt_ibat=%d wt_sys=%d soc_tcss=%d\n",
@@ -384,7 +407,20 @@ int qg_adjust_sys_soc(struct qpnp_qg *chip)
 	/* TCSS */
 	chip->sys_soc = qg_process_tcss_soc(chip, chip->sys_soc);
 
-	if (chip->sys_soc == QG_MAX_SOC) {
+#ifdef OPLUS_FEATURE_CHG_BASIC
+		if (chip->sys_soc <= 50 && chip->asic_with_internal_gauge) { /* 0.5% */
+			/* Hold SOC to 1% of VBAT has not dropped below cutoff */
+			rc = qg_get_battery_voltage(chip, &vbat_uv);
+			if (!rc && vbat_uv >= (vcutoff_uv + VBAT_LOW_HYST_UV))
+				soc = 1;
+			else
+				soc = 0;
+		} 
+		else if (chip->sys_soc == QG_MAX_SOC) {
+#else
+		if (chip->sys_soc == QG_MAX_SOC) {
+#endif
+
 		soc = FULL_SOC;
 	} else if (chip->sys_soc >= (QG_MAX_SOC - 100)) {
 		/* Hold SOC to 100% if we are dropping from 100 to 99 */
@@ -462,6 +498,17 @@ static void get_next_update_time(struct qpnp_qg *chip)
 static bool is_scaling_required(struct qpnp_qg *chip)
 {
 	bool input_present = is_input_present(chip);
+#ifdef OPLUS_FEATURE_CHG_BASIC
+		int ibat = 0;
+		int rc;
+	if (chip->asic_with_internal_gauge){
+		rc = qg_get_battery_current(chip, &ibat);
+		if(!rc){
+			if (chip->catch_up_soc < chip->msoc && is_usb_present(chip) && ibat < 0)
+			return false;	   //charger inserted and has charging current, msoc don't drop.
+		}
+	}
+#endif
 
 	if (!chip->profile_loaded)
 		return false;

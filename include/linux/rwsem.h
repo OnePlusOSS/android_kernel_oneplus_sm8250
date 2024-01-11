@@ -22,6 +22,15 @@
 
 struct rw_semaphore;
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+extern void uxchain_rwsem_wake(struct task_struct *tsk,
+	struct rw_semaphore *sem);
+extern void uxchain_rwsem_down(struct rw_semaphore *sem);
+extern void uxchain_rwsem_up(struct rw_semaphore *sem);
+#define PREEMPT_DISABLE_RWSEM 3000000
+#endif
+
 #ifdef CONFIG_RWSEM_GENERIC_SPINLOCK
 #include <linux/rwsem-spinlock.h> /* use a generic implementation */
 #define __RWSEM_INIT_COUNT(name)	.count = RWSEM_UNLOCKED_VALUE
@@ -46,6 +55,10 @@ struct rw_semaphore {
 	/* count for waiters preempt to queue in wait list */
 	long m_count;
 #endif
+#ifdef CONFIG_OPLUS_LOCKING_STRATEGY
+	struct task_struct *ux_dep_task;
+	u64 android_oem_data1[2];
+#endif /* CONFIG_OPLUS_LOCKING_STRATEGY */
 };
 
 /*
@@ -60,6 +73,7 @@ extern struct rw_semaphore *rwsem_down_write_failed(struct rw_semaphore *sem);
 extern struct rw_semaphore *rwsem_down_write_failed_killable(struct rw_semaphore *sem);
 extern struct rw_semaphore *rwsem_wake(struct rw_semaphore *);
 extern struct rw_semaphore *rwsem_downgrade_wake(struct rw_semaphore *sem);
+
 
 /* Include the arch specific part */
 #include <asm/rwsem.h>
@@ -82,7 +96,11 @@ static inline int rwsem_is_locked(struct rw_semaphore *sem)
 #endif
 
 #ifdef CONFIG_RWSEM_SPIN_ON_OWNER
+#ifdef CONFIG_OPLUS_LOCKING_STRATEGY
+#define __RWSEM_OPT_INIT(lockname) , .osq = OSQ_LOCK_UNLOCKED, .owner = NULL, .ux_dep_task = NULL
+#else /* CONFIG_OPLUS_LOCKING_STRATEGY */
 #define __RWSEM_OPT_INIT(lockname) , .osq = OSQ_LOCK_UNLOCKED, .owner = NULL
+#endif /* CONFIG_OPLUS_LOCKING_STRATEGY */
 #else
 #define __RWSEM_OPT_INIT(lockname)
 #endif

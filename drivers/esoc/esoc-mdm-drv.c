@@ -271,6 +271,23 @@ static void esoc_client_link_mdm_crash(struct esoc_clink *esoc_clink)
 	}
 }
 
+static void mdm_force_reset(const struct subsys_desc *mdm_subsys)
+{
+	struct esoc_clink *esoc_clink =
+				container_of(mdm_subsys,
+						struct esoc_clink,
+							subsys);
+	struct mdm_ctrl *mdm = get_esoc_clink_data(esoc_clink);
+
+	esoc_mdm_log("MDM force reset\n");
+
+	if (mdm->pon_ops->soft_reset) {
+		mdm->pon_ops->soft_reset(mdm, true);
+	}
+
+	return;
+}
+
 static void mdm_crash_shutdown(const struct subsys_desc *mdm_subsys)
 {
 	struct esoc_clink *esoc_clink =
@@ -557,6 +574,7 @@ static int mdm_register_ssr(struct esoc_clink *esoc_clink)
 	subsys->ramdump = mdm_subsys_ramdumps;
 	subsys->powerup = mdm_subsys_powerup;
 	subsys->crash_shutdown = mdm_crash_shutdown;
+	subsys->force_reset = mdm_force_reset;
 	return esoc_clink_register_ssr(esoc_clink);
 }
 

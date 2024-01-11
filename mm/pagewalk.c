@@ -3,6 +3,7 @@
 #include <linux/highmem.h>
 #include <linux/sched.h>
 #include <linux/hugetlb.h>
+#include <linux/sched/signal.h>
 
 static int walk_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
@@ -131,6 +132,11 @@ static int walk_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end,
 				break;
 			continue;
 		}
+		if (walk->p4d_entry) {
+			err = walk->p4d_entry(p4d, addr, next, walk);
+			if (err)
+				break;
+		}
 		if (walk->pmd_entry || walk->pte_entry)
 			err = walk_pud_range(p4d, addr, next, walk);
 		if (err)
@@ -157,7 +163,7 @@ static int walk_pgd_range(unsigned long addr, unsigned long end,
 				break;
 			continue;
 		}
-		if (walk->pmd_entry || walk->pte_entry)
+		if (walk->p4d_entry || walk->pmd_entry || walk->pte_entry)
 			err = walk_p4d_range(pgd, addr, next, walk);
 		if (err)
 			break;
@@ -334,6 +340,9 @@ int walk_page_range(unsigned long start, unsigned long end,
 		if (walk->vma || walk->pte_hole)
 			err = __walk_page_range(start, next, walk);
 		if (err)
+			break;
+		if (unlikely(signal_pending(current) &&
+			sigismember(&current->pending.signal, SIGUSR2)))
 			break;
 	} while (start = next, start < end);
 	return err;

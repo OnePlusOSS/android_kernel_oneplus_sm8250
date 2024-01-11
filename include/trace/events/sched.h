@@ -1174,6 +1174,89 @@ TRACE_EVENT(sched_cpu_util,
 		__entry->nr_rtg_high_prio_tasks)
 );
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+TRACE_EVENT(sched_cpu_skip,
+
+	TP_PROTO(struct task_struct *p, bool sysctl_prefer_silver, bool is_ux_task, bool check_freq, bool check_task_util, bool check_cpu_util,
+        bool skip_big_cluster),
+
+	TP_ARGS(p, sysctl_prefer_silver, is_ux_task, check_freq, check_task_util, check_cpu_util, skip_big_cluster),
+
+	TP_STRUCT__entry(
+		__field(int,    pid)
+		__array(char,   comm, TASK_COMM_LEN)
+		__field(bool,   sysctl_prefer_silver)
+		__field(bool,   is_ux_task)
+		__field(bool,   check_freq)
+		__field(bool,   check_task_util)
+		__field(bool,   check_cpu_util)
+		__field(bool,   skip_big_cluster)
+	),
+
+	TP_fast_assign(
+		__entry->pid                    = p ? p->pid : -1;
+		memcpy(__entry->comm, p ? p->comm:"NULL", TASK_COMM_LEN);
+		__entry->sysctl_prefer_silver   = sysctl_prefer_silver;
+		__entry->is_ux_task             = is_ux_task;
+		__entry->check_freq             = check_freq;
+		__entry->check_task_util        = check_task_util;
+		__entry->check_cpu_util         = check_cpu_util;
+		__entry->skip_big_cluster       = skip_big_cluster;
+	),
+
+	TP_printk("pid=%d comm=%s prefer_silver_enabled=%d is_ux_task=%d check_freq=%d check_task_util=%d check_cpu_util=%d skip_big_cluster=%d",
+		__entry->pid, __entry->comm, __entry->sysctl_prefer_silver,
+		__entry->is_ux_task, __entry->check_freq,
+		__entry->check_task_util, __entry->check_cpu_util,
+		__entry->skip_big_cluster)
+);
+
+TRACE_EVENT(sched_cpu_sel,
+
+	TP_PROTO(struct task_struct *p, int task_boost, bool task_skip_min, bool boosted, int boost_pol,
+		int task_util, int cpu_util, bool fit_small, bool sysctl_prefer_silver, bool is_ux_task, int start_cpu),
+
+	TP_ARGS(p, task_boost, task_skip_min, boosted, boost_pol, task_util, cpu_util, fit_small, is_ux_task, sysctl_prefer_silver, start_cpu),
+
+	TP_STRUCT__entry(
+		__field(int,    pid)
+		__array(char,   comm, TASK_COMM_LEN)
+		__field(int,    task_boost)
+		__field(bool,   task_skip_min)
+		__field(bool,   boosted)
+		__field(int,    boost_pol)
+		__field(int,    task_util)
+		__field(int,    cpu_util)
+		__field(bool,   fit_small)
+		__field(bool,   is_ux_task)
+		__field(bool,   sysctl_prefer_silver)
+		__field(int,	start_cpu)
+	),
+
+	TP_fast_assign(
+		__entry->pid                    = p ? p->pid : -1;
+		memcpy(__entry->comm, p ? p->comm:"NULL", TASK_COMM_LEN);
+		__entry->task_boost             = task_boost;
+		__entry->task_skip_min          = task_skip_min;
+		__entry->boosted                = boosted;
+		__entry->boost_pol              = boost_pol;
+		__entry->task_util              = task_util;
+		__entry->cpu_util               = cpu_util;
+		__entry->fit_small              = fit_small;
+		__entry->is_ux_task             = is_ux_task;
+		__entry->sysctl_prefer_silver   = sysctl_prefer_silver;
+		__entry->start_cpu              = start_cpu;
+	),
+
+	TP_printk("pid=%d comm=%s task_boost=%d skip_min=%d boosted=%d boost_pol=%d task_util=%d cpu_util=%d fit_small=%d is_ux_task=%d prefer_silver_enabled=%d start_cpu=%d",
+		__entry->pid, __entry->comm, __entry->task_boost,
+		__entry->task_skip_min, __entry->boosted,
+		__entry->boost_pol, __entry->task_util,
+		__entry->cpu_util, __entry->fit_small, __entry->is_ux_task, __entry->sysctl_prefer_silver, __entry->start_cpu)
+);
+
+#endif
+
 TRACE_EVENT(sched_compute_energy,
 
 	TP_PROTO(struct task_struct *p, int eval_cpu,
@@ -1663,6 +1746,26 @@ TRACE_EVENT(sched_isolate,
 		__entry->requested_cpu, __entry->isolated_cpus,
 		__entry->time, __entry->isolate)
 );
+
+#ifdef CONFIG_OPLUS_FEATURE_GAME_OPT
+TRACE_EVENT(game_opt_info,
+	TP_PROTO(char * str, unsigned long frame_util),
+
+	TP_ARGS(str, frame_util),
+
+	TP_STRUCT__entry(
+                __array(char, name, TASK_COMM_LEN)
+		__field(unsigned long,            frame_util)
+	),
+
+	TP_fast_assign(
+		__entry->frame_util           = frame_util;
+                memcpy(__entry->name, str, strlen(str));
+	),
+
+	TP_printk("name = %s, val =%lu",__entry->name, __entry->frame_util)
+);
+#endif
 
 #include "walt.h"
 #endif /* CONFIG_SMP */

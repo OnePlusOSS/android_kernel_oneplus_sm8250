@@ -142,6 +142,15 @@ static int f2fs_begin_enable_verity(struct file *filp)
 	if (err)
 		return err;
 
+#ifdef CONFIG_F2FS_FS_DEDUP
+	mark_file_modified(inode);
+	if (f2fs_is_outer_inode(inode)) {
+		err = f2fs_revoke_deduped_inode(inode, __func__);
+		if (err)
+			return err;
+	}
+#endif
+
 	set_inode_flag(inode, FI_VERITY_IN_PROGRESS);
 	return 0;
 }

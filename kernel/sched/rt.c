@@ -11,6 +11,17 @@
 
 #include <trace/events/sched.h>
 
+#ifdef CONFIG_OPLUS_FEATURE_GAME_OPT
+#include "../../drivers/soc/oplus/game_opt/game_ctrl.h"
+#endif
+#ifdef CONFIG_OPLUS_FEATURE_FRAME_BOOST
+#include "../tuning/frame_group.h"
+#endif
+
+#ifdef CONFIG_OPLUS_CPU_AUDIO_PERF
+#include "../sched_assist/sched_assist_audio.h"
+#endif
+
 #include "walt.h"
 
 int sched_rr_timeslice = RR_TIMESLICE;
@@ -1051,6 +1062,12 @@ static void update_curr_rt(struct rq *rq)
 
 	curr->se.exec_start = now;
 	cgroup_account_cputime(curr, delta_exec);
+#ifdef CONFIG_OPLUS_FEATURE_GAME_OPT
+	g_update_task_runtime(curr, delta_exec);
+#endif
+#ifdef CONFIG_OPLUS_FEATURE_FRAME_BOOST
+	fbg_update_rt_util_hook(NULL, curr, delta_exec);
+#endif
 
 	if (!rt_bandwidth_enabled())
 		return;
@@ -1739,7 +1756,11 @@ static int pick_rt_task(struct rq *rq, struct task_struct *p, int cpu)
  * Return the highest pushable rq's task, which is suitable to be executed
  * on the CPU, NULL otherwise
  */
+#ifdef CONFIG_OPLUS_CPU_AUDIO_PERF
+struct task_struct *pick_highest_pushable_task(struct rq *rq, int cpu)
+#else
 static struct task_struct *pick_highest_pushable_task(struct rq *rq, int cpu)
+#endif
 {
 	struct plist_head *head = &rq->rt.pushable_tasks;
 	struct task_struct *p;
@@ -1754,6 +1775,9 @@ static struct task_struct *pick_highest_pushable_task(struct rq *rq, int cpu)
 
 	return NULL;
 }
+#ifdef CONFIG_OPLUS_CPU_AUDIO_PERF
+EXPORT_SYMBOL_GPL(pick_highest_pushable_task);
+#endif
 
 static DEFINE_PER_CPU(cpumask_var_t, local_cpu_mask);
 
@@ -1808,6 +1832,10 @@ retry:
 
 			if (__cpu_overutilized(cpu, tutil))
 				continue;
+#ifdef CONFIG_OPLUS_FEATURE_FRAME_BOOST
+			if (!fbg_rt_task_fits_capacity(task, cpu))
+				continue;
+#endif
 
 			util = cpu_util(cpu);
 
@@ -1868,6 +1896,11 @@ static int find_lowest_rq(struct task_struct *task)
 	int this_cpu = smp_processor_id();
 	int cpu = -1;
 
+#ifdef CONFIG_OPLUS_CPU_AUDIO_PERF
+	unsigned int drop_cpu;
+#endif /* CONFIG_OPLUS_CPU_AUDIO_PERF */
+
+
 	/* Make sure the mask is initialized first */
 	if (unlikely(!lowest_mask))
 		return -1;
@@ -1877,6 +1910,16 @@ static int find_lowest_rq(struct task_struct *task)
 
 	if (!cpupri_find(&task_rq(task)->rd->cpupri, task, lowest_mask))
 		return -1; /* No targets found */
+
+#ifdef CONFIG_OPLUS_CPU_AUDIO_PERF
+	/* skip the high idle latency cpu */
+	drop_cpu = cpumask_first(lowest_mask);
+	while (drop_cpu < nr_cpu_ids) {
+		if (oplus_sched_assist_audio_perf_check_exit_latency(task, drop_cpu))
+			cpumask_clear_cpu(drop_cpu, lowest_mask);
+		drop_cpu = cpumask_next(drop_cpu, lowest_mask);
+	}
+#endif /* CONFIG_OPLUS_CPU_AUDIO_PERF */
 
 	if (static_branch_unlikely(&sched_energy_present))
 		cpu = rt_energy_aware_wake_cpu(task);
@@ -2362,7 +2405,10 @@ static void pull_rt_task(struct rq *this_rq)
 			 */
 			if (p->prio < src_rq->curr->prio)
 				goto skip;
-
+#ifdef CONFIG_OPLUS_FEATURE_FRAME_BOOST
+			if (!fbg_rt_task_fits_capacity(p, this_cpu))
+				goto skip;
+#endif
 			resched = true;
 
 			deactivate_task(src_rq, p, 0);

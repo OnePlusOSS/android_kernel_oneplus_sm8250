@@ -8,6 +8,11 @@
 #include <linux/rcuwait.h>
 #include <linux/rcu_sync.h>
 #include <linux/lockdep.h>
+#ifdef CONFIG_LOCKING_PROTECT
+#include <linux/sched.h>
+#include <linux/jiffies.h>
+#include <linux/sched_assist/sched_assist_locking.h>
+#endif
 
 struct percpu_rw_semaphore {
 	struct rcu_sync		rss;
@@ -58,6 +63,9 @@ static inline void percpu_down_read(struct percpu_rw_semaphore *sem)
 {
 	percpu_down_read_preempt_disable(sem);
 	preempt_enable();
+#ifdef CONFIG_LOCKING_PROTECT
+	record_locking_info(current, jiffies);
+#endif
 }
 
 static inline int percpu_down_read_trylock(struct percpu_rw_semaphore *sem)
@@ -77,8 +85,12 @@ static inline int percpu_down_read_trylock(struct percpu_rw_semaphore *sem)
 	 * bleeding the critical section out.
 	 */
 
-	if (ret)
+	if (ret) {
 		rwsem_acquire_read(&sem->rw_sem.dep_map, 0, 1, _RET_IP_);
+		#ifdef CONFIG_LOCKING_PROTECT
+		record_locking_info(current, jiffies);
+		#endif
+	}
 
 	return ret;
 }
@@ -104,6 +116,9 @@ static inline void percpu_up_read_preempt_enable(struct percpu_rw_semaphore *sem
 
 static inline void percpu_up_read(struct percpu_rw_semaphore *sem)
 {
+#ifdef CONFIG_LOCKING_PROTECT
+	record_locking_info(current, 0);
+#endif
 	preempt_disable();
 	percpu_up_read_preempt_enable(sem);
 }

@@ -113,6 +113,13 @@ show_attr(__attr)			\
 store_attr(__attr, (min), (max))	\
 static DEVICE_ATTR(__attr, 0644, show_##__attr, store_##__attr)
 
+#ifdef VENDOR_EDIT
+#define gov_attr_rw(__attr, min, max)	\
+show_attr(__attr)			\
+store_attr(__attr, (min), (max))	\
+static DEVICE_ATTR(__attr, 0664, show_##__attr, store_##__attr)
+#endif /* VENDOR_EDIT */
+
 #define show_list_attr(name, n) \
 static ssize_t show_list_##name(struct device *dev,			\
 			struct device_attribute *attr, char *buf)	\
@@ -808,9 +815,17 @@ gov_attr(up_scale, 0U, 500U);
 gov_attr(up_thres, 1U, 100U);
 gov_attr(down_thres, 0U, 90U);
 gov_attr(down_count, 0U, 90U);
+
+#ifdef VENDOR_EDIT
+gov_attr_rw(hist_memory, 0U, 90U);
+gov_attr_rw(hyst_trigger_count, 0U, 90U);
+gov_attr_rw(hyst_length, 0U, 90U);
+#else
 gov_attr(hist_memory, 0U, 90U);
 gov_attr(hyst_trigger_count, 0U, 90U);
 gov_attr(hyst_length, 0U, 90U);
+#endif /* VENDOR_EDIT */
+
 gov_attr(idle_mbps, 0U, 2000U);
 gov_attr(use_ab, 0U, 1U);
 gov_list_attr(mbps_zones, NUM_MBPS_ZONES, 0U, UINT_MAX);

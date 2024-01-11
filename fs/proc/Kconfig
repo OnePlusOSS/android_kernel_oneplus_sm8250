@@ -103,3 +103,14 @@ config PROC_UID
 	depends on PROC_FS && RT_MUTEXES
 	help
 	Provides aggregated per-uid information under /proc/uid.
+
+#ifdef OPLUS_FEATURE_CPU_JANKINFO
+source "fs/proc/sched_info/Kconfig"
+#endif /* OPLUS_FEATURE_CPU_JANKINFO */
+#ifdef OPLUS_FEATURE_TASK_CPUSTATS
+source "fs/proc/task_cpustats/Kconfig"
+#endif /* OPLUS_FEATURE_TASK_CPUSTATS */
+
+#ifdef OPLUS_FEATURE_HEALTHINFO
+source fs/proc/healthinfo/Kconfig
+#endif /* OPLUS_FEATURE_HEALTHINFO */

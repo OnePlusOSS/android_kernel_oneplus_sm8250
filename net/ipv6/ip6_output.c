@@ -156,7 +156,11 @@ static int ip6_finish_output(struct net *net, struct sock *sk, struct sk_buff *s
 
 int ip6_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
-	struct net_device *dev = skb_dst(skb)->dev;
+	//#ifdef OPLUS_FEATURE_RADIO_VIRTUALMODEM
+	// struct net_device *dev = skb_dst(skb)->dev
+	//#else
+	struct net_device *dev = skb_dst(skb)->dev, *indev = skb->dev;
+	//#endif /*OPLUS_FEATURE_RADIO_VIRTUALMODEM*/
 	struct inet6_dev *idev = ip6_dst_idev(skb_dst(skb));
 
 	skb->protocol = htons(ETH_P_IPV6);
@@ -168,10 +172,17 @@ int ip6_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 		return 0;
 	}
 
+	//#ifdef OPLUS_FEATURE_RADIO_VIRTUALMODEM
+	//return NF_HOOK_COND(NFPROTO_IPV4, NF_INET_POST_ROUTING,
+	//		    net, sk, skb, NULL, dev,
+	//		    ip_finish_output,
+	//		    !(IPCB(skb)->flags & IPSKB_REROUTED));
+	// #else
 	return NF_HOOK_COND(NFPROTO_IPV6, NF_INET_POST_ROUTING,
-			    net, sk, skb, NULL, dev,
+			    net, sk, skb, indev, dev,
 			    ip6_finish_output,
 			    !(IP6CB(skb)->flags & IP6SKB_REROUTED));
+	//#endif /*OPLUS_FEATURE_RADIO_VIRTUALMODEM*/
 }
 
 bool ip6_autoflowlabel(struct net *net, const struct ipv6_pinfo *np)

@@ -512,6 +512,7 @@ source "drivers/scsi/esas2r/Kconfig"
 source "drivers/scsi/megaraid/Kconfig.megaraid"
 source "drivers/scsi/mpt3sas/Kconfig"
 source "drivers/scsi/smartpqi/Kconfig"
+source "drivers/scsi/oufs/Kconfig"
 source "drivers/scsi/ufs/Kconfig"
 
 config SCSI_HPTIOP

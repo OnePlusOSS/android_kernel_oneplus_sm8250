@@ -537,6 +537,9 @@ def gen_blueprints(
   if header_arch == "arm64":
     exclude_srcs = ['linux/a.out.h', 'linux/kvm_para.h']
 
+  #lingfen add it for kernel 
+  exclude_srcs.append('linux/compiler_types.h')
+
   # Scan the arch_asm_kbuild file for files that need to be generated and those
   # that are generic (i.e., need to be wrapped).
 

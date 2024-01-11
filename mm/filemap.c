@@ -39,7 +39,7 @@
 #include <linux/delayacct.h>
 #include <linux/psi.h>
 #include "internal.h"
-
+#include <linux/sysctl.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/filemap.h>
 
@@ -49,7 +49,9 @@
 #include <linux/buffer_head.h> /* for try_to_free_buffers */
 
 #include <asm/mman.h>
-
+#ifdef CONFIG_OPLUS_DYNAMIC_READAHEAD
+#include "dynamic_readhead.h"
+#endif /* CONFIG_OPLUS_DYNAMIC_READAHEAD */
 int want_old_faultaround_pte = 1;
 
 /*
@@ -2545,6 +2547,9 @@ static int lock_page_maybe_drop_mmap(struct vm_fault *vmf, struct page *page,
 }
 
 
+#ifdef CONFIG_OPLUS_DYNAMIC_READAHEAD
+extern int dynamic_readahead_enable;
+#endif
 /*
  * Synchronous readahead happens when we don't even find a page in the page
  * cache at all.  We don't want to perform IO under the mmap sem, so if we have
@@ -2588,9 +2593,20 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 	 * mmap read-around
 	 */
 	fpin = maybe_unlock_mmap_for_io(vmf, fpin);
+#ifdef CONFIG_OPLUS_DYNAMIC_READAHEAD
+	if(dynamic_readahead_enable) {
+		adjust_readaround(ra, offset);
+	}
+	else{
+		ra->start = max_t(long, 0, offset - ra->ra_pages / 2);
+		ra->size = ra->ra_pages;
+		ra->async_size = ra->ra_pages / 4;
+	}
+#else /* CONFIG_OPLUS_DYNAMIC_READAHEAD */
 	ra->start = max_t(long, 0, offset - ra->ra_pages / 2);
 	ra->size = ra->ra_pages;
 	ra->async_size = ra->ra_pages / 4;
+#endif
 	ra_submit(ra, mapping, file);
 	return fpin;
 }
@@ -2781,6 +2797,9 @@ void filemap_map_pages(struct vm_fault *vmf,
 	pgoff_t last_pgoff = start_pgoff;
 	unsigned long max_idx;
 	struct page *head, *page;
+#ifdef CONFIG_F2FS_APPBOOST
+	char *pathbuf = NULL;
+#endif
 
 	rcu_read_lock();
 	radix_tree_for_each_slot(slot, &mapping->i_pages, &iter, start_pgoff) {
@@ -2813,7 +2832,11 @@ repeat:
 			put_page(head);
 			goto repeat;
 		}
-
+#ifdef CONFIG_F2FS_APPBOOST
+		if (trace_filemap_map_pages_enabled() && !pathbuf) {
+			pathbuf = kmalloc(PATH_MAX, GFP_KERNEL);
+		}
+#endif
 		if (!PageUptodate(page) ||
 				PageReadahead(page) ||
 				PageHWPoison(page))
@@ -2845,6 +2868,16 @@ repeat:
 
 		if (alloc_set_pte(vmf, NULL, page))
 			goto unlock;
+#ifdef CONFIG_F2FS_APPBOOST
+		if (trace_filemap_map_pages_enabled() && pathbuf) {
+			if (mapping->host && mapping->host->i_sb
+				&& mapping->host->i_sb->s_magic == F2FS_SUPER_MAGIC) {
+				char *path = d_path(&file->f_path, pathbuf, PATH_MAX);
+				if (!IS_ERR(path))
+					trace_filemap_map_pages(mapping->host, page, path);
+			}
+		}
+#endif
 		unlock_page(page);
 		goto next;
 unlock:
@@ -2859,6 +2892,10 @@ next:
 			break;
 	}
 	rcu_read_unlock();
+#ifdef CONFIG_F2FS_APPBOOST
+	if (pathbuf)
+		kfree(pathbuf);
+#endif
 }
 EXPORT_SYMBOL(filemap_map_pages);
 

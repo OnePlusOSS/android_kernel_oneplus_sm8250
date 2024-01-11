@@ -1,0 +1,5 @@
+config OPLUS_FEATURE_ABNORMAL_FLAG
+	tristate "abnormal_flag"
+	default n
+	help
+	  abnormal thread detection

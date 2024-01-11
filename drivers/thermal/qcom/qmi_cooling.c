@@ -12,6 +12,7 @@
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/soc/qcom/qmi.h>
+#include <soc/oplus/system/oplus_project.h>
 #include <linux/net.h>
 
 #include "thermal_mitigation_device_service_v01.h"
@@ -242,6 +243,9 @@ static int qmi_set_cur_or_min_state(struct qmi_cooling_device *qmi_cdev,
 
 	if (!tmd)
 		return -EINVAL;
+
+	if (get_eng_version() == HIGH_TEMP_AGING)
+		return ret;
 
 	if (qmi_cdev->mtgn_state == state)
 		return ret;

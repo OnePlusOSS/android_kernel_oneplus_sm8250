@@ -18,5 +18,51 @@ source "drivers/soc/ux500/Kconfig"
 source "drivers/soc/versatile/Kconfig"
 source "drivers/soc/xilinx/Kconfig"
 source "drivers/soc/zte/Kconfig"
+source "drivers/soc/oplus/Kconfig"
+source "drivers/soc/oplus/storage/Kconfig"
+#ifdef OPLUS_FEATURE_IOMONITOR
+source "drivers/soc/oplus/iomonitor/Kconfig"
+#endif /*OPLUS_FEATURE_IOMONITOR*/
+#ifdef VENDOR_EDIT
+source "drivers/soc/oplus/system/Kconfig"
+#endif /* VENDOR_EDIT */
+#ifdef OPLUS_FEATURE_HEALTHINFO
+source "drivers/soc/oplus/healthinfo/Kconfig"
+#endif /* OPLUS_FEATURE_HEALTHINFO */
+
+#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+source "drivers/soc/oplus/owakelock/Kconfig"
+#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
+
+#ifdef OPLUS_FEATURE_SENSOR_SMEM
+source "drivers/soc/oplus/sensor/Kconfig"
+#endif /* OPLUS_FEATURE_SENSOR_SMEM */
+
+#ifdef OPLUS_FEATURE_ESIM
+source "drivers/soc/oplus/misc/Kconfig"
+#endif /* OPLUS_FEATURE_ESIM */
+
+#ifdef OPLUS_FEATURE_TPP
+#jacky.ho@optimization add for tpp module
+source "drivers/soc/oplus/tpp/Kconfig"
+#endif /* OPLUS_FEATURE_IM */
+
+#ifdef OPLUS_FEATURE_IM
+#ted.lin@optimization add for im module
+source "drivers/soc/oplus/im/Kconfig"
+#endif /* OPLUS_FEATURE_IM */
+
+#ifdef OPLUS_FEATURE_TPD
+source "drivers/soc/oplus/tpd/Kconfig"
+#endif
+
+#Add for NandSwap
+source "drivers/soc/oplus/oplus_nandswap/Kconfig"
+
+#ifdef OPLUS_FEATURE_GAME_OPT
+source "drivers/soc/oplus/game_opt/Kconfig"
+#endif /* OPLUS_FEATURE_GAME_OPT */
+
+source "drivers/soc/oplus/oplus_overload/Kconfig"
 
 endmenu

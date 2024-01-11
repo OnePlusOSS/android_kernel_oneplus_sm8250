@@ -1,0 +1,13 @@
+#
+# Qcom qti NFC Nci protocol (I2C) devices
+#
+
+config NFC_QTI_I2C
+	bool "Qcom qti NFC NCI protocol driver (I2C) devices for SNxxx."
+	default y
+	---help---
+	  You'll have to say Y if your computer contains an I2C device that
+	  you want to use under Linux.
+
+	  You can say N here if you don't have any I2C connected to your computer.
+

@@ -53,3 +53,55 @@ config ZRAM_MEMORY_TRACKING
 	  /sys/kernel/debug/zram/zramX/block_state.
 
 	  See Documentation/blockdev/zram.txt for more information.
+
+#ifdef OPLUS_FEATURE_ZRAM_OPT
+config OPLUS_ZRAM_OPT
+	bool "oplus zram  optimization"
+	depends on ZRAM
+	default y
+	help
+	oplus zram optimization
+#endif /*OPLUS_FEATURE_ZRAM_OPT*/
+
+#ifdef OPLUS_FEATURE_ZRAM_WRITEBACK
+source "drivers/block/zram/zwb_handle/Kconfig"
+#endif /* OPLUS_FEATURE_ZRAM_WRITEBACK */
+
+config HYBRIDSWAP
+	bool "Enable Hybridswap"
+	depends on MEMCG && ZRAM && !ZRAM_DEDUP && !ZRAM_WRITEBACK && !ZWB_HANDLE
+	default n
+	help
+	  Hybridswap is a intelligent memory management solution.
+
+config HYBRIDSWAP_SWAPD
+	bool "Enable hybridswap swapd thread to reclaim anon pages in background"
+	default n
+	depends on HYBRIDSWAP
+	help
+	  swapd is a kernel thread that reclaim anonymous pages in the
+	  background. When the use of swap pages reaches the watermark
+	  and the refault of anonymous pages is high, the content of
+	  zram will exchanged to eswap by a certain percentage.
+
+# Selected when system need hybridswap container
+config HYBRIDSWAP_CORE
+	bool "Hybridswap container device support"
+	depends on ZRAM && HYBRIDSWAP
+	default n
+	help
+	  Say Y here if you want to use the hybridswap
+	  as the backend device in ZRAM.
+	  If unsure, say N here.
+	  This module can't be compiled as a module,
+	  the module is as one part of the ZRAM driver.
+
+config HYBRIDSWAP_ASYNC_COMPRESS
+	bool "hypbridswap support asynchronous compress anon pages"
+	depends on ZRAM && HYBRIDSWAP
+	default n
+	help
+	  Say Y here if you want to create asynchronous thread
+	  for compress anon pages.
+	  If unsure, say N here.
+	  This feature will reduce the kswapd cpu load.

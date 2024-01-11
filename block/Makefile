@@ -40,3 +40,10 @@ obj-$(CONFIG_BLK_SED_OPAL)	+= sed-opal.o
 obj-$(CONFIG_BLK_INLINE_ENCRYPTION)	+= keyslot-manager.o bio-crypt-ctx.o \
 					   blk-crypto.o
 obj-$(CONFIG_BLK_INLINE_ENCRYPTION_FALLBACK)	+= blk-crypto-fallback.o
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+obj-$(CONFIG_OPLUS_FEATURE_UXIO_FIRST)	+= uxio_first/
+#endif /*OPLUS_FEATURE_SCHED_ASSIST*/
+
+#ifdef OPLUS_FEATURE_HEALTHINFO
+obj-$(CONFIG_OPLUS_HEALTHINFO) += blk/
+#endif /* OPLUS_FEATURE_HEALTHINFO */

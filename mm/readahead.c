@@ -21,9 +21,11 @@
 #include <linux/mm_inline.h>
 #include <linux/blk-cgroup.h>
 #include <linux/fadvise.h>
-
+#include <linux/sysctl.h>
 #include "internal.h"
-
+#ifdef CONFIG_OPLUS_DYNAMIC_READAHEAD
+#include "dynamic_readhead.h"
+#endif /* CONFIG_OPLUS_DYNAMIC_READAHEAD */
 /*
  * Initialise a struct file's readahead state.  Assumes that the caller has
  * memset *ra to zero.
@@ -376,6 +378,9 @@ static int try_context_readahead(struct address_space *mapping,
 	return 1;
 }
 
+#ifdef CONFIG_OPLUS_DYNAMIC_READAHEAD
+extern int dynamic_readahead_enable;
+#endif
 /*
  * A minimal readahead algorithm for trivial sequential/random reads.
  */
@@ -396,6 +401,12 @@ ondemand_readahead(struct address_space *mapping,
 	 */
 	if (req_size > max_pages && bdi->io_pages > max_pages)
 		max_pages = min(req_size, bdi->io_pages);
+
+#ifdef CONFIG_OPLUS_DYNAMIC_READAHEAD
+	if(dynamic_readahead_enable) {
+		max_pages = adjust_readahead(ra,max_pages);
+	}
+#endif
 
 	/*
 	 * start of file

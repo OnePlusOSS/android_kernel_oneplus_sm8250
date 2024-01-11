@@ -18,3 +18,10 @@ obj-$(CONFIG_NFC_NXP_NCI)	+= nxp-nci/
 obj-$(CONFIG_NFC_S3FWRN5)	+= s3fwrn5/
 obj-$(CONFIG_NFC_ST95HF)	+= st95hf/
 obj-$(CONFIG_NFC_NQ)            += nq-nci.o
+obj-$(CONFIG_NFC_QTI_I2C)       += qti/
+obj-$(CONFIG_OPLUS_NFC)         += oplus_nfc/
+#ifdef OPLUS_NFC_BRINGUP
+#Add for the kernel Macro for NXP PN557 NFC kernel
+obj-$(CONFIG_NFC_PN553_DEVICES)		+= pn553-i2c/
+obj-$(CONFIG_NXP_P73_DEVICES)      += p73-spi/
+#endif /*OPLUS_NFC_BRINGUP*/

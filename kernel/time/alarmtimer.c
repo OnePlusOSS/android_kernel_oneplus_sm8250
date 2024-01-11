@@ -35,6 +35,10 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/alarmtimer.h>
 
+#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+#include <soc/oplus/oplus_wakelock_profiler.h>
+#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
+
 /**
  * struct alarm_base - Alarm timer bases
  * @lock:		Lock for syncrhonized access to the base
@@ -63,6 +67,7 @@ static struct wakeup_source *ws;
 /* rtc timer and device for setting alarm wakeups at suspend */
 static struct rtc_timer		rtctimer;
 static struct rtc_device	*rtcdev;
+static int alarm_debug = 0;
 static DEFINE_SPINLOCK(rtcdev_lock);
 
 /**
@@ -166,6 +171,10 @@ static void alarmtimer_enqueue(struct alarm_base *base, struct alarm *alarm)
 {
 	if (alarm->state & ALARMTIMER_STATE_ENQUEUED)
 		timerqueue_del(&base->timerqueue, &alarm->node);
+	// No need to apply this part for user build, enable this part only for temperature debug build.
+	pr_info("[oem][alarm]%s: comm:%s pid:%d exp:%llu func:%ps\n", __func__,
+	current->comm, current->pid,
+	ktime_to_ms(alarm->node.expires), alarm->function);//This print code could be removed for release build.
 
 	timerqueue_add(&base->timerqueue, &alarm->node);
 	alarm->state |= ALARMTIMER_STATE_ENQUEUED;
@@ -210,9 +219,20 @@ static enum hrtimer_restart alarmtimer_fired(struct hrtimer *timer)
 	spin_lock_irqsave(&base->lock, flags);
 	alarmtimer_dequeue(base, alarm);
 	spin_unlock_irqrestore(&base->lock, flags);
+	// No need to apply this part for user build, enable this part only for temperature debug build.
+	if(alarm_debug & 0x1){
+		pr_info("[oem][alarm]%s: type=%d, func=%ps, exp:%llu\n", __func__,
+		alarm->type, alarm->function, ktime_to_ms(alarm->node.expires));
+		alarm_debug &= 0xFE;
+	}
+
 
 	if (alarm->function)
 		restart = alarm->function(alarm, base->gettime());
+
+	#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+	alarmtimer_wakeup_count(alarm);
+	#endif /*OPLUS_FEATURE_POWERINFO_STANDBY*/
 
 	spin_lock_irqsave(&base->lock, flags);
 	if (restart != ALARMTIMER_NORESTART) {
@@ -252,6 +272,7 @@ static int alarmtimer_suspend(struct device *dev)
 	struct rtc_device *rtc;
 	unsigned long flags;
 	struct rtc_time tm;
+	struct alarm* min_timer = NULL;
 
 	spin_lock_irqsave(&freezer_delta_lock, flags);
 	min = freezer_delta;
@@ -259,6 +280,10 @@ static int alarmtimer_suspend(struct device *dev)
 	type = freezer_alarmtype;
 	freezer_delta = 0;
 	spin_unlock_irqrestore(&freezer_delta_lock, flags);
+
+	#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+	alarmtimer_suspend_flag_set();
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 
 	rtc = alarmtimer_get_rtcdev();
 	/* If we have no rtcdev, just return */
@@ -278,6 +303,7 @@ static int alarmtimer_suspend(struct device *dev)
 			continue;
 		delta = ktime_sub(next->expires, base->gettime());
 		if (!min || (delta < min)) {
+			min_timer = container_of(next, struct alarm, node);
 			expires = next->expires;
 			min = delta;
 			type = i;
@@ -286,8 +312,20 @@ static int alarmtimer_suspend(struct device *dev)
 	if (min == 0)
 		return 0;
 
+	if (min_timer){
+		pr_info("[oem][alarm]%s: [%p]type=%d, func=%ps, exp:%llu\n", __func__,
+		min_timer, min_timer->type, min_timer->function,
+		ktime_to_ms(min_timer->node.expires));
+		min_timer = NULL;
+	}
+	alarm_debug = 0x1;
 	if (ktime_to_ns(min) < 2 * NSEC_PER_SEC) {
 		__pm_wakeup_event(ws, 2 * MSEC_PER_SEC);
+		#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+		alarmtimer_suspend_flag_clear();
+		alarmtimer_busy_flag_set();
+		pr_info("alarmtimer: keep system alive 2 seconds.\n");
+		#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 		return -EBUSY;
 	}
 
@@ -310,6 +348,9 @@ static int alarmtimer_resume(struct device *dev)
 {
 	struct rtc_device *rtc;
 
+	#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
+	alarmtimer_suspend_flag_clear();
+	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 	rtc = alarmtimer_get_rtcdev();
 	if (rtc)
 		rtc_timer_cancel(rtc, &rtctimer);

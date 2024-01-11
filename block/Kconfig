@@ -36,7 +36,7 @@ config LBDAF
 	  This option is required to support the full capacity of large
 	  (2TB+) block devices, including RAID, disk, Network Block Device,
 	  Logical Volume Manager (LVM) and loopback.
-	
+
 	  This option also enables support for single files larger than
 	  2TB.
 
@@ -246,3 +246,8 @@ config BLK_MQ_RDMA
 	default y
 
 source block/Kconfig.iosched
+source block/blk/Kconfig
+
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+source block/uxio_first/Kconfig
+#endif

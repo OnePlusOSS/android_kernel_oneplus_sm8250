@@ -1601,6 +1601,9 @@ static void ipa3_q6_clnt_svc_arrive(struct work_struct *work)
 			return;
 		}
 		IPAWANERR("Exit from service arrive fun\n");
+		//ifdef OPLUS_BUG_COMPATIBILITY
+		return;
+		//endif /* OPLUS_BUG_COMPATIBILITY */
 	}
 
 	if (rc != 0) {

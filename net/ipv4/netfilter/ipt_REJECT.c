@@ -30,6 +30,7 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Netfilter Core Team <coreteam@netfilter.org>");
 MODULE_DESCRIPTION("Xtables: packet \"rejection\" target for IPv4");
 
+
 static unsigned int
 reject_tg(struct sk_buff *skb, const struct xt_action_param *par)
 {
@@ -64,7 +65,6 @@ reject_tg(struct sk_buff *skb, const struct xt_action_param *par)
 		/* Doesn't happen. */
 		break;
 	}
-
 	return NF_DROP;
 }
 

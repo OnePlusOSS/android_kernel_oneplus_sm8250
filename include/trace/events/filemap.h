@@ -110,6 +110,35 @@ TRACE_EVENT(file_check_and_advance_wb_err,
 			MINOR(__entry->s_dev), __entry->i_ino, __entry->old,
 			__entry->new)
 );
+
+#ifdef CONFIG_F2FS_APPBOOST
+TRACE_EVENT(filemap_map_pages,
+	TP_PROTO(struct inode *inode, struct page *page, char *pathname),
+
+	TP_ARGS(inode, page, pathname),
+
+	TP_STRUCT__entry(
+		__string(pathbuf, pathname)
+		__field(u64, mtime)
+		__field(u64, i_ino)
+		__field(u32, i_generation)
+		__field(pgoff_t, index)
+	),
+
+	TP_fast_assign(
+		__assign_str(pathbuf, pathname);
+		(void)strreplace(__get_str(pathbuf), ' ', '_');
+		__entry->mtime = timespec64_to_ns(&inode->i_mtime);
+		__entry->i_ino = inode->i_ino;
+		__entry->i_generation = inode->i_generation;
+		__entry->index = page->index;
+	),
+	TP_printk("entry_name %s, ino %llu, igeneration %u, mtime %llu, page_index = 0x%lx",
+			__get_str(pathbuf), __entry->i_ino, __entry->i_generation, __entry->mtime,
+			(unsigned long)__entry->index)
+
+);
+#endif
 #endif /* _TRACE_FILEMAP_H */
 
 /* This part must be outside protection */

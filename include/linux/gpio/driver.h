@@ -255,6 +255,10 @@ struct gpio_chip {
 						unsigned offset, int value);
 	int			(*get)(struct gpio_chip *chip,
 						unsigned offset);
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	int 		(*get_oplus_vooc)(struct gpio_chip *chip,
+							unsigned offset);
+#endif /* OPLUS_FEATURE_CHG_BASIC */
 	int			(*get_multiple)(struct gpio_chip *chip,
 						unsigned long *mask,
 						unsigned long *bits);
@@ -263,6 +267,10 @@ struct gpio_chip {
 	void			(*set_multiple)(struct gpio_chip *chip,
 						unsigned long *mask,
 						unsigned long *bits);
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	void			(*set_oplus_vooc)(struct gpio_chip *chip,
+						unsigned offset, int value);
+#endif /* OPLUS_FEATURE_CHG_BASIC */
 	int			(*set_config)(struct gpio_chip *chip,
 					      unsigned offset,
 					      unsigned long config);
