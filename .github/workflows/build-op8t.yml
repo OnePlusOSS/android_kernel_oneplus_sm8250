@@ -1,0 +1,41 @@
+name: Build OP8T Kernel
+on:
+  workflow_dispatch:
+  push:
+    branches: [oneplus/sm8250_u_14.0.0_op8t]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone source + vendor submodule
+        run: |
+          git clone -b oneplus/sm8250_u_14.0.0_op8t --single-branch --depth=1 https://github.com/你的fork/android_kernel_oneplus_sm8250.git .
+          git submodule init
+          git submodule update --init --recursive
+
+      - name: Pull AOSP Clang
+        run: |
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r1/clang-r450784d.tar.gz -O clang.tar.gz
+          mkdir -p ../clang && tar xf clang.tar.gz -C ../clang
+
+      - name: Build
+        env:
+          PATH: ${{ github.workspace }}/../clang/bin:$PATH
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+          export CC=clang
+          make vendor/sm8250_defconfig   # 确认你 repo 里实际 defconfig 名
+          make -j$(nproc) Image dtbo modules
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: op8t-kernel
+          path: |
+            arch/arm64/boot/Image
+            arch/arm64/boot/dtbo.img
